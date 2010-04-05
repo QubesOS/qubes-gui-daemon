@@ -1,0 +1,175 @@
+config XEN_BALLOON
+	bool "Xen memory balloon driver"
+	depends on XEN
+	default y
+	help
+	  The balloon driver allows the Xen domain to request more memory from
+	  the system to expand the domain's memory allocation, or alternatively
+	  return unneeded memory to the system.
+
+config XEN_SCRUB_PAGES
+	bool "Scrub pages before returning them to system"
+	depends on XEN_BALLOON
+	default y
+	help
+	  Scrub pages before returning them to the system for reuse by
+	  other domains.  This makes sure that any confidential data
+	  is not accidentally visible to other domains.  Is it more
+	  secure, but slightly less efficient.
+	  If in doubt, say yes.
+
+config XEN_DEV_EVTCHN
+	tristate "Xen /dev/xen/evtchn device"
+	depends on XEN
+	default y
+	help
+	  The evtchn driver allows a userspace process to triger event
+	  channels and to receive notification of an event channel
+	  firing.
+	  If in doubt, say yes.
+
+config XEN_BACKEND
+	bool "Backend driver support"
+	depends on XEN_DOM0
+	default y
+	help
+	  Support for backend device drivers that provide I/O services
+	  to other virtual machines.
+
+config XEN_BLKDEV_BACKEND
+	tristate "Block-device backend driver"
+	depends on XEN_BACKEND && BLOCK
+	help
+	  The block-device backend driver allows the kernel to export its
+	  block devices to other guests via a high-performance shared-memory
+	  interface.
+
+config XEN_NETDEV_BACKEND
+       tristate "Xen backend network device"
+       depends on XEN_BACKEND && NET
+       help
+         Implement the network backend driver, which passes packets
+         from the guest domain's frontend drivers to the network.
+
+config XEN_PCIDEV_BACKEND
+	tristate "PCI-device backend driver"
+	depends on PCI && XEN_BACKEND
+	default XEN_BACKEND
+	help
+	  The PCI device backend driver allows the kernel to export arbitrary
+	  PCI devices to other guests. If you select this to be a module, you
+	  will need to make sure no other driver has bound to the device(s)
+	  you want to make visible to other guests.
+
+choice
+	prompt "PCI Backend Mode"
+	depends on XEN_PCIDEV_BACKEND
+	default XEN_PCIDEV_BACKEND_VPCI if !IA64
+	default XEN_PCIDEV_BACKEND_CONTROLLER if IA64
+
+config XEN_PCIDEV_BACKEND_VPCI
+	bool "Virtual PCI"
+	---help---
+	  This PCI Backend hides the true PCI topology and makes the frontend
+	  think there is a single PCI bus with only the exported devices on it.
+	  For example, a device at 03:05.0 will be re-assigned to 00:00.0. A
+	  second device at 02:1a.1 will be re-assigned to 00:01.1.
+
+config XEN_PCIDEV_BACKEND_PASS
+	bool "Passthrough"
+	---help---
+	  This PCI Backend provides a real view of the PCI topology to the
+	  frontend (for example, a device at 06:01.b will still appear at
+	  06:01.b to the frontend). This is similar to how Xen 2.0.x exposed
+	  PCI devices to its driver domains. This may be required for drivers
+	  which depend on finding their hardward in certain bus/slot
+	  locations.
+
+config XEN_PCIDEV_BACKEND_SLOT
+	bool "Slot"
+	---help---
+	  This PCI Backend hides the true PCI topology and makes the frontend
+	  think there is a single PCI bus with only the exported devices on it.
+	  Contrary to the virtual PCI backend, a function becomes a new slot.
+	  For example, a device at 03:05.2 will be re-assigned to 00:00.0. A
+	  second device at 02:1a.1 will be re-assigned to 00:01.0.
+
+config XEN_PCIDEV_BACKEND_CONTROLLER
+	bool "Controller"
+	depends on IA64
+	---help---
+	  This PCI backend virtualizes the PCI bus topology by providing a
+	  virtual bus per PCI root device.  Devices which are physically under
+	  the same root bus will appear on the same virtual bus.  For systems
+	  with complex I/O addressing, this is the only backend which supports
+	  extended I/O port spaces and MMIO translation offsets.  This backend
+	  also supports slot virtualization.  For example, a device at
+	  0000:01:02.1 will be re-assigned to 0000:00:00.0.  A second device
+	  at 0000:02:05.0 (behind a P2P bridge on bus 0000:01) will be
+	  re-assigned to 0000:00:01.0.  A third device at 0000:16:05.0 (under
+	  a different PCI root bus) will be re-assigned to 0000:01:00.0.
+
+endchoice
+
+config XEN_PCIDEV_BE_DEBUG
+	bool "PCI Backend Debugging"
+	depends on XEN_PCIDEV_BACKEND
+
+
+config XENFS
+	tristate "Xen filesystem"
+	depends on XEN
+	default y
+	help
+	  The xen filesystem provides a way for domains to share
+	  information with each other and with the hypervisor.
+	  For example, by reading and writing the "xenbus" file, guests
+	  may pass arbitrary information to the initial domain.
+	  If in doubt, say yes.
+
+config XEN_COMPAT_XENFS
+       bool "Create compatibility mount point /proc/xen"
+       depends on XENFS
+       default y
+       help
+         The old xenstore userspace tools expect to find "xenbus"
+         under /proc/xen, but "xenbus" is now found at the root of the
+         xenfs filesystem.  Selecting this causes the kernel to create
+         the compatibility mount point /proc/xen if it is running on
+         a xen platform.
+         If in doubt, say yes.
+
+config XEN_SYS_HYPERVISOR
+       bool "Create xen entries under /sys/hypervisor"
+       depends on XEN && SYSFS
+       select SYS_HYPERVISOR
+       default y
+       help
+         Create entries under /sys/hypervisor describing the Xen
+	 hypervisor environment.  When running native or in another
+	 virtual environment, /sys/hypervisor will still be present,
+	 but will have no xen contents.
+
+config XEN_XENBUS_FRONTEND
+       tristate
+
+config XEN_S3
+       def_bool y
+       depends on XEN_DOM0 && ACPI
+       
+config XEN_GNTDEV
+	bool "userspace grant access device driver"
+	depends on XEN
+	select MMU_NOTIFIER
+	help
+	  Allows userspace processes use grants.
+	  
+config XEN_MCE
+       def_bool y
+       depends on XEN_DOM0 && X86_64 && X86_MCE_INTEL
+
+config ACPI_PROCESSOR_XEN
+	bool
+	depends on XEN_DOM0 && ACPI_PROCESSOR && CPU_FREQ
+	default y
+

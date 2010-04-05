@@ -1,0 +1,1 @@
+setenv DISPLAY ":0"

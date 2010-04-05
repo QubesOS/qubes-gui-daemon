@@ -1,0 +1,3 @@
+modprobe xen-evtchn
+modprobe u2mfn
+
