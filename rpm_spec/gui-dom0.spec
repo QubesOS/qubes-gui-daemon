@@ -28,7 +28,7 @@
 Name:		qubes-gui-dom0	
 Version:	%{version}
 Release:	1
-Summary:	The Qubes GUI Agent for AppVMs
+Summary:	The Qubes GUI virtualization (Dom0 side) 
 
 Group:		Qubes
 Vendor:		Invisible Things Lab
@@ -42,7 +42,7 @@ Requires:	qubes-core-dom0 xorg-x11-server-Xorg kdm
 %define _builddir %(pwd)
 
 %description
-The Qubes GUI agent that needs to be installed in VM in order to provide the Qubes fancy GUI.
+The Qubes GUI virtualization infrastructure that needs to be installed in Dom0.
 
 %prep
 # we operate on the current directory, so no need to unpack anything
