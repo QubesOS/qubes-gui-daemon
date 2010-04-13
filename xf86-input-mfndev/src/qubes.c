@@ -383,23 +383,7 @@ static int QubesControl(DeviceIntPtr device, int what)
 	return Success;
 }
 
-static unsigned int get_user_mfn(char *ptr);
 static void dump_window_mfns(WindowPtr pWin, int id, int fd);
-
-
-static unsigned int get_user_mfn(char *ptr)
-{
-	static int u2mfn = 0;
-	if (!u2mfn) {
-		u2mfn = open("/proc/u2mfn", O_RDONLY);
-		if (u2mfn < 0) {
-			xf86Msg(X_ERROR,
-				"failed to open /proc/u2mfn, exiting...\n");
-			exit(1);
-		}
-	}
-	return ioctl(u2mfn, 0x111111, (long) ptr);
-}
 
 static void dump_window_mfns(WindowPtr pWin, int id, int fd)
 {
@@ -434,7 +418,7 @@ static void dump_window_mfns(WindowPtr pWin, int id, int fd)
 	write(fd, &shmcmd, sizeof(shmcmd));
 	mlock(pixels, 4096 * num_mfn);
 	for (i = 0; i < num_mfn; i++) {
-		mfn = get_user_mfn(pixels + 4096 * i);
+		u2mfn_get_mfn_for_page ((long)(pixels + 4096 * i), &mfn);
 		write(fd, &mfn, 4);
 	}
 }

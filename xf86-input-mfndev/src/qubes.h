@@ -33,3 +33,4 @@ typedef struct _QubesDeviceRec
     int axes;
 } QubesDeviceRec, *QubesDevicePtr ;
 
+#include "../../vchan/u2mfn/u2mfnlib.h"

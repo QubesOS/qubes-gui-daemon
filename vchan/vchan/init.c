@@ -30,27 +30,22 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include "libvchan.h"
+#include "../u2mfn/u2mfnlib.h"
+
 static int ring_init(struct libvchan *ctrl)
 {
 	int u2mfn = open("/proc/u2mfn", O_RDONLY);
 	int mfn;
 	struct vchan_interface *ring;
-	if (u2mfn < 0)
-		return -1;
-
-	ring = (struct vchan_interface *)
-	    mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON,
-		 -1, 0);
+	ring = (struct vchan_interface *) u2mfn_alloc_kpage ();
+        
 	if (ring == MAP_FAILED)
 		return -1;
-	if (mlock(ring, 4096))
-		return -1;
+
 	ctrl->ring = ring;
-	// I can hear you whining. But this interface does not care about 
-	// the cmd value, so we can put anything here
-	mfn = ioctl(u2mfn, 0x111111, (long) ring);
-	if (mfn == -1)
+	if (u2mfn_get_last_mfn (&mfn) < 0)
 		return -1;
+
 	ctrl->ring_ref = mfn;
 	close(u2mfn);
 	ring->cons_in = ring->prod_in = ring->cons_out = ring->prod_out =

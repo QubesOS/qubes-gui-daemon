@@ -23,8 +23,8 @@ CC=gcc
 CFLAGS=-g -Wall
 all: libvchan.so node node-select
 
-libvchan.so : init.o io.o
-	gcc -shared -o libvchan.so init.o io.o
+libvchan.so : init.o io.o ../u2mfn/u2mfnlib.o
+	gcc -shared -o libvchan.so init.o io.o ../u2mfn/u2mfnlib.o
 init.o: init.c
 	gcc -fPIC -Wall -g -c init.c
 io.o: io.c

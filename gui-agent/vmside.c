@@ -39,6 +39,8 @@
 #include "error.h"
 #include "shm_cmd.h"
 #include "qlimits.h"
+#include "libvchan.h"
+#include "u2mfnlib.h"
 
 int damage_event, damage_error;
 struct _global_handles {

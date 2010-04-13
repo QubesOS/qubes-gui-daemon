@@ -47,7 +47,7 @@ shmoverride/X_wrapper_qubes:
 	(cd shmoverride; $(MAKE) X_wrapper_qubes)
 	
 
-vchan/vchan/libvchan.so:
+vchan/vchan/libvchan.so: vchan/u2mfn/u2mfnlib.o
 	(cd vchan/vchan; $(MAKE) libvchan.so)
 
 
@@ -56,6 +56,9 @@ gui-agent/qubes-gui:
 
 vchan/u2mfn/u2mfn.ko:
 	(cd vchan/u2mfn; ./buildme.sh)
+
+vchan/u2mfn/u2mfnlib.o:
+	(cd vchan/u2mfn; make)
 
 xf86-input-mfndev/src/.libs/qubes_drv.so:
 	(cd xf86-input-mfndev && ./bootstrap && ./configure && make)

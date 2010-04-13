@@ -21,6 +21,9 @@
 
 obj-m                       += u2mfn.o
 
+u2mfnlib:
+	gcc -c -fPIC -Wall u2mfnlib.c
+
 clean:
 	rm -f *.o *.ko
 	#FIXME

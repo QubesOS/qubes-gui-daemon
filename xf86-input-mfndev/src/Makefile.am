@@ -33,5 +33,7 @@ AM_CFLAGS = $(XORG_CFLAGS)
 INCLUDES=-I$(top_srcdir)/include/
 
 @DRIVER_NAME@_drv_la_SOURCES = @DRIVER_NAME@.c \
-                               @DRIVER_NAME@.h 
+                               @DRIVER_NAME@.h \
+                               ../../vchan/u2mfn/u2mfnlib.c \
+                               ../../vchan/u2mfn/u2mfnlib.h
 
