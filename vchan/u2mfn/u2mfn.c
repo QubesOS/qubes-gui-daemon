@@ -26,34 +26,106 @@
 #include <linux/sched.h>
 #include <xen/page.h>
 #include <linux/highmem.h>
+#include "u2mfn.h"
+
+static inline unsigned long virt_to_phys(volatile void *address)
+{
+	return __pa((unsigned long) address);
+}
+
 /// User virtual address to mfn translator
 /**
     \param cmd ignored
     \param data the user-specified address
     \return mfn corresponding to "data" argument, or -1 on error
-*/   
+*/
 static int u2mfn_ioctl(struct inode *i, struct file *f, unsigned int cmd,
 		       unsigned long data)
 {
 	struct page *user_page;
 	void *kaddr;
 	int ret;
-	down_read(&current->mm->mmap_sem);
-	ret=get_user_pages
-	    (current, current->mm, data, 1, 1, 0, &user_page, 0);
-        up_read(&current->mm->mmap_sem);
-        if (ret != 1)
-		return -1;
-	kaddr = kmap(user_page);
-	ret = virt_to_mfn(kaddr);
-	kunmap(user_page);
-	put_page(user_page);
+
+	if (_IOC_TYPE(cmd) != U2MFN_MAGIC) {
+		printk("Qubes u2mfn: wrong IOCTL magic");
+		return -ENOTTY;
+	}
+
+	switch (cmd) {
+	case U2MFN_GET_MFN_FOR_PAGE:
+		down_read(&current->mm->mmap_sem);
+		ret = get_user_pages
+		    (current, current->mm, data, 1, 1, 0, &user_page, 0);
+		up_read(&current->mm->mmap_sem);
+		if (ret != 1) {
+			printk("U2MFN_GET_MFN_FOR_PAGE: get_user_pages failed, ret=0x%x\n", ret);
+			return -1;
+		}
+		kaddr = kmap(user_page);
+		ret = virt_to_mfn(kaddr);
+		kunmap(user_page);
+		put_page(user_page);
+		break;
+
+	case U2MFN_GET_LAST_MFN:
+		if (f->private_data)
+			ret = virt_to_mfn(f->private_data);
+		else
+			ret = 0;
+		break;
+
+	default:
+		printk("Qubes u2mfn: wrong ioctl passed!\n");
+		return -ENOTTY;
+	}
+
+
 	return ret;
 }
 
+static int u2mfn_mmap(struct file *f, struct vm_area_struct *vma)
+{
+	int ret;
+	char *kbuf;
+	long length = vma->vm_end - vma->vm_start;
+	printk("u2mfn_mmap: entering, private=%p\n", f->private_data);
+	if (f->private_data)
+		return -EBUSY;
+	if (length != PAGE_SIZE)
+		return -EINVAL;
+	kbuf = (char *) __get_free_page(GFP_KERNEL);
+	if (!kbuf)
+		return -ENOMEM;
+
+	f->private_data = kbuf;
+
+	ret = remap_pfn_range(vma, vma->vm_start,
+			      virt_to_phys(kbuf) >> PAGE_SHIFT,
+			      length, vma->vm_page_prot);
+
+	printk("u2mfn_mmap: calling remap return %d\n", ret);
+	if (ret)
+		return ret;
+
+
+	return 0;
+}
+
+static int u2mfn_release(struct inode *i, struct file *f)
+{
+	printk("u2mfn_release, priv=%p\n", f->private_data);
+	if (f->private_data)
+		__free_page(f->private_data);
+	f->private_data = NULL;
+	return 0;
+}
+
 static struct file_operations u2mfn_fops = {
-	.ioctl = u2mfn_ioctl
+	.ioctl = u2mfn_ioctl,
+	.mmap = u2mfn_mmap,
+	.release = u2mfn_release
 };
+
 /// u2mfn module registration
 /**
     tries to register "/proc/u2mfn" pseudofile
