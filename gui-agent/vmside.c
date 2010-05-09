@@ -103,7 +103,7 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 	if (list_lookup(windows_list, ev->window)) {
 		fprintf(stderr, "CREATE for already existing 0x%x\n",
 			(int) ev->window);
-		exit(1);
+		return;
 	}
 	list_insert(windows_list, ev->window, 0);
 	if (attr.class != InputOnly)
