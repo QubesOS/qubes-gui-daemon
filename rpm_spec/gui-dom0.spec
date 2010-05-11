@@ -37,7 +37,8 @@ URL:		http://www.qubes-os.org
 
 Source:		.
 
-Requires:	qubes-core-dom0 xorg-x11-server-Xorg kdm
+Requires:	qubes-core-dom0 xorg-x11-server-Xorg kdm pulseaudio-libs
+BuildRequires:  pulseaudio-libs-devel
 
 %define _builddir %(pwd)
 
@@ -56,6 +57,7 @@ make dom0
 %install
 rm -rf $RPM_BUILD_ROOT
 install -D gui-daemon/qubes_guid $RPM_BUILD_ROOT/usr/bin/qubes_guid
+install -D pulse/pacat-simple-vchan $RPM_BUILD_ROOT/usr/bin/pacat-simple-vchan
 install -D shmoverride/X_wrapper_qubes $RPM_BUILD_ROOT/usr/bin/X_wrapper_qubes
 install -D shmoverride/shmoverride.so $RPM_BUILD_ROOT/%{_libdir}/shmoverride.so
 install -D vchan/vchan/libvchan.so $RPM_BUILD_ROOT/%{_libdir}/libvchan.so
@@ -77,6 +79,7 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 %attr(4750,root,qubes) /usr/bin/qubes_guid
+/usr/bin/pacat-simple-vchan
 /usr/bin/X_wrapper_qubes
 %{_libdir}/shmoverride.so
 %{_libdir}/libvchan.so

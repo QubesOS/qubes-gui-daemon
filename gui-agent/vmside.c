@@ -474,8 +474,8 @@ void handle_keypress(Ghandles * g, XID winid)
 	    feed_xdriver(g, 'K', key.keycode,
 			 key.type == KeyPress ? 1 : 0);
 #endif
-//	fprintf(stderr, "win 0x%x type %d keycode %d\n",
-//		(int) winid, key.type, key.keycode);
+//      fprintf(stderr, "win 0x%x type %d keycode %d\n",
+//              (int) winid, key.type, key.keycode);
 //      XSync(g->display, 0);
 }
 
@@ -659,24 +659,24 @@ void handle_close(Ghandles * g, XID winid)
 	fprintf(stderr, "wmDeleteMessage sent for 0x%x\n", (int) winid);
 }
 
-void do_execute(char * user, char *cmd)
+void do_execute(char *user, char *cmd)
 {
-        int i, fd;
+	int i, fd;
 	switch (fork()) {
 	case -1:
 		perror("fork cmd");
 		break;
 	case 0:
-	        for (i=0;i<256;i++)
-	                close(i);
-                fd=open("/dev/null", O_RDWR);
-                for (i=0;i<=2;i++)
-                        dup2(fd, i);
+		for (i = 0; i < 256; i++)
+			close(i);
+		fd = open("/dev/null", O_RDWR);
+		for (i = 0; i <= 2; i++)
+			dup2(fd, i);
 		signal(SIGCHLD, SIG_DFL);
 		if (user)
-        		execl("/bin/su", "su", "-",user, "-c", cmd, NULL);
-                else
-                        execl("/bin/bash", "bash", "-c", cmd, NULL); 
+			execl("/bin/su", "su", "-", user, "-c", cmd, NULL);
+		else
+			execl("/bin/bash", "bash", "-c", cmd, NULL);
 		perror("execl cmd");
 		exit(1);
 	default:;
@@ -685,17 +685,19 @@ void do_execute(char * user, char *cmd)
 
 void handle_execute()
 {
-	char * ptr;
+	char *ptr;
 	struct msg_execute exec_data;
 	read_data((char *) &exec_data, sizeof(exec_data));
-	exec_data.cmd[sizeof(exec_data.cmd)-1]=0;
-	ptr=index(exec_data.cmd, ':');
-	if(!ptr)
-	        return;
-	*ptr=0;        
-	fprintf(stderr, "handle_execute(): cmd = %s:%s\n", exec_data.cmd, ptr+1);
-	do_execute(exec_data.cmd, ptr+1);
+	exec_data.cmd[sizeof(exec_data.cmd) - 1] = 0;
+	ptr = index(exec_data.cmd, ':');
+	if (!ptr)
+		return;
+	*ptr = 0;
+	fprintf(stderr, "handle_execute(): cmd = %s:%s\n", exec_data.cmd,
+		ptr + 1);
+	do_execute(exec_data.cmd, ptr + 1);
 }
+
 #define CLIPBOARD_4WAY
 void handle_clipboard_req(Ghandles * g, XID winid)
 {
@@ -823,6 +825,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	signal(SIGCHLD, SIG_IGN);
+	do_execute(NULL, "/usr/bin/start-pulseaudio-with-vchan");
 	windows_list = list_new();
 	XSetErrorHandler(dummy_handler);
 	xfd = ConnectionNumber(g.display);

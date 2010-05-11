@@ -307,8 +307,8 @@ void process_xevent_keypress(XKeyEvent * ev)
 	hdr.type = MSG_KEYPRESS;
 	hdr.window = conn->remote_winid;
 	write_message(hdr, k);
-//	fprintf(stderr, "win 0x%x(0x%x) type=%d keycode=%d\n",
-//		(int) ev->window, hdr.window, k.type, k.keycode);
+//      fprintf(stderr, "win 0x%x(0x%x) type=%d keycode=%d\n",
+//              (int) ev->window, hdr.window, k.type, k.keycode);
 }
 
 void dump_mapped()
@@ -488,8 +488,8 @@ void process_xevent_focus(XFocusChangeEvent * ev)
 
 void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 {
-    //int border_width = 2;
-    int border_width=conn->override_redirect ? 2 : 3;
+	//int border_width = 2;
+	int border_width = conn->override_redirect ? 2 : 3;
 
 	int do_border = 0;
 	int hoff = 0, woff = 0, delta, i;
@@ -559,10 +559,11 @@ void process_xevent_mapnotify(XMapEvent * ev)
 	if (conn->is_mapped)
 		return;
 	XGetWindowAttributes(ghandles.display, conn->local_winid, &attr);
-	if (attr.map_state==IsViewable) {
+	if (attr.map_state == IsViewable) {
 		(void) XUnmapWindow(ghandles.display, conn->local_winid);
-		fprintf(stderr, "WM tried to map 0x%x, revert\n", (int)conn->local_winid);
-	}		
+		fprintf(stderr, "WM tried to map 0x%x, revert\n",
+			(int) conn->local_winid);
+	}
 }
 
 void process_xevent()
@@ -1023,6 +1024,7 @@ void dummy_signal_handler(int x)
 {
 	signal_caught = 1;
 }
+
 void print_backtrace(void)
 {
 	void *array[100];
@@ -1051,6 +1053,35 @@ void release_all_mapped_mfns()
 		struct conndata *item = curr->data;
 		if (item->image)
 			release_mapped_mfns(&ghandles, item);
+	}
+}
+
+void exec_pacat(int domid)
+{
+	int i, fd;
+	char domid_txt[20];
+	char logname[80];
+	snprintf(domid_txt, sizeof domid_txt, "%d", domid);
+	snprintf(logname, sizeof logname, "/var/log/qubes/pacat.%d.log",
+		 domid);
+	switch (fork()) {
+	case -1:
+		perror("fork pacat");
+		exit(1);
+	case 0:
+		for (i = 0; i < 256; i++)
+			close(i);
+		fd = open("/dev/null", O_RDWR);
+		for (i = 0; i <= 1; i++)
+			dup2(fd, i);
+		umask(0007);
+		fd = open(logname, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+		umask(0077);
+		execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
+		      domid_txt, NULL);
+		perror("execl");
+		exit(1);
+	default:;
 	}
 }
 
@@ -1146,7 +1177,7 @@ void setup_icon(char *xpmfile)
 	     &dummy, &attributes);
 	if (ret != XpmSuccess) {
 		fprintf(stderr, "XpmReadFileToPixmap returned %d\n", ret);
-        ghandles.icon = None;
+		ghandles.icon = None;
 	}
 }
 #endif
@@ -1256,6 +1287,7 @@ int main(int argc, char **argv)
 	wid2conndata = list_new();
 	XSetErrorHandler(dummy_handler);
 	vmname = peer_client_init(ghandles.domid, 6000);
+	exec_pacat(ghandles.domid);
 	setuid(getuid());
 	cmd_socket = get_cmd_socket(ghandles.domid);
 	write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully

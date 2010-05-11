@@ -37,8 +37,13 @@ URL:		http://www.qubes-os.org
 
 Source:		.
 
+%define pa_ver 0.9.21
+
 BuildRequires:	xorg-x11-server-devel
-Requires:	qubes-core-vm qubes-vchan-vm xen-qubes-vm-essentials
+BuildRequires:	libtool-ltdl-devel
+BuildRequires:	pulseaudio-libs-devel
+Requires:	qubes-core-vm qubes-vchan-vm xen-qubes-vm-essentials 
+Requires:	pulseaudio = %{pa_ver}
 AutoReq: 0
 
 %define _builddir %(pwd)
@@ -57,6 +62,9 @@ make appvm
 rm -rf $RPM_BUILD_ROOT
 install -D gui-agent/qubes_gui $RPM_BUILD_ROOT/usr/bin/qubes_gui
 install -D appvm_scripts/usrbin/qubes_run_xorg.sh $RPM_BUILD_ROOT/usr/bin/qubes_run_xorg.sh
+install -D pulse/start-pulseaudio-with-vchan $RPM_BUILD_ROOT/usr/bin/start-pulseaudio-with-vchan
+install -D pulse/libsetup-vchan-early.so $RPM_BUILD_ROOT/%{_libdir}/libsetup-vchan-early.so
+install -D pulse/module-vchan-sink.so $RPM_BUILD_ROOT/%{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
 install -D xf86-input-mfndev/src/.libs/qubes_drv.so $RPM_BUILD_ROOT/%{_libdir}/xorg/modules/drivers/qubes_drv.so
 install -D vchan/vchan/libvchan.so $RPM_BUILD_ROOT/%{_libdir}/libvchan.so
 install -D appvm_scripts/etc/X11/xorg-qubes.conf.template $RPM_BUILD_ROOT/etc/X11/xorg-qubes.conf.template
@@ -81,6 +89,9 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root,-)
 /usr/bin/qubes_gui
 /usr/bin/qubes_run_xorg.sh
+/usr/bin/start-pulseaudio-with-vchan
+%{_libdir}/libsetup-vchan-early.so
+%{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
 %{_libdir}/xorg/modules/drivers/qubes_drv.so
 %{_libdir}/libvchan.so
 %attr(0644,root,root) /etc/X11/xorg-qubes.conf.template

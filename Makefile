@@ -33,9 +33,9 @@ help:
 	    echo "make clean            <--- clean all the binary files";\
 	    exit 0;
 
-dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes vchan/vchan/libvchan.so
+dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes vchan/vchan/libvchan.so pulse/pacat-simple-vchan
 
-appvm: vchan/vchan/libvchan.so gui-agent/qubes-gui  vchan/u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so
+appvm: vchan/vchan/libvchan.so gui-agent/qubes-gui  vchan/u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so
 
 gui-daemon/qubes-guid:
 	(cd gui-daemon; $(MAKE))
@@ -50,6 +50,8 @@ shmoverride/X_wrapper_qubes:
 vchan/vchan/libvchan.so: vchan/u2mfn/u2mfnlib.o
 	(cd vchan/vchan; $(MAKE) libvchan.so)
 
+pulse/pacat-simple-vchan:
+	$(MAKE) -C pulse pacat-simple-vchan
 
 gui-agent/qubes-gui:
 	(cd gui-agent; $(MAKE))
@@ -62,6 +64,9 @@ vchan/u2mfn/u2mfnlib.o:
 
 xf86-input-mfndev/src/.libs/qubes_drv.so:
 	(cd xf86-input-mfndev && ./bootstrap && ./configure && make)
+
+pulse/module-vchan-sink.so:
+	$(MAKE) -C pulse module-vchan-sink.so
 
 make rpms:
 	@make rpms_dom0
@@ -95,6 +100,7 @@ clean:
 	(cd gui-common; $(MAKE) clean)
 	(cd gui-daemon; $(MAKE) clean)
 	(cd shmoverride; $(MAKE) clean)
+	$(MAKE) -C pulse clean
 	(cd xf86-input-mfndev; if [ -e Makefile ] ; then $(MAKE) distclean; fi; ./bootstrap --clean || echo )
 	(cd vchan; $(MAKE) clean)
 	(cd vchan/event_channel; ./cleanup.sh || echo)
