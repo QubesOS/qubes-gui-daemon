@@ -221,7 +221,11 @@ static void QubesUnInit(InputDriverPtr drv, InputInfoPtr pInfo, int flags)
 	xf86DeleteInput(pInfo, 0);
 }
 
-
+static int _qubes_init_kbd(DeviceIntPtr device)
+{
+         InitKeyboardDeviceStruct(device, NULL, NULL, NULL);
+}
+                                    
 static int _qubes_init_buttons(DeviceIntPtr device)
 {
 	InputInfoPtr pInfo = device->public.devicePrivate;
@@ -346,6 +350,7 @@ static int QubesControl(DeviceIntPtr device, int what)
 	case DEVICE_INIT:
 		_qubes_init_buttons(device);
 		_qubes_init_axes(device);
+		_qubes_init_kbd(device);
 		break;
 
 		/* Switch device on.  Establish socket, start event delivery.  */

@@ -444,10 +444,10 @@ void mkghandles(Ghandles * g)
 void handle_keypress(Ghandles * g, XID winid)
 {
 	struct msg_keypress key;
-	XKeyEvent event;
+//	XKeyEvent event;
 //        char buf[256];
 	read_data((char *) &key, sizeof(key));
-#if 1
+#if 0
 //XGetInputFocus(g->display, &focus_return, &revert_to_return);
 //      fprintf(stderr, "vmside: type=%d keycode=%d currfoc=0x%x\n", key.type,
 //              key.keycode, (int)focus_return);
@@ -470,7 +470,6 @@ void handle_keypress(Ghandles * g, XID winid)
 //                 event.type==KeyPress?KeyPressMask:KeyReleaseMask, 
 		   KeyPressMask, (XEvent *) & event);
 #else
-	Need proper input device support
 	    feed_xdriver(g, 'K', key.keycode,
 			 key.type == KeyPress ? 1 : 0);
 #endif
