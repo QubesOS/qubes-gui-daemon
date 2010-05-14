@@ -43,12 +43,12 @@ enum {
 	MSG_EXECUTE,
 	MSG_CLIPBOARD_REQ,
 	MSG_CLIPBOARD_DATA,
+	MSG_WMNAME,
 	MSG_MAX
 };
 struct msg_map_info {
 	uint32_t transient_for;
 	uint32_t override_redirect;
-	char data[32];
 };
 
 struct msg_create {
@@ -119,5 +119,8 @@ struct msg_xconf {
 	uint32_t h;
 	uint32_t depth;
 	uint32_t mem;
+};
+struct msg_wmname {
+	char data[128];
 };
 	

@@ -111,6 +111,7 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 			      XDamageReportRawRectangles);
 	// the following hopefully avoids missed damage events
 	XSync(g->display, False);
+	XSelectInput(g->display, ev->window, PropertyChangeMask);
 	hdr.type = MSG_CREATE;
 	hdr.window = ev->window;
 	crt.width = ev->width;
@@ -206,27 +207,49 @@ void send_pixmap_mfns(Ghandles * g, XID window)
 	write_data((char *) mfnbuf, size);
 }
 
+void getwmname_tochar(Ghandles * g, XID window, char *outbuf, int bufsize)
+{
+	XTextProperty text_prop_return;
+	char **list;
+	int count;
+
+	outbuf[0] = 0;
+	if (!XGetWMName(g->display, window, &text_prop_return) ||
+	    !text_prop_return.value || !text_prop_return.nitems)
+		return;
+	if (XmbTextPropertyToTextList(g->display,
+				      &text_prop_return, &list,
+				      &count) < 0 || count <= 0
+	    || !*list) {
+		XFree(text_prop_return.value);
+		return;
+	}
+	strncat(outbuf, list[0], bufsize);
+	XFree(text_prop_return.value);
+	XFreeStringList(list);
+	fprintf(stderr, "got wmname=%s\n", outbuf);
+}
+
+void send_wmname(Ghandles * g, XID window)
+{
+	struct msghdr hdr;
+	struct msg_wmname msg;
+	getwmname_tochar(g, window, msg.data, sizeof(msg.data));
+	hdr.window = window;
+	hdr.type = MSG_WMNAME;
+	write_message(hdr, msg);
+}
 
 void process_xevent_map(Ghandles * g, XID window)
 {
 	XWindowAttributes attr;
 	struct msghdr hdr;
 	struct msg_map_info map_info;
-	XTextProperty text_prop_return;
-	char **list;
-	int count = 0;
 	Window transient;
 	SKIP_NONMANAGED_WINDOW;
 
 	send_pixmap_mfns(g, window);
 	XGetWindowAttributes(g->display, window, &attr);
-	map_info.data[0] = 0;
-	if (XGetWMName(g->display, window, &text_prop_return) &&
-	    XmbTextPropertyToTextList(g->display,
-				      &text_prop_return, &list,
-				      &count) == Success && count > 0) {
-		strncat(map_info.data, list[0], sizeof(map_info.data));
-	}
 	if (XGetTransientForHint(g->display, window, &transient))
 		map_info.transient_for = transient;
 	else
@@ -236,6 +259,7 @@ void process_xevent_map(Ghandles * g, XID window)
 	hdr.window = window;
 	write_struct(hdr);
 	write_struct(map_info);
+	send_wmname(g, window);
 //      process_xevent_damage(g, window, 0, 0, attr.width, attr.height);
 }
 
@@ -362,6 +386,16 @@ void process_xevent_selection_req(Ghandles * g,
 	XSendEvent(g->display, req->requestor, 0, 0, (XEvent *) & resp);
 }
 
+void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
+{
+	SKIP_NONMANAGED_WINDOW;
+	fprintf(stderr, "handle property %s for window 0x%x\n",
+		XGetAtomName(g->display, ev->atom), (int) ev->window);
+	if (ev->atom != XInternAtom(g->display, "WM_NAME", False))
+		return;
+	send_wmname(g, window);
+}
+
 void process_xevent(Ghandles * g)
 {
 	XDamageNotifyEvent *dev;
@@ -397,6 +431,10 @@ void process_xevent(Ghandles * g)
 		process_xevent_selection_req(g,
 					     (XSelectionRequestEvent *) &
 					     event_buffer);
+		break;
+	case PropertyNotify:
+		process_xevent_property(g, event_buffer.xproperty.window,
+					(XPropertyEvent *) & event_buffer);
 		break;
 	default:
 		if (event_buffer.type == (damage_event + XDamageNotify)) {
@@ -444,7 +482,7 @@ void mkghandles(Ghandles * g)
 void handle_keypress(Ghandles * g, XID winid)
 {
 	struct msg_keypress key;
-//	XKeyEvent event;
+//      XKeyEvent event;
 //        char buf[256];
 	read_data((char *) &key, sizeof(key));
 #if 0
@@ -470,8 +508,7 @@ void handle_keypress(Ghandles * g, XID winid)
 //                 event.type==KeyPress?KeyPressMask:KeyReleaseMask, 
 		   KeyPressMask, (XEvent *) & event);
 #else
-	    feed_xdriver(g, 'K', key.keycode,
-			 key.type == KeyPress ? 1 : 0);
+	feed_xdriver(g, 'K', key.keycode, key.type == KeyPress ? 1 : 0);
 #endif
 //      fprintf(stderr, "win 0x%x type %d keycode %d\n",
 //              (int) winid, key.type, key.keycode);

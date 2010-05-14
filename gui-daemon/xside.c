@@ -788,13 +788,30 @@ void fix_menu(struct conndata *item, struct conndata *originator)
 #endif
 }
 
+void handle_wmname(Ghandles * g, struct conndata *item)
+{
+	XTextProperty text_prop;
+	struct msg_wmname msg;
+	char buf[sizeof(msg.data) + strlen(g->vmname) + 4];
+	char *list[1] = { buf };
+
+	read_struct(msg);
+	msg.data[sizeof(msg.data) - 1] = 0;
+	sanitize_string_from_vm((unsigned char *) (msg.data));
+	snprintf(buf, sizeof(buf), "%s: %s", g->vmname, msg.data);
+	fprintf(stderr, "set title for window 0x%x to %s\n",
+		(int) item->local_winid, buf);
+	XmbTextListToTextProperty(g->display, list, 1, XStringStyle,
+				  &text_prop);
+	XSetWMName(g->display, item->local_winid, &text_prop);
+	XSetWMIconName(g->display, item->local_winid, &text_prop);
+	XFree(text_prop.value);
+}
+
 void handle_map(struct conndata *item)
 {
 	struct genlist *trans;
-	XTextProperty text_prop;
 	struct msg_map_info txt;
-	char buf[sizeof(txt.data) + strlen(ghandles.vmname) + 4];
-	char *list[1] = { buf };
 	item->is_mapped = 1;
 	read_struct(txt);
 	if (txt.transient_for
@@ -827,14 +844,6 @@ void handle_map(struct conndata *item)
 		}
 	}
 	(void) XMapWindow(ghandles.display, item->local_winid);
-	txt.data[sizeof(txt.data) - 1] = 0;
-	sanitize_string_from_vm((unsigned char *) (txt.data));
-	snprintf(buf, sizeof(buf), "%s: %s", ghandles.vmname, txt.data);
-	XmbTextListToTextProperty(ghandles.display, list, 1, XStringStyle,
-				  &text_prop);
-	XSetWMName(ghandles.display, item->local_winid, &text_prop);
-	XSetWMIconName(ghandles.display, item->local_winid, &text_prop);
-	XFree(text_prop.value);
 }
 
 void inter_appviewer_lock(int mode)
@@ -1000,6 +1009,9 @@ void handle_message()
 		break;
 	case MSG_SHMIMAGE:
 		handle_shmimage(&ghandles, item);
+		break;
+	case MSG_WMNAME:
+		handle_wmname(&ghandles, item);
 		break;
 	default:
 		fprintf(stderr, "got msg type %d\n", hdr.type);
