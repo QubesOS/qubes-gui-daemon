@@ -678,7 +678,7 @@ void handle_keymap_notify(Ghandles * g)
 	int i;
 	unsigned char remote_keys[32], local_keys[32];
 	read_struct(remote_keys);
-	XQueryKeymap(g->display, (char*)local_keys);
+	XQueryKeymap(g->display, (char *) local_keys);
 	for (i = 0; i < 256; i++) {
 		if (!bitset(remote_keys, i) && bitset(local_keys, i)) {
 			feed_xdriver(g, 'K', i, 0);
@@ -863,8 +863,8 @@ void get_xconf_and_run_x()
 
 void send_protocol_version()
 {
-        uint32_t version = QUBES_GUID_PROTOCOL_VERSION;
-        write_struct(version);
+	uint32_t version = QUBES_GUID_PROTOCOL_VERSION;
+	write_struct(version);
 }
 
 int main(int argc, char **argv)

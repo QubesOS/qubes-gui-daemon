@@ -666,11 +666,11 @@ void ask_whether_flooding()
 		ret = WEXITSTATUS(ret);
 //              fprintf(stderr, "ret=%d\n", ret);
 		switch (ret) {
-		case 2: /*cancel*/
+		case 2:	/*cancel */
 			break;
-		case 1: /* NO */ 
+		case 1:	/* NO */
 			exit(1);
-		case 0: /*YES */
+		case 0:	/*YES */
 			windows_count_limit += 100;
 			break;
 		default:
@@ -1131,21 +1131,24 @@ void send_xconf(Ghandles * g)
 	xconf.mem = xconf.w * xconf.h * 4 / 1024 + 1;
 	write_struct(xconf);
 }
+
 void get_protocol_version()
 {
 	uint32_t version;
 	char message[1024];
 	read_struct(version);
-	if (version==QUBES_GUID_PROTOCOL_VERSION) 
+	if (version == QUBES_GUID_PROTOCOL_VERSION)
 		return;
 	snprintf(message, sizeof message, "kdialog --sorry \"The remote "
-	"protocol version is %d, the local protocol version is %d. Upgrade "
-	"qubes-gui-dom0 (in dom0) and qubes-gui-vm (in template VM) packages "
-	"so that they provide compatible/latest software. You can run 'xm console "
-	"vmname' (as root) to access shell prompt in the VM.\"", version, QUBES_GUID_PROTOCOL_VERSION);
+		 "protocol version is %d, the local protocol version is %d. Upgrade "
+		 "qubes-gui-dom0 (in dom0) and qubes-gui-vm (in template VM) packages "
+		 "so that they provide compatible/latest software. You can run 'xm console "
+		 "vmname' (as root) to access shell prompt in the VM.\"",
+		 version, QUBES_GUID_PROTOCOL_VERSION);
 	system(message);
 	exit(1);
 }
+
 void get_frame_gc(Ghandles * g, char *name)
 {
 	XGCValues values;
