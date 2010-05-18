@@ -656,27 +656,28 @@ void ask_whether_flooding()
 	char text[1024];
 	int ret;
 	snprintf(text, sizeof(text),
-		 "xmessage -nearmouse -buttons 'disconnect:33,allow 100 more windows:44' "
-		 "'VMapp \"%s\" has created %d windows; it looks numerous, so it may be"
-		 " a beginning of a DoS attack. Do you want to:'",
+		 "kdialog --yesnocancel "
+		 "'VMapp \"%s\" has created %d windows; it looks numerous, "
+		 "so it may be "
+		 "a beginning of a DoS attack. Do you want to continue:'",
 		 ghandles.vmname, windows_count);
 	do {
 		ret = system(text);
 		ret = WEXITSTATUS(ret);
 //              fprintf(stderr, "ret=%d\n", ret);
 		switch (ret) {
-		case 1:
+		case 2: /*cancel*/
 			break;
-		case 33:
+		case 1: /* NO */ 
 			exit(1);
-		case 44:
+		case 0: /*YES */
 			windows_count_limit += 100;
 			break;
 		default:
-			fprintf(stderr, "Problems executing xmessage ?\n");
+			fprintf(stderr, "Problems executing kdialog ?\n");
 			exit(1);
 		}
-	} while (ret == 1);
+	} while (ret == 2);
 }
 
 
@@ -1133,15 +1134,15 @@ void send_xconf(Ghandles * g)
 void get_protocol_version()
 {
 	uint32_t version;
-	char message[256];
+	char message[1024];
 	read_struct(version);
 	if (version==QUBES_GUID_PROTOCOL_VERSION) 
 		return;
 	snprintf(message, sizeof message, "kdialog --sorry \"The remote "
 	"protocol version is %d, the local protocol version is %d. Upgrade "
 	"qubes-gui-dom0 (in dom0) and qubes-gui-vm (in template VM) packages "
-	"so that they provide compatible software. You can run \"xm console "
-	"vmname\" to access shell prompt in the VM.", version, QUBES_GUID_PROTOCOL_VERSION);
+	"so that they provide compatible/latest software. You can run 'xm console "
+	"vmname' (as root) to access shell prompt in the VM.\"", version, QUBES_GUID_PROTOCOL_VERSION);
 	system(message);
 	exit(1);
 }
