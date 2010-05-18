@@ -64,7 +64,6 @@ struct _global_handles {
 
 typedef struct _global_handles Ghandles;
 Ghandles ghandles;
-
 struct conndata {
 	int width;
 	int height;
@@ -80,6 +79,7 @@ struct conndata {
 	XImage *image;
 	int image_height;
 	int image_width;
+	int have_queued_resize;
 };
 struct conndata *last_input_window;
 struct genlist *remote2local;
@@ -361,10 +361,19 @@ void process_xevent_close(XID window)
 	write_struct(hdr);
 }
 
-void process_xevent_configure(XConfigureEvent * ev)
+void send_resize(struct conndata *conn, int w, int h)
 {
 	struct msghdr hdr;
 	struct msg_resize k;
+	hdr.type = MSG_RESIZE;
+	hdr.window = conn->remote_winid;
+	k.height = h;
+	k.width = w;
+	write_message(hdr, k);
+}
+
+void process_xevent_configure(XConfigureEvent * ev)
+{
 	CHECK_NONMANAGED_WINDOW(ev->window);
 //      fprintf(stderr, "process_xevent_configure, %d/%d, was"
 //              "%d/%d\n", ev->width, ev->height,
@@ -373,11 +382,10 @@ void process_xevent_configure(XConfigureEvent * ev)
 		return;
 	conn->width = ev->width;
 	conn->height = ev->height;
-	hdr.type = MSG_RESIZE;
-	hdr.window = conn->remote_winid;
-	k.height = ev->height;
-	k.width = ev->width;
-	write_message(hdr, k);
+	if (conn->have_queued_resize)
+		return;
+	conn->have_queued_resize = 1;
+	send_resize(conn, ev->width, ev->height);
 }
 
 void handle_configure_from_vm(Ghandles * g, struct conndata *item)
@@ -402,6 +410,13 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 	else
 		size_changed = 0;
 	item->override_redirect = conf.override_redirect;
+	if (item->have_queued_resize) {
+		if (size_changed) {
+			send_resize(item, item->width, item->height);
+			return;
+		} else
+			item->have_queued_resize = 0;
+	}
 	if (!item->override_redirect) {
 		item->remote_x = conf.x;
 		item->remote_y = conf.y;
