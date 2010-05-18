@@ -668,6 +668,28 @@ void handle_focus(Ghandles * g, XID winid)
 	}
 }
 
+int bitset(unsigned char *keys, int num)
+{
+	return (keys[num / 8] >> (num % 8)) & 1;
+}
+
+void handle_keymap_notify(Ghandles * g)
+{
+	int i;
+	unsigned char remote_keys[32], local_keys[32];
+	read_struct(remote_keys);
+	XQueryKeymap(g->display, (char*)local_keys);
+	for (i = 0; i < 256; i++) {
+		if (!bitset(remote_keys, i) && bitset(local_keys, i)) {
+			feed_xdriver(g, 'K', i, 0);
+			fprintf(stderr,
+				"handle_keymap_notify: unsetting key %d\n",
+				i);
+		}
+	}
+}
+
+
 void handle_resize(Ghandles * g, XID winid)
 {
 	struct msg_resize r;
@@ -814,6 +836,9 @@ void handle_message(Ghandles * g)
 	case MSG_EXECUTE:
 		handle_execute();
 		break;
+	case MSG_KEYMAP_NOTIFY:
+		handle_keymap_notify(g);
+		break;
 	default:
 		fprintf(stderr, "got msg type %d\n", hdr.type);
 		exit(1);
@@ -860,6 +885,7 @@ int main(int argc, char **argv)
 		perror("XDamageQueryExtension");
 		exit(1);
 	}
+	XAutoRepeatOff(g.display);
 	signal(SIGCHLD, SIG_IGN);
 	do_execute(NULL, "/usr/bin/start-pulseaudio-with-vchan");
 	windows_list = list_new();

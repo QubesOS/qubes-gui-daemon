@@ -484,6 +484,13 @@ void process_xevent_focus(XFocusChangeEvent * ev)
 	k.mode = ev->mode;
 	k.detail = ev->detail;
 	write_message(hdr, k);
+	if (ev->type == FocusIn && ev->mode == NotifyNormal) {
+		char keys[32];
+		XQueryKeymap(ghandles.display, keys);
+		hdr.type = MSG_KEYMAP_NOTIFY;
+		hdr.window = 0;
+		write_message(hdr, keys);
+	}
 }
 
 void do_shm_update(struct conndata *conn, int x, int y, int w, int h)

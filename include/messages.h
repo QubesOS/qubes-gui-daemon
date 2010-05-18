@@ -44,6 +44,7 @@ enum {
 	MSG_CLIPBOARD_REQ,
 	MSG_CLIPBOARD_DATA,
 	MSG_WMNAME,
+	MSG_KEYMAP_NOTIFY,
 	MSG_MAX
 };
 struct msg_map_info {
@@ -123,4 +124,6 @@ struct msg_xconf {
 struct msg_wmname {
 	char data[128];
 };
-	
+struct msg_keymap_notify {
+	char keys[32];
+};
