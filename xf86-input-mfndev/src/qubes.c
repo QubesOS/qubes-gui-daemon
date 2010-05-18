@@ -233,7 +233,7 @@ static int _qubes_init_buttons(DeviceIntPtr device)
 	CARD8 *map;
 	int i;
 	int ret = Success;
-	const int num_buttons = 5;
+	const int num_buttons = 6;
 
 	map = xcalloc(num_buttons, sizeof(CARD8));
 
