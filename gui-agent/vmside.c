@@ -861,6 +861,12 @@ void get_xconf_and_run_x()
 	do_execute(NULL, "/usr/bin/qubes_run_xorg.sh");
 }
 
+void send_protocol_version()
+{
+        uint32_t version = QUBES_GUID_PROTOCOL_VERSION;
+        write_struct(version);
+}
+
 int main(int argc, char **argv)
 {
 	int i;
@@ -868,6 +874,7 @@ int main(int argc, char **argv)
 	Ghandles g;
 
 	peer_server_init(6000);
+	send_protocol_version();
 	get_xconf_and_run_x();
 	mkghandles(&g);
 	for (i = 0; i < ScreenCount(g.display); i++)

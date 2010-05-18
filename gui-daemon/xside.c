@@ -1130,7 +1130,21 @@ void send_xconf(Ghandles * g)
 	xconf.mem = xconf.w * xconf.h * 4 / 1024 + 1;
 	write_struct(xconf);
 }
-
+void get_protocol_version()
+{
+	uint32_t version;
+	char message[256];
+	read_struct(version);
+	if (version==QUBES_GUID_PROTOCOL_VERSION) 
+		return;
+	snprintf(message, sizeof message, "kdialog --sorry \"The remote "
+	"protocol version is %d, the local protocol version is %d. Upgrade "
+	"qubes-gui-dom0 (in dom0) and qubes-gui-vm (in template VM) packages "
+	"so that they provide compatible software. You can run \"xm console "
+	"vmname\" to access shell prompt in the VM.", version, QUBES_GUID_PROTOCOL_VERSION);
+	system(message);
+	exit(1);
+}
 void get_frame_gc(Ghandles * g, char *name)
 {
 	XGCValues values;
@@ -1332,6 +1346,7 @@ int main(int argc, char **argv)
 	strncpy(ghandles.vmname, vmname, sizeof(ghandles.vmname));
 	xfd = ConnectionNumber(ghandles.display);
 
+	get_protocol_version();
 	send_xconf(&ghandles);
 
 	if (ghandles.execute_cmd_in_vm) {
