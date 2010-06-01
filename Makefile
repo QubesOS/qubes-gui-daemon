@@ -33,9 +33,9 @@ help:
 	    echo "make clean            <--- clean all the binary files";\
 	    exit 0;
 
-dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes vchan/vchan/libvchan.so pulse/pacat-simple-vchan
+dom0: vchan/vchan/libvchan.so gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
 
-appvm: vchan/vchan/libvchan.so gui-agent/qubes-gui  vchan/u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so
+appvm: vchan/vchan/libvchan.so gui-agent/qubes-gui vchan/u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so
 
 gui-daemon/qubes-guid:
 	(cd gui-daemon; $(MAKE))
