@@ -92,7 +92,8 @@ int read_ready()
 {
 	return libvchan_data_ready(ctrl);
 }
-static int xc_handle=-1;
+
+static int xc_handle = -1;
 void slow_check_for_libvchan_is_eof(struct libvchan *ctrl)
 {
 	struct evtchn_status evst;
@@ -170,20 +171,29 @@ char *peer_client_init(int dom, int port)
 	char buf[64];
 	char *name;
 	unsigned int len = 0;
+	char devbuf[128];
+	unsigned int count;
+	char **vec;
 
 	double_buffered = 1;
 	double_buffer_init();
-	do {
-		ctrl = libvchan_client_init(dom, port);
-		if (ctrl == NULL)
-			sleep(1);
-	} while (ctrl == NULL);
-
 	xs = xs_daemon_open();
 	if (!xs) {
 		perror("xs_daemon_open");
 		exit(1);
 	}
+	snprintf(devbuf, sizeof(devbuf),
+		 "/local/domain/%d/device/vchan/%d/event-channel", dom,
+		 port);
+	xs_watch(xs, devbuf, devbuf);
+	do {
+		vec = xs_read_watch(xs, &count);
+		if (vec)
+			free(vec);
+		ctrl = libvchan_client_init(dom, port);
+	}
+	while (ctrl == NULL);
+
 	snprintf(buf, sizeof(buf), "/local/domain/%d/name", dom);
 	name = xs_read(xs, 0, buf, &len);
 	if (!name) {
