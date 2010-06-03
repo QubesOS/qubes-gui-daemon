@@ -36,6 +36,7 @@
 #include <X11/Intrinsic.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
+#include <X11/Xatom.h>
 #include "messages.h"
 #include "txrx.h"
 #include "list.h"
@@ -60,6 +61,7 @@ struct _global_handles {
 	GC frame_gc;
 	char *cmdline_color;
 	char *cmdline_icon;
+	int label_index;
 };
 
 typedef struct _global_handles Ghandles;
@@ -93,6 +95,8 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 	Window child_win;
 	Window parent;
 	XSizeHints my_size_hints;	/* hints for the window manager */
+	Atom atom_label, atom_vmname;
+
 //      int ret, x = 0, y = 0;
 	my_size_hints.flags = PSize;
 	my_size_hints.height = item->width;
@@ -155,6 +159,12 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 		    { g->cmdline_icon, g->cmdline_icon };
 		XSetClassHint(g->display, child_win, &class_hint);
 	}
+
+
+	// Set '_QUBES_LABEL' property so that Window Manager can read it and draw proper decoration
+	atom_label = XInternAtom (g->display, "_QUBES_LABEL", 0);
+	XChangeProperty (g->display, child_win, atom_label, XA_CARDINAL, 8 /* 8 bit is enough */, PropModeReplace, (unsigned char*)&g->label_index, 1); 
+
 	return child_win;
 }
 
@@ -510,8 +520,13 @@ void process_xevent_focus(XFocusChangeEvent * ev)
 
 void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 {
-	//int border_width = 2;
-	int border_width = conn->override_redirect ? 2 : 3;
+	int border_width = 2;
+
+	if (!conn->override_redirect) {
+		// Window Manager will take care of the frame...
+        border_width = 0;
+	}
+
 
 	int do_border = 0;
 	int hoff = 0, woff = 0, delta, i;
@@ -1236,13 +1251,13 @@ void setup_icon(char *xpmfile)
 void usage()
 {
 	fprintf(stderr,
-		"usage: qubes_quid -d domain_id [-e command] [-c color] [-i icon name, no suffix]\n");
+		"usage: qubes_quid -d domain_id [-e command] [-c color] [-l label_index] [-i icon name, no suffix]\n");
 }
 
 void parse_cmdline(int argc, char **argv)
 {
 	int opt;
-	while ((opt = getopt(argc, argv, "d:e:c:i:")) != -1) {
+	while ((opt = getopt(argc, argv, "d:e:c:l:i:")) != -1) {
 		switch (opt) {
 		case 'd':
 			ghandles.domid = atoi(optarg);
@@ -1255,6 +1270,9 @@ void parse_cmdline(int argc, char **argv)
 			break;
 		case 'c':
 			ghandles.cmdline_color = optarg;
+			break;
+		case 'l':
+			ghandles.label_index = strtoul(optarg, 0, 0);
 			break;
 		case 'i':
 			ghandles.cmdline_icon = optarg;
