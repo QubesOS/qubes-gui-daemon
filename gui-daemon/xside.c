@@ -986,7 +986,11 @@ void handle_mfndump(Ghandles * g, struct conndata *item)
 	item->shminfo.shmaddr = item->image->data = dummybuf;
 	item->shminfo.readOnly = True;
 	XSync(g->display, False);
-	XShmAttach(g->display, &item->shminfo);
+	if (!XShmAttach(g->display, &item->shminfo)) {
+		fprintf(stderr,
+			"XShmAttach failed for window 0x%x(remote 0x%x)\n",
+			(int) item->local_winid, (int) item->remote_winid);
+	}
 	XSync(g->display, False);
 	g->shmcmd->shmid = g->cmd_shmid;
 	inter_appviewer_lock(0);
