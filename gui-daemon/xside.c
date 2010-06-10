@@ -160,10 +160,11 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 		XSetClassHint(g->display, child_win, &class_hint);
 	}
 
-
 	// Set '_QUBES_LABEL' property so that Window Manager can read it and draw proper decoration
-	atom_label = XInternAtom (g->display, "_QUBES_LABEL", 0);
-	XChangeProperty (g->display, child_win, atom_label, XA_CARDINAL, 8 /* 8 bit is enough */, PropModeReplace, (unsigned char*)&g->label_index, 1); 
+	atom_label = XInternAtom(g->display, "_QUBES_LABEL", 0);
+	XChangeProperty(g->display, child_win, atom_label, XA_CARDINAL,
+			8 /* 8 bit is enough */ , PropModeReplace,
+			(unsigned char *) &g->label_index, 1);
 
 	return child_win;
 }
@@ -524,7 +525,7 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 
 	if (!conn->override_redirect) {
 		// Window Manager will take care of the frame...
-        border_width = 0;
+		border_width = 0;
 	}
 
 
