@@ -89,6 +89,7 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
 	if (!cmd_pages || shmid != cmd_pages->shmid || cmd != IPC_STAT)
 		return real_shmctl(shmid, cmd, buf);
 	memset(&buf->shm_perm, 0, sizeof(buf->shm_perm));
+	buf->shm_segsz = cmd_pages->num_mfn * 4096 - cmd_pages->off;
 	return 0;
 }
 
