@@ -54,6 +54,8 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
 	if (!cmd_pages || shmid != cmd_pages->shmid
 	    || cmd_pages->num_mfn > MAX_MFN_COUNT)
 		return real_shmat(shmid, shmaddr, shmflg);
+	if (cmd_pages->off >= 4096)
+		return (void *) (-1UL);
 	pfntable = alloca(sizeof(xen_pfn_t) * cmd_pages->num_mfn);
 	fprintf(stderr, "size=%d table=%p\n", cmd_pages->num_mfn,
 		pfntable);
