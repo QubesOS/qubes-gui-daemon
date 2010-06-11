@@ -51,8 +51,11 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
 	xen_pfn_t *pfntable;
 	char *fakeaddr;
 	long fakesize;
-	if (!cmd_pages || shmid != cmd_pages->shmid || cmd_pages->num_mfn>MAX_MFN_COUNT)
+	if (!cmd_pages || shmid != cmd_pages->shmid)
 		return real_shmat(shmid, shmaddr, shmflg);
+	if (cmd_pages->off >= 4096 || cmd_pages->num_mfn > MAX_MFN_COUNT
+	    || cmd_pages->num_mfn == 0)
+		return MAP_FAILED;
 	pfntable = alloca(sizeof(xen_pfn_t) * cmd_pages->num_mfn);
 	fprintf(stderr, "size=%d table=%p\n", cmd_pages->num_mfn,
 		pfntable);
@@ -62,14 +65,14 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
 	    xc_map_foreign_pages(xc_hnd, cmd_pages->domid, PROT_READ,
 				 pfntable, cmd_pages->num_mfn);
 	fakesize = 4096 * cmd_pages->num_mfn;
-	fprintf(stderr, "num=%d, addr=%p, len=%d\n", 
+	fprintf(stderr, "num=%d, addr=%p, len=%d\n",
 		cmd_pages->num_mfn, fakeaddr, list_len);
 	if (fakeaddr && fakeaddr != MAP_FAILED) {
 		list_insert(addr_list, (long) fakeaddr, (void *) fakesize);
 		list_len++;
 		return fakeaddr + cmd_pages->off;
 	} else
-		return (void *) (-1UL);
+		return MAP_FAILED;
 }
 
 int shmdt(const void *shmaddr)
@@ -89,6 +92,7 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
 	if (!cmd_pages || shmid != cmd_pages->shmid || cmd != IPC_STAT)
 		return real_shmctl(shmid, cmd, buf);
 	memset(&buf->shm_perm, 0, sizeof(buf->shm_perm));
+	buf->shm_segsz = cmd_pages->num_mfn * 4096 - cmd_pages->off;
 	return 0;
 }
 
@@ -105,14 +109,16 @@ int __attribute__ ((constructor)) initfunc()
 	xc_hnd = xc_interface_open();
 	if (xc_hnd < 0) {
 		perror("shmoverride xc_interface_open");
-		return 0; //allow it to run when not under Xen
+		return 0;	//allow it to run when not under Xen
 	}
 	idfd = open(SHMID_FILENAME, O_WRONLY | O_CREAT | O_EXCL, 0600);
 	if (idfd < 0) {
 		perror("shmoverride creating " SHMID_FILENAME);
 		exit(1);
 	}
-	local_shmid = shmget(IPC_PRIVATE, SHM_CMD_NUM_PAGES * 4096, IPC_CREAT | 0700);
+	local_shmid =
+	    shmget(IPC_PRIVATE, SHM_CMD_NUM_PAGES * 4096,
+		   IPC_CREAT | 0700);
 	if (local_shmid == -1) {
 		unlink(SHMID_FILENAME);
 		perror("shmoverride shmget");
