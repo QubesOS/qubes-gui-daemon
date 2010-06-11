@@ -55,7 +55,7 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
 	    || cmd_pages->num_mfn > MAX_MFN_COUNT)
 		return real_shmat(shmid, shmaddr, shmflg);
 	if (cmd_pages->off >= 4096)
-		return (void *) (-1UL);
+		return MAP_FAILED;
 	pfntable = alloca(sizeof(xen_pfn_t) * cmd_pages->num_mfn);
 	fprintf(stderr, "size=%d table=%p\n", cmd_pages->num_mfn,
 		pfntable);
@@ -72,7 +72,7 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
 		list_len++;
 		return fakeaddr + cmd_pages->off;
 	} else
-		return (void *) (-1UL);
+		return MAP_FAILED;
 }
 
 int shmdt(const void *shmaddr)
