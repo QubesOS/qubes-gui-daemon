@@ -170,6 +170,7 @@ char *peer_client_init(int dom, int port)
 	struct xs_handle *xs;
 	char buf[64];
 	char *name;
+	char *dummy;
 	unsigned int len = 0;
 	char devbuf[128];
 	unsigned int count;
@@ -182,6 +183,12 @@ char *peer_client_init(int dom, int port)
 		perror("xs_daemon_open");
 		exit(1);
 	}
+	snprintf(buf, sizeof(buf), "/local/domain/%d/name", dom);
+	name = xs_read(xs, 0, buf, &len);
+	if (!name) {
+		perror("xs_read domainname");
+		exit(1);
+	}
 	snprintf(devbuf, sizeof(devbuf),
 		 "/local/domain/%d/device/vchan/%d/event-channel", dom,
 		 port);
@@ -190,17 +197,16 @@ char *peer_client_init(int dom, int port)
 		vec = xs_read_watch(xs, &count);
 		if (vec)
 			free(vec);
-		ctrl = libvchan_client_init(dom, port);
+		len = 0;
+		dummy = xs_read(xs, 0, devbuf, &len);
 	}
-	while (ctrl == NULL);
-
-	snprintf(buf, sizeof(buf), "/local/domain/%d/name", dom);
-	name = xs_read(xs, 0, buf, &len);
-	if (!name) {
-		perror("xs_read domainname");
-		exit(1);
-	}
+	while (!dummy || !len);
+	free(dummy);
 	xs_daemon_close(xs);
+
+	// now client init should succeed
+	while (!(ctrl = libvchan_client_init(dom, port)));
+
 	xc_handle = xc_interface_open();
 	if (xc_handle < 0) {
 		perror("xc_interface_open");
