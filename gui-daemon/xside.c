@@ -166,6 +166,13 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 			8 /* 8 bit is enough */ , PropModeReplace,
 			(unsigned char *) &g->label_index, 1);
 
+	// Set '_QUBES_VMNAME' property so that Window Manager can read it and nicely disply it
+	atom_label = XInternAtom(g->display, "_QUBES_VMNAME", 0);
+	XChangeProperty(g->display, child_win, atom_label, XA_STRING,
+			8 /* 8 bit is enough */ , PropModeReplace,
+			g->vmname, strlen (g->vmname));
+
+
 	return child_win;
 }
 
@@ -831,13 +838,13 @@ void handle_wmname(Ghandles * g, struct conndata *item)
 {
 	XTextProperty text_prop;
 	struct msg_wmname msg;
-	char buf[sizeof(msg.data) + strlen(g->vmname) + 4];
+	char buf[sizeof(msg.data) + 1];
 	char *list[1] = { buf };
 
 	read_struct(msg);
 	msg.data[sizeof(msg.data) - 1] = 0;
 	sanitize_string_from_vm((unsigned char *) (msg.data));
-	snprintf(buf, sizeof(buf), "%s: %s", g->vmname, msg.data);
+	snprintf(buf, sizeof(buf), "%s", msg.data);
 	fprintf(stderr, "set title for window 0x%x to %s\n",
 		(int) item->local_winid, buf);
 	XmbTextListToTextProperty(g->display, list, 1, XStringStyle,
