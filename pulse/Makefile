@@ -19,6 +19,6 @@ vchanio.o: vchanio.c
 	$(CC) -Wall -c $(VCHANCFLAGS) vchanio.c	
 pacat-simple-vchan: pacat-simple-vchan.o vchanio.o
 	$(CC) -o pacat-simple-vchan pacat-simple-vchan.o vchanio.o \
-		$(VCHANLDFLAGS) $(VCHANLIBS) -lpulse-simple
+		$(VCHANLDFLAGS) $(VCHANLIBS) -lpulse-simple -lpulse
 clean:
 	rm -f *.so *.o pacat-simple-vchan *~
