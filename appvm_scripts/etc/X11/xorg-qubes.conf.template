@@ -1,7 +1,7 @@
 Section "ServerLayout"   
         Identifier     "Default Layout"
         Screen      0  "Screen0" 0 0  
-	InputDevice "qubesdev"
+        InputDevice "qubesdev"
 EndSection
 
 Section "Device"
@@ -12,7 +12,8 @@ EndSection
 
 Section "Monitor"
         Identifier "Monitor0"
-        HorizSync 31.50-90.90
+        HorizSync %HSYNC_START%-%HSYNC_END%
+	VertRefresh %VREFR_START%-%VREFR_END%
 	Modeline "%RES%" %MODELINE% 
 EndSection
 

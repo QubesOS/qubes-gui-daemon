@@ -21,11 +21,28 @@
 #
 
 #expects W, H, MEM and DEPTH env vars to be set by invoker
+DUMMY_MAX_CLOCK=300 #hardcoded in dummy_drv
+PREFERRED_HSYNC=50
 RES="$W"x"$H"
-MODELINE="70 $W $(($W+1)) $(($W+2)) $(($W+3)) $H $(($H+1)) $(($H+2)) $(($H+3))"
+HTOTAL=$(($W+3))
+VTOTAL=$(($H+3))
+CLOCK=$(($PREFERRED_HSYNC*$HTOTAL/1000))
+if [ $CLOCK -gt $DUMMY_MAX_CLOCK ] ; then CLOCK=$DUMMY_MAX_CLOCK ; fi
+MODELINE="$CLOCK $W $(($W+1)) $(($W+2)) $HTOTAL $H $(($H+1)) $(($H+2)) $VTOTAL"
+
+HSYNC_START=$(($CLOCK*1000/$HTOTAL))
+HSYNC_END=$((HSYNC_START+1))
+
+VREFR_START=$(($CLOCK*1000000/$HTOTAL/$VTOTAL))
+VREFR_END=$((VREFR_START+1))
+
 sed -e  s/%MEM%/$MEM/ \
 	    -e  s/%DEPTH%/$DEPTH/ \
 	    -e  s/%MODELINE%/"$MODELINE"/ \
+	    -e  s/%HSYNC_START%/"$HSYNC_START"/ \
+	    -e  s/%HSYNC_END%/"$HSYNC_END"/ \
+	    -e  s/%VREFR_START%/"$VREFR_START"/ \
+	    -e  s/%VREFR_END%/"$VREFR_END"/ \
 	    -e  s/%RES%/QB$RES/ < /etc/X11/xorg-qubes.conf.template \
 	    > /etc/X11/xorg-qubes.conf
 exec /usr/bin/Xorg -nolisten tcp :0 vt02 -config /etc/X11/xorg-qubes.conf
