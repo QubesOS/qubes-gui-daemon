@@ -67,6 +67,7 @@ install -D pulse/libsetup-vchan-early.so $RPM_BUILD_ROOT/%{_libdir}/libsetup-vch
 install -D pulse/module-vchan-sink.so $RPM_BUILD_ROOT/%{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
 install -D xf86-input-mfndev/src/.libs/qubes_drv.so $RPM_BUILD_ROOT/%{_libdir}/xorg/modules/drivers/qubes_drv.so
 install -D vchan/vchan/libvchan.so $RPM_BUILD_ROOT/%{_libdir}/libvchan.so
+install -D relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so $RPM_BUILD_ROOT/%{_libdir}/relaxed_xf86ValidateModes.so
 install -D appvm_scripts/etc/X11/xorg-qubes.conf.template $RPM_BUILD_ROOT/etc/X11/xorg-qubes.conf.template
 install -D appvm_scripts/etc/init.d/qubes_gui $RPM_BUILD_ROOT/etc/init.d/qubes_gui
 install -D appvm_scripts/etc/profile.d/qubes_gui.sh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.sh
@@ -94,6 +95,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
 %{_libdir}/xorg/modules/drivers/qubes_drv.so
 %{_libdir}/libvchan.so
+%{_libdir}/relaxed_xf86ValidateModes.so
 %attr(0644,root,root) /etc/X11/xorg-qubes.conf.template
 /etc/init.d/qubes_gui
 /etc/profile.d/qubes_gui.sh

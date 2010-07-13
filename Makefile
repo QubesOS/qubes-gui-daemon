@@ -36,7 +36,7 @@ help:
 
 dom0: vchan/vchan/libvchan.so gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
 
-appvm: vchan/vchan/libvchan.so gui-agent/qubes-gui vchan/u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so
+appvm: vchan/vchan/libvchan.so gui-agent/qubes-gui vchan/u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so
 
 gui-daemon/qubes-guid:
 	(cd gui-daemon; $(MAKE))
@@ -54,6 +54,9 @@ vchan/vchan/libvchan.so: vchan/u2mfn/u2mfnlib.o
 pulse/pacat-simple-vchan:
 	$(MAKE) -C pulse pacat-simple-vchan
 
+relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so:
+	$(MAKE) -C relaxed_xf86ValidateModes
+	
 gui-agent/qubes-gui:
 	(cd gui-agent; $(MAKE))
 
