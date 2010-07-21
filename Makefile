@@ -121,4 +121,5 @@ clean:
 	(cd vchan; $(MAKE) clean)
 	(cd vchan/event_channel; ./cleanup.sh || echo)
 	(cd vchan/u2mfn; ./cleanup.sh || echo)
+	$(MAKE) -C relaxed_xf86ValidateModes clean
 
