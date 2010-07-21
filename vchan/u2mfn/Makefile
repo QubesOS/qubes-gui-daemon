@@ -26,4 +26,4 @@ u2mfnlib:
 
 clean:
 	rm -f *.o *.ko
-	#FIXME
+	rm -f Makefile.xen
