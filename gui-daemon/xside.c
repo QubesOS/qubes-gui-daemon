@@ -517,7 +517,7 @@ void process_xevent_focus(XFocusChangeEvent * ev)
 	k.mode = ev->mode;
 	k.detail = ev->detail;
 	write_message(hdr, k);
-	if (ev->type == FocusIn && ev->mode == NotifyNormal) {
+	if (ev->type == FocusIn) {
 		char keys[32];
 		XQueryKeymap(ghandles.display, keys);
 		hdr.type = MSG_KEYMAP_NOTIFY;
