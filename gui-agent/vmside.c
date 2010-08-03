@@ -45,7 +45,7 @@
 int damage_event, damage_error;
 struct _global_handles {
 	Display *display;
-	int screen;		/* cathode ray tube id */
+	int screen;		/* shortcut to the default screen */
 	Window root_win;	/* root attributes */
 	GC context;
 	Atom wmDeleteMessage;
@@ -60,6 +60,7 @@ struct genlist *windows_list;
 typedef struct _global_handles Ghandles;
 
 #define SKIP_NONMANAGED_WINDOW if (!list_lookup(windows_list, window)) return
+
 void process_xevent_damage(Ghandles * g, XID window,
 			   int x, int y, int width, int height)
 {
@@ -454,9 +455,10 @@ void process_xevent(Ghandles * g)
 }
 
 extern void wait_for_unix_socket(int *fd);
+
 void mkghandles(Ghandles * g)
 {
-	wait_for_unix_socket(&g->xserver_fd);
+	wait_for_unix_socket(&g->xserver_fd); // wait for Xorg qubes_drv to connect to us
 	g->display = XOpenDisplay(NULL);
 	if (!g->display) {
 		perror("XOpenDisplay");
@@ -597,6 +599,7 @@ void handle_motion(Ghandles * g, XID winid)
 	feed_xdriver(g, 'M', attr.x + key.x, attr.y + key.y);
 }
 
+// msg_crossing is not processed currently; just eat the message and return
 void handle_crossing(Ghandles * g, XID winid)
 {
 	struct msg_crossing key;
@@ -606,6 +609,7 @@ void handle_crossing(Ghandles * g, XID winid)
 
 	read_data((char *) &key, sizeof(key));
 	return;
+	
 	ret = XGetWindowAttributes(g->display, winid, &attr);
 	if (ret != 1) {
 		fprintf(stderr,

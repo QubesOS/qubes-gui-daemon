@@ -73,6 +73,6 @@ char *get_line_from_cmd_socket(int s)
 		exit(1);
 	}
 	ret = fgets(data, sizeof(data) - 1, file);
-	fclose(file);
+	fclose(file); // this close the "fd", too
 	return ret;
 }

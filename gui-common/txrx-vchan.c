@@ -51,11 +51,13 @@ int write_data(char *buf, int size)
 {
 	int count;
 	if (!double_buffered)
-		return write_data_exact(buf, size);
+		return write_data_exact(buf, size); // this may block
 	double_buffer_append(buf, size);
 	count = libvchan_buffer_space(ctrl);
 	if (count > double_buffer_datacount())
 		count = double_buffer_datacount();
+        // below, we write only as much data as possible without
+        // blocking; remainder of data stays in the double buffer
 	write_data_exact(double_buffer_data(), count);
 	double_buffer_substract(count);
 	return size;
@@ -93,6 +95,9 @@ int read_ready()
 	return libvchan_data_ready(ctrl);
 }
 
+// if the remote domain is destroyed, we get no notification
+// thus, we check for the status periodically
+
 static int xc_handle = -1;
 void slow_check_for_libvchan_is_eof(struct libvchan *ctrl)
 {
@@ -115,7 +120,7 @@ int wait_for_vchan_or_argfd_once(int nfd, int *fd, fd_set * retset)
 	fd_set rfds;
 	int vfd, max = 0, ret, i;
 	struct timeval tv = { 0, 100000 };
-	write_data(NULL, 0);	// trigged write of queued data, if any present
+	write_data(NULL, 0);	// trigger write of queued data, if any present
 	vfd = libvchan_fd_for_select(ctrl);
 	FD_ZERO(&rfds);
 	for (i = 0; i < nfd; i++) {
@@ -140,7 +145,7 @@ int wait_for_vchan_or_argfd_once(int nfd, int *fd, fd_set * retset)
 	if (!is_server && ret == 0)
 		slow_check_for_libvchan_is_eof(ctrl);
 	if (FD_ISSET(vfd, &rfds))
-		// we don't care about the result, but we need to do the read to
+		// the following will never block; we need to do this to
 		// clear libvchan_fd pending state 
 		libvchan_wait(ctrl);
 	if (retset)
@@ -155,7 +160,7 @@ void wait_for_vchan_or_argfd(int nfd, int *fd, fd_set * retset)
 
 int peer_server_init(int port)
 {
-	double_buffered = 0;
+	double_buffered = 0; // writes to vchan may block
 	is_server = 1;
 	ctrl = libvchan_server_init(port);
 	if (!ctrl) {
@@ -176,7 +181,7 @@ char *peer_client_init(int dom, int port)
 	unsigned int count;
 	char **vec;
 
-	double_buffered = 1;
+	double_buffered = 1; // writes to vchan are buffered, nonblocking
 	double_buffer_init();
 	xs = xs_daemon_open();
 	if (!xs) {
@@ -200,11 +205,11 @@ char *peer_client_init(int dom, int port)
 		len = 0;
 		dummy = xs_read(xs, 0, devbuf, &len);
 	}
-	while (!dummy || !len);
+	while (!dummy || !len); // wait for the server to create xenstore entries
 	free(dummy);
 	xs_daemon_close(xs);
 
-	// now client init should succeed
+	// now client init should succeed; "while" is redundant
 	while (!(ctrl = libvchan_client_init(dom, port)));
 
 	xc_handle = xc_interface_open();
