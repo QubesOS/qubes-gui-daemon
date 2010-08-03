@@ -660,7 +660,7 @@ void handle_focus(Ghandles * g, XID winid)
 	XSendEvent(event.display, event.window, TRUE,
 		   0, (XEvent *) & event);
 #endif
-	if (key.type == FocusIn && key.mode == NotifyNormal) {
+	if (key.type == FocusIn && (key.mode == NotifyNormal || key.mode == NotifyUngrab)) {
 		XRaiseWindow(g->display, winid);
 		XSetInputFocus(g->display, winid, RevertToParent,
 			       CurrentTime);
