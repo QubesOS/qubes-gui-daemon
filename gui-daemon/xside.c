@@ -69,8 +69,8 @@ Ghandles ghandles;
 struct conndata {
 	int width;
 	int height;
-	int remote_x;
-	int remote_y;
+	int x;
+	int y;
 	int is_mapped;
 	XID remote_winid;
 	Window local_winid;
@@ -81,7 +81,7 @@ struct conndata {
 	XImage *image;
 	int image_height;
 	int image_width;
-	int have_queued_resize;
+	int have_queued_configure;
 };
 struct conndata *last_input_window;
 struct genlist *remote2local;
@@ -123,7 +123,7 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 #if 1
 	// we will set override_redirect later, if needed
 	child_win = XCreateSimpleWindow(g->display, parent,
-					0, 0, item->width, item->height,
+					item->x, item->y, item->width, item->height,
 					0, BlackPixel(g->display,
 						      g->screen),
 					WhitePixel(g->display, g->screen));
@@ -335,7 +335,7 @@ void dump_mapped()
 				"id 0x%x(0x%x) w=0x%x h=0x%x rx=%d ry=%d ovr=%d\n",
 				(int) c->local_winid,
 				(int) c->remote_winid, c->width, c->height,
-				c->remote_x, c->remote_y,
+				c->x, c->y,
 				c->override_redirect);
 		}
 	}
@@ -376,15 +376,17 @@ void process_xevent_close(XID window)
 	write_struct(hdr);
 }
 
-void send_resize(struct conndata *conn, int w, int h)
+void send_configure(struct conndata *conn, int x, int y, int w, int h)
 {
 	struct msghdr hdr;
-	struct msg_resize k;
-	hdr.type = MSG_RESIZE;
+	struct msg_configure msg;
+	hdr.type = MSG_CONFIGURE;
 	hdr.window = conn->remote_winid;
-	k.height = h;
-	k.width = w;
-	write_message(hdr, k);
+	msg.height = h;
+	msg.width = w;
+	msg.x = x;
+	msg.y = y;
+	write_message(hdr, msg);
 }
 
 void process_xevent_configure(XConfigureEvent * ev)
@@ -393,23 +395,23 @@ void process_xevent_configure(XConfigureEvent * ev)
 //      fprintf(stderr, "process_xevent_configure, %d/%d, was"
 //              "%d/%d\n", ev->width, ev->height,
 //              conn->width, conn->height);
-	if (conn->width == ev->width && conn->height == ev->height)
+	if (conn->width == ev->width && conn->height == ev->height && conn->x==ev->x && conn->y==ev->y)
 		return;
 	conn->width = ev->width;
 	conn->height = ev->height;
+	conn->x = ev->x;
+	conn->y = ev->y;
 // if AppVM has not unacknowledged previous resize msg, do not send another one
-	if (conn->have_queued_resize)
+	if (conn->have_queued_configure)
 		return;
-	conn->have_queued_resize = 1;
-	send_resize(conn, ev->width, ev->height);
+	conn->have_queued_configure = 1;
+	send_configure(conn, ev->x, ev->y, ev->width, ev->height);
 }
 
 void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 {
 	struct msg_configure conf;
-	XWindowAttributes attr;
-	XWindowChanges xchange;
-	int size_changed, ret;
+	int conf_changed;
 
 	read_struct(conf);
 	fprintf(stderr, "handle_configure_from_vm, %d/%d, was"
@@ -420,56 +422,34 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 	if (conf.height > MAX_WINDOW_HEIGHT)
 		conf.height = MAX_WINDOW_HEIGHT;
 
-	if (item->width != conf.width || item->height != conf.height)
-		size_changed = 1;
+	if (item->width != conf.width || item->height != conf.height || 
+		item->x != conf.x || item->y != conf.y)
+		conf_changed = 1;
 	else
-		size_changed = 0;
+		conf_changed = 0;
 	item->override_redirect = conf.override_redirect;
-	if (item->have_queued_resize) {
-		if (size_changed) {
-			send_resize(item, item->width, item->height);
+	if (item->have_queued_configure) {
+		if (conf_changed) {
+			send_configure(item, item->x, item->y, item->width, item->height);
 			return;
-		} else
-			// same dimensions; this is an ack for our previously sent resize req
-			item->have_queued_resize = 0;
-	}
-	if (!item->override_redirect) {
-		item->remote_x = conf.x;
-		item->remote_y = conf.y;
-		if (size_changed) {
-			item->width = conf.width;
-			item->height = conf.height;
-			XResizeWindow(g->display, item->local_winid,
-				      conf.width, conf.height);
+		} else {
+			// same dimensions; this is an ack for our previously sent configure req
+			item->have_queued_configure = 0;
 		}
-		return;
 	}
-// from now on, handle configuring of override_redirect (menu) window
-// we calculate the delta from the previous position and move dom0 window by delta
-	ret = XGetWindowAttributes(g->display, item->local_winid, &attr);
-	if (ret == 0) {
-		fprintf(stderr,
-			"XGetWindowAttributes fail in handle_configure for 0x%x\n",
-			(int) item->local_winid);
+	if (!conf_changed)
 		return;
-	}
-	xchange.width = conf.width;
-	xchange.height = conf.height;
-	xchange.x = attr.x + conf.x - item->remote_x;
-	xchange.y = attr.y + conf.y - item->remote_y;
-// do not let menu window hide its color frame by moving outside of the screen  
-	if (xchange.x < 0)
-		xchange.x = 0;
-	if (xchange.y < 0)
-		xchange.y = 0;
-
 	item->width = conf.width;
 	item->height = conf.height;
-	item->remote_x = conf.x;
-	item->remote_y = conf.y;
-	XConfigureWindow(g->display,
-			 item->local_winid,
-			 CWX | CWY | CWWidth | CWHeight, &xchange);
+	item->x = conf.x;
+	item->y = conf.y;
+	if (item->override_redirect) {
+		// do not let menu window hide its color frame by moving outside of the screen  
+		if (item->x<0) item->x=0;
+		if (item->y<0) item->y=0;
+	}
+	XMoveResizeWindow(g->display, item->local_winid, item->x, item->y, 
+		item->width, item->height);	
 }
 
 void process_xevent_motion(XMotionEvent * ev)
@@ -733,8 +713,8 @@ void handle_create(XID window)
 		item->width = MAX_WINDOW_WIDTH;
 	if (item->height > MAX_WINDOW_HEIGHT)
 		item->height = MAX_WINDOW_HEIGHT;
-	item->remote_x = crt.x;
-	item->remote_y = crt.y;
+	item->x = crt.x;
+	item->y = crt.y;
 	item->override_redirect = crt.override_redirect;
 	l = list_lookup(remote2local, crt.parent);
 	if (l)
@@ -789,49 +769,27 @@ void sanitize_string_from_vm(unsigned char *s)
 	}
 }
 
-void fix_menu(struct conndata *item, struct conndata *originator)
+void fix_menu(struct conndata *item)
 {
-#ifndef REPARENT_MENUS
-	int ret, absx, absy;
-	Window dummy;
-	XWindowAttributes oattr;
-#endif
-	int newx, newy;
+	int do_move=0;
 	XSetWindowAttributes attr;
+	
 	attr.override_redirect = 1;
 	XChangeWindowAttributes(ghandles.display, item->local_winid,
 				CWOverrideRedirect, &attr);
 	item->override_redirect = 1;
-#ifdef REPARENT_MENUS
-	newx = item->remote_x - originator->remote_x;
-	newy = item->remote_y - originator->remote_y;
-// do not allow menu windows to hide the color frame
-	if (newx < 0)
-		newx = 0;
-	if (newy < 0)
-		newy = 0;
-	XReparentWindow(ghandles.display, item->local_winid,
-			originator->local_winid, newx, newy);
-#else
-	ret = XGetWindowAttributes(ghandles.display,
-				   originator->local_winid, &oattr);
-	XTranslateCoordinates(ghandles.display,
-			      originator->local_winid, oattr.root, 0, 0,
-			      &absx, &absy, &dummy);
-	fprintf(stderr,
-		"move menu window ret=%d x=%d y=%d rx=%d ry=%d ox=%d oy=%d origid=0x%x\n",
-		ret, absx, absy, item->remote_x, item->remote_y,
-		originator->remote_x, originator->remote_y,
-		(int) originator->local_winid);
-	newx = item->remote_x - originator->remote_x + absx;
-	newy = item->remote_y - originator->remote_y + absy;
-// do not allow menu windows to hide the color frame
-	if (newx < 0)
-		newx = 0;
-	if (newy < 0)
-		newy = 0;
-	XMoveWindow(ghandles.display, item->local_winid, newx, newy);
-#endif
+
+	// do not let menu window hide its color frame by moving outside of the screen  
+	if (item->x < 0) {
+		item->x=0;
+		do_move=1;
+	}
+	if (item->y<0) {
+		item->y=0;
+		do_move=1;
+	}
+	if (do_move)
+		XMoveWindow(ghandles.display, item->local_winid, item->x, item->y);		
 }
 
 void handle_wmname(Ghandles * g, struct conndata *item)
@@ -869,26 +827,8 @@ void handle_map(struct conndata *item)
 	} else
 		item->transient_for = 0;
 	item->override_redirect = 0;
-	if (txt.override_redirect) {
-		if (item->transient_for) {
-			struct conndata *recursive_orig =
-			    item->transient_for;
-#ifdef REPARENT_MENUS
-			while (recursive_orig->transient_for)
-				recursive_orig =
-				    recursive_orig->transient_for;
-#endif
-			fix_menu(item, recursive_orig);
-		} else if (last_input_window) {
-			fix_menu(item, last_input_window);
-			fprintf(stderr,
-				"Desperately setting the originator of override_redirect window 0x%x(remote 0x%x) to last_input_window 0x%x(remote 0x%x)\n",
-				(int) item->local_winid,
-				(int) item->remote_winid,
-				(int) last_input_window->local_winid,
-				(int) last_input_window->remote_winid);
-		}
-	}
+	if (txt.override_redirect)
+		fix_menu(item);
 	(void) XMapWindow(ghandles.display, item->local_winid);
 }
 

@@ -694,14 +694,15 @@ void handle_keymap_notify(Ghandles * g)
 }
 
 
-void handle_resize(Ghandles * g, XID winid)
+void handle_configure(Ghandles * g, XID winid)
 {
-	struct msg_resize r;
+	struct msg_configure r;
 	XWindowAttributes attr;
 	XGetWindowAttributes(g->display, winid, &attr);
 	read_data((char *) &r, sizeof(r));
-	XResizeWindow(g->display, winid, r.width, r.height);
-	fprintf(stderr, "resize msg, %d %d, was %d %d\n", r.width,
+	XMoveResizeWindow(g->display, winid, r.x, r.y, r.width, r.height);
+	fprintf(stderr, "configure msg, x/y %d %d (was %d %d), w/h %d %d (was %d %d)\n", 
+	r.x, r.y, attr.x, attr.y, r.width,
 		r.height, attr.width, attr.height);
 
 }
@@ -813,8 +814,8 @@ void handle_message(Ghandles * g)
 	case MSG_KEYPRESS:
 		handle_keypress(g, hdr.window);
 		break;
-	case MSG_RESIZE:
-		handle_resize(g, hdr.window);
+	case MSG_CONFIGURE:
+		handle_configure(g, hdr.window);
 		break;
 	case MSG_BUTTON:
 		handle_button(g, hdr.window);
