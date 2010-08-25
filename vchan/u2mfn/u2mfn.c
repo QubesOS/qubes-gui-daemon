@@ -33,6 +33,17 @@ static inline unsigned long virt_to_phys(volatile void *address)
 	return __pa((unsigned long) address);
 }
 
+#if HAVE_GET_PHYS_TO_MACHINE
+#define VIRT_TO_MFN virt_to_mfn
+#else
+extern unsigned long *phys_to_machine_mapping;
+static inline unsigned long VIRT_TO_MFN(void *addr)
+{
+	unsigned int pfn = virt_to_phys(addr) >> PAGE_SHIFT;
+	return phys_to_machine_mapping[pfn] & ~FOREIGN_FRAME_BIT;
+}
+#endif
+
 /// User virtual address to mfn translator
 /**
     \param cmd ignored
@@ -62,14 +73,14 @@ static int u2mfn_ioctl(struct inode *i, struct file *f, unsigned int cmd,
 			return -1;
 		}
 		kaddr = kmap(user_page);
-		ret = virt_to_mfn(kaddr);
+		ret = VIRT_TO_MFN(kaddr);
 		kunmap(user_page);
 		put_page(user_page);
 		break;
 
 	case U2MFN_GET_LAST_MFN:
 		if (f->private_data)
-			ret = virt_to_mfn(f->private_data);
+			ret = VIRT_TO_MFN(f->private_data);
 		else
 			ret = 0;
 		break;

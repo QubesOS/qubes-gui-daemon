@@ -57,11 +57,14 @@ The vchan library for the Qubes GUI Agent to be installed in VM.
 %build
 make clean
 
+KERNDIR=/usr/src/kernels/%{kernel_version}
+HAVE_GET_PHYS_TO_MACHINE=1
+grep -q get_phys_to_machine.*EXPORT_SYMBOL $KERNDIR/Module.symvers || HAVE_GET_PHYS_TO_MACHINE=0
 #make -C /usr/src/kernels/%{kernel_version} SUBDIRS=%{_builddir}/event_channel modules \
 #        EXTRA_CFLAGS=-I%{_builddir}/xenincl
 
-make -C /usr/src/kernels/%{kernel_version} SUBDIRS=%{_builddir}/u2mfn modules \
-        EXTRA_CFLAGS=-I%{_builddir}/xenincl
+make -C $KERNDIR SUBDIRS=%{_builddir}/u2mfn modules \
+        EXTRA_CFLAGS="-I%{_builddir}/xenincl -DHAVE_GET_PHYS_TO_MACHINE=$HAVE_GET_PHYS_TO_MACHINE"
 
 #cd vchan && make
 
