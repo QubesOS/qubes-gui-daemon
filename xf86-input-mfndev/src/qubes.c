@@ -388,6 +388,27 @@ static int QubesControl(DeviceIntPtr device, int what)
 	return Success;
 }
 
+/* The following helper is copied from Xen sources */
+static int write_exact(int fd, const void *data, size_t size);
+
+static int write_exact(int fd, const void *data, size_t size)
+{
+    size_t offset = 0;
+    ssize_t len;
+
+    while ( offset < size )
+    {
+        len = write(fd, (const char *)data + offset, size - offset);
+        if ( (len == -1) && (errno == EINTR) )
+            continue;
+        if ( len <= 0 )
+            return -1;
+        offset += len;
+    }
+
+    return 0;
+}
+
 static void dump_window_mfns(WindowPtr pWin, int id, int fd);
 
 static void dump_window_mfns(WindowPtr pWin, int id, int fd)
@@ -420,11 +441,11 @@ static void dump_window_mfns(WindowPtr pWin, int id, int fd)
 	shmcmd.num_mfn = num_mfn;
 	shmcmd.domid = 0x12345678; // just a placeholder; qubes_guid must not trust it anyway
 
-	write(fd, &shmcmd, sizeof(shmcmd));
+	write_exact(fd, &shmcmd, sizeof(shmcmd));
 	mlock(pixels, 4096 * num_mfn);
 	for (i = 0; i < num_mfn; i++) {
 		u2mfn_get_mfn_for_page ((long)(pixels + 4096 * i), &mfn);
-		write(fd, &mfn, 4);
+		write_exact(fd, &mfn, 4);
 	}
 }
 
@@ -471,7 +492,7 @@ static void process_request(int fd, InputInfoPtr pInfo)
 		return;
 	}
 	
-	write(fd, "0", 1); // acknowledge the request has been received
+	write_exact(fd, "0", 1); // acknowledge the request has been received
 
 	switch (cmd) {
 	case 'W':
@@ -482,7 +503,7 @@ static void process_request(int fd, InputInfoPtr pInfo)
                     struct shm_cmd shmcmd;
                     // xf86Msg(X_INFO, "randdev: w1=%p, xid1: 0x%x\n", w1, arg1);
                     shmcmd.num_mfn = 0;
-                    write(fd, &shmcmd, sizeof(shmcmd));
+                    write_exact(fd, &shmcmd, sizeof(shmcmd));
                     return;
             }
             dump_window_mfns(w1, arg1, fd);
