@@ -418,7 +418,7 @@ static void dump_window_mfns(WindowPtr pWin, int id, int fd)
 	if (!pixmap->devPrivate.ptr)
 		num_mfn = 0;
 	shmcmd.num_mfn = num_mfn;
-	shmcmd.domid = 0x12345678;
+	shmcmd.domid = 0x12345678; // just a placeholder; qubes_guid must not trust it anyway
 
 	write(fd, &shmcmd, sizeof(shmcmd));
 	mlock(pixels, 4096 * num_mfn);
@@ -470,29 +470,31 @@ static void process_request(int fd, InputInfoPtr pInfo)
 			buf);
 		return;
 	}
-	write(fd, "0", 1);
+	
+	write(fd, "0", 1); // acknowledge the request has been received
+
 	switch (cmd) {
 	case 'W':
-	w1 = id2winptr(arg1);
-	if (!w1) {
-		struct shm_cmd shmcmd;
-//		xf86Msg(X_INFO, "randdev: w1=%p, xid1: 0x%x\n", w1, arg1);
-		shmcmd.num_mfn = 0;
-		write(fd, &shmcmd, sizeof(shmcmd));
-		return;
-	}
-//        dump_window_to_bmp(w1);
-	dump_window_mfns(w1, arg1, fd);
-	break;
+            w1 = id2winptr(arg1);
+            if (!w1) {
+                    // This error condition (window not found) can happen when
+                    // the window is destroyed before the driver sees the req
+                    struct shm_cmd shmcmd;
+                    // xf86Msg(X_INFO, "randdev: w1=%p, xid1: 0x%x\n", w1, arg1);
+                    shmcmd.num_mfn = 0;
+                    write(fd, &shmcmd, sizeof(shmcmd));
+                    return;
+            }
+            dump_window_mfns(w1, arg1, fd);
+            break;
 	case 'B':
 	    xf86PostButtonEvent(pInfo->dev, 0, arg1, arg2, 0,0);
 	    break;
         case 'M':
-            xf86PostMotionEvent(pInfo->dev,1, 0, 2, arg1, arg2);
+            xf86PostMotionEvent(pInfo->dev, 1, 0, 2, arg1, arg2);
             break;
         case 'K':
-            /* TBD, need to figure out how to use XkbInitKeyboardDeviceStruct */
-            xf86PostKeyboardEvent(pInfo->dev,arg1, arg2);
+            xf86PostKeyboardEvent(pInfo->dev, arg1, arg2);
             break;
         default:
             xf86Msg(X_INFO, "randdev: unknown command %c\n", cmd);
