@@ -445,8 +445,9 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 	item->y = conf.y;
 	if (item->override_redirect) {
 		// do not let menu window hide its color frame by moving outside of the screen  
-		if (item->x<0) item->x=0;
-		if (item->y<0) item->y=0;
+		// if it is located offscreen, then allow negative x/y
+		if (item->x<0 && item->x+item->width>0) item->x=0;
+		if (item->y<0 && item->y+item->height>0) item->y=0;
 	}
 	XMoveResizeWindow(g->display, item->local_winid, item->x, item->y, 
 		item->width, item->height);	
@@ -779,12 +780,13 @@ void fix_menu(struct conndata *item)
 				CWOverrideRedirect, &attr);
 	item->override_redirect = 1;
 
-	// do not let menu window hide its color frame by moving outside of the screen  
-	if (item->x < 0) {
+	// do not let menu window hide its color frame by moving outside of the screen
+	// if it is located offscreen, then allow negative x/y  
+	if (item->x < 0 && item->x + item->width>0) {
 		item->x=0;
 		do_move=1;
 	}
-	if (item->y<0) {
+	if (item->y<0 && item->y + item->height>0) {
 		item->y=0;
 		do_move=1;
 	}
