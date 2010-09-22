@@ -123,9 +123,9 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 #if 1
 	// we will set override_redirect later, if needed
 	child_win = XCreateSimpleWindow(g->display, parent,
-					item->x, item->y, item->width, item->height,
-					0, BlackPixel(g->display,
-						      g->screen),
+					item->x, item->y, item->width,
+					item->height, 0,
+					BlackPixel(g->display, g->screen),
 					WhitePixel(g->display, g->screen));
 #endif
 #if 0
@@ -154,7 +154,6 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 		    { g->cmdline_icon, g->cmdline_icon };
 		XSetClassHint(g->display, child_win, &class_hint);
 	}
-
 	// Set '_QUBES_LABEL' property so that Window Manager can read it and draw proper decoration
 	atom_label = XInternAtom(g->display, "_QUBES_LABEL", 0);
 	XChangeProperty(g->display, child_win, atom_label, XA_CARDINAL,
@@ -165,7 +164,7 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 	atom_label = XInternAtom(g->display, "_QUBES_VMNAME", 0);
 	XChangeProperty(g->display, child_win, atom_label, XA_STRING,
 			8 /* 8 bit is enough */ , PropModeReplace,
-			g->vmname, strlen (g->vmname));
+			g->vmname, strlen(g->vmname));
 
 
 	return child_win;
@@ -335,8 +334,7 @@ void dump_mapped()
 				"id 0x%x(0x%x) w=0x%x h=0x%x rx=%d ry=%d ovr=%d\n",
 				(int) c->local_winid,
 				(int) c->remote_winid, c->width, c->height,
-				c->x, c->y,
-				c->override_redirect);
+				c->x, c->y, c->override_redirect);
 		}
 	}
 }
@@ -395,7 +393,8 @@ void process_xevent_configure(XConfigureEvent * ev)
 //      fprintf(stderr, "process_xevent_configure, %d/%d, was"
 //              "%d/%d\n", ev->width, ev->height,
 //              conn->width, conn->height);
-	if (conn->width == ev->width && conn->height == ev->height && conn->x==ev->x && conn->y==ev->y)
+	if (conn->width == ev->width && conn->height == ev->height
+	    && conn->x == ev->x && conn->y == ev->y)
 		return;
 	conn->width = ev->width;
 	conn->height = ev->height;
@@ -422,15 +421,16 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 	if (conf.height > MAX_WINDOW_HEIGHT)
 		conf.height = MAX_WINDOW_HEIGHT;
 
-	if (item->width != conf.width || item->height != conf.height || 
-		item->x != conf.x || item->y != conf.y)
+	if (item->width != conf.width || item->height != conf.height ||
+	    item->x != conf.x || item->y != conf.y)
 		conf_changed = 1;
 	else
 		conf_changed = 0;
 	item->override_redirect = conf.override_redirect;
 	if (item->have_queued_configure) {
 		if (conf_changed) {
-			send_configure(item, item->x, item->y, item->width, item->height);
+			send_configure(item, item->x, item->y, item->width,
+				       item->height);
 			return;
 		} else {
 			// same dimensions; this is an ack for our previously sent configure req
@@ -445,11 +445,14 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 	item->y = conf.y;
 	if (item->override_redirect) {
 		// do not let menu window hide its color frame by moving outside of the screen  
-		if (item->x<0) item->x=0;
-		if (item->y<0) item->y=0;
+		// if it is located offscreen, then allow negative x/y
+		if (item->x < 0 && item->x + item->width > 0)
+			item->x = 0;
+		if (item->y < 0 && item->y + item->height > 0)
+			item->y = 0;
 	}
-	XMoveResizeWindow(g->display, item->local_winid, item->x, item->y, 
-		item->width, item->height);	
+	XMoveResizeWindow(g->display, item->local_winid, item->x, item->y,
+			  item->width, item->height);
 }
 
 void process_xevent_motion(XMotionEvent * ev)
@@ -771,25 +774,27 @@ void sanitize_string_from_vm(unsigned char *s)
 
 void fix_menu(struct conndata *item)
 {
-	int do_move=0;
+	int do_move = 0;
 	XSetWindowAttributes attr;
-	
+
 	attr.override_redirect = 1;
 	XChangeWindowAttributes(ghandles.display, item->local_winid,
 				CWOverrideRedirect, &attr);
 	item->override_redirect = 1;
 
-	// do not let menu window hide its color frame by moving outside of the screen  
-	if (item->x < 0) {
-		item->x=0;
-		do_move=1;
+	// do not let menu window hide its color frame by moving outside of the screen
+	// if it is located offscreen, then allow negative x/y  
+	if (item->x < 0 && item->x + item->width > 0) {
+		item->x = 0;
+		do_move = 1;
 	}
-	if (item->y<0) {
-		item->y=0;
-		do_move=1;
+	if (item->y < 0 && item->y + item->height > 0) {
+		item->y = 0;
+		do_move = 1;
 	}
 	if (do_move)
-		XMoveWindow(ghandles.display, item->local_winid, item->x, item->y);		
+		XMoveWindow(ghandles.display, item->local_winid, item->x,
+			    item->y);
 }
 
 void handle_wmname(Ghandles * g, struct conndata *item)
