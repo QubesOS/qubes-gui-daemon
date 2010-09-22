@@ -352,6 +352,7 @@ void process_xevent_selection_req(Ghandles * g,
 {
 	XSelectionEvent resp;
 	Atom Targets = XInternAtom(g->display, "TARGETS", False);
+	Atom Compound_text = XInternAtom(g->display, "COMPOUND_TEXT", False);
 	fprintf(stderr, "selection req event\n");
 	if (req->target == XA_STRING) {
 		XChangeProperty(g->display,
@@ -363,14 +364,20 @@ void process_xevent_selection_req(Ghandles * g,
 				g->clipboard_data, g->clipboard_data_len);
 		resp.property = req->property;
 	} else if (req->target == Targets) {
-		static Atom tmp = XA_STRING;
+		Atom tmp[2] = {XA_STRING, Compound_text};
 		XChangeProperty(g->display,
 				req->requestor,
 				req->property,
-				Targets,
+				XA_ATOM,
 				32, PropModeReplace, (unsigned char *)
-				&tmp, sizeof(tmp));
+				tmp, sizeof(tmp)/sizeof(tmp[0]));
 		resp.property = req->property;
+        }else if (req->target == Compound_text) {
+                 XTextProperty ct;
+                 XmbTextListToTextProperty (g->display, (char **)&g->clipboard_data, 1, XCompoundTextStyle, &ct);
+                 XSetTextProperty (g->display, req->requestor, &ct, req->property);
+                 XFree (ct.value);
+                 resp.property = req->property;
 	} else {
 		fprintf(stderr,
 			"Not supported selection_req target 0x%x %s\n",
@@ -788,13 +795,15 @@ void handle_clipboard_data(Ghandles * g, int len)
 
 	if (g->clipboard_data)
 		free(g->clipboard_data);
-	g->clipboard_data = malloc(len);
+        // qubes_guid will not bother to send len==-1, really
+	g->clipboard_data = malloc(len+1);
 	if (!g->clipboard_data) {
 		perror("malloc");
 		exit(1);
 	}
 	g->clipboard_data_len = len;
 	read_data((char *) g->clipboard_data, len);
+	g->clipboard_data[len]=0;
 	XSetSelectionOwner(g->display, XA_PRIMARY, g->clipboard_win,
 			   CurrentTime);
 	XSetSelectionOwner(g->display, Clp, g->clipboard_win, CurrentTime);
