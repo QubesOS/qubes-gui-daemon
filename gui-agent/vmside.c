@@ -352,7 +352,8 @@ void process_xevent_selection_req(Ghandles * g,
 {
 	XSelectionEvent resp;
 	Atom Targets = XInternAtom(g->display, "TARGETS", False);
-	Atom Compound_text = XInternAtom(g->display, "COMPOUND_TEXT", False);
+	Atom Compound_text =
+	    XInternAtom(g->display, "COMPOUND_TEXT", False);
 	fprintf(stderr, "selection req event\n");
 	if (req->target == XA_STRING) {
 		XChangeProperty(g->display,
@@ -364,20 +365,23 @@ void process_xevent_selection_req(Ghandles * g,
 				g->clipboard_data, g->clipboard_data_len);
 		resp.property = req->property;
 	} else if (req->target == Targets) {
-		Atom tmp[2] = {XA_STRING, Compound_text};
+		Atom tmp[2] = { XA_STRING, Compound_text };
 		XChangeProperty(g->display,
 				req->requestor,
 				req->property,
 				XA_ATOM,
 				32, PropModeReplace, (unsigned char *)
-				tmp, sizeof(tmp)/sizeof(tmp[0]));
+				tmp, sizeof(tmp) / sizeof(tmp[0]));
 		resp.property = req->property;
-        }else if (req->target == Compound_text) {
-                 XTextProperty ct;
-                 XmbTextListToTextProperty (g->display, (char **)&g->clipboard_data, 1, XCompoundTextStyle, &ct);
-                 XSetTextProperty (g->display, req->requestor, &ct, req->property);
-                 XFree (ct.value);
-                 resp.property = req->property;
+	} else if (req->target == Compound_text) {
+		XTextProperty ct;
+		XmbTextListToTextProperty(g->display,
+					  (char **) &g->clipboard_data, 1,
+					  XCompoundTextStyle, &ct);
+		XSetTextProperty(g->display, req->requestor, &ct,
+				 req->property);
+		XFree(ct.value);
+		resp.property = req->property;
 	} else {
 		fprintf(stderr,
 			"Not supported selection_req target 0x%x %s\n",
@@ -465,7 +469,7 @@ extern void wait_for_unix_socket(int *fd);
 
 void mkghandles(Ghandles * g)
 {
-	wait_for_unix_socket(&g->xserver_fd); // wait for Xorg qubes_drv to connect to us
+	wait_for_unix_socket(&g->xserver_fd);	// wait for Xorg qubes_drv to connect to us
 	g->display = XOpenDisplay(NULL);
 	if (!g->display) {
 		perror("XOpenDisplay");
@@ -616,7 +620,7 @@ void handle_crossing(Ghandles * g, XID winid)
 
 	read_data((char *) &key, sizeof(key));
 	return;
-	
+
 	ret = XGetWindowAttributes(g->display, winid, &attr);
 	if (ret != 1) {
 		fprintf(stderr,
@@ -671,7 +675,8 @@ void handle_focus(Ghandles * g, XID winid)
 	XSendEvent(event.display, event.window, TRUE,
 		   0, (XEvent *) & event);
 #endif
-	if (key.type == FocusIn && (key.mode == NotifyNormal || key.mode == NotifyUngrab)) {
+	if (key.type == FocusIn
+	    && (key.mode == NotifyNormal || key.mode == NotifyUngrab)) {
 		XRaiseWindow(g->display, winid);
 		XSetInputFocus(g->display, winid, RevertToParent,
 			       CurrentTime);
@@ -708,9 +713,10 @@ void handle_configure(Ghandles * g, XID winid)
 	XGetWindowAttributes(g->display, winid, &attr);
 	read_data((char *) &r, sizeof(r));
 	XMoveResizeWindow(g->display, winid, r.x, r.y, r.width, r.height);
-	fprintf(stderr, "configure msg, x/y %d %d (was %d %d), w/h %d %d (was %d %d)\n", 
-	r.x, r.y, attr.x, attr.y, r.width,
-		r.height, attr.width, attr.height);
+	fprintf(stderr,
+		"configure msg, x/y %d %d (was %d %d), w/h %d %d (was %d %d)\n",
+		r.x, r.y, attr.x, attr.y, r.width, r.height, attr.width,
+		attr.height);
 
 }
 
@@ -795,15 +801,15 @@ void handle_clipboard_data(Ghandles * g, int len)
 
 	if (g->clipboard_data)
 		free(g->clipboard_data);
-        // qubes_guid will not bother to send len==-1, really
-	g->clipboard_data = malloc(len+1);
+	// qubes_guid will not bother to send len==-1, really
+	g->clipboard_data = malloc(len + 1);
 	if (!g->clipboard_data) {
 		perror("malloc");
 		exit(1);
 	}
 	g->clipboard_data_len = len;
 	read_data((char *) g->clipboard_data, len);
-	g->clipboard_data[len]=0;
+	g->clipboard_data[len] = 0;
 	XSetSelectionOwner(g->display, XA_PRIMARY, g->clipboard_win,
 			   CurrentTime);
 	XSetSelectionOwner(g->display, Clp, g->clipboard_win, CurrentTime);
