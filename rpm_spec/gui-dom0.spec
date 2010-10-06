@@ -37,7 +37,8 @@ URL:		http://www.qubes-os.org
 
 Source:		.
 
-Requires:	qubes-core-dom0 xorg-x11-server-Xorg kdm pulseaudio-libs
+Requires:	qubes-core-dom0 >= 1.3.14
+Requires:   xorg-x11-server-Xorg kdm pulseaudio-libs
 Requires:	/usr/bin/kdialog
 BuildRequires:  pulseaudio-libs-devel
 
