@@ -62,8 +62,6 @@ install -D pulse/pacat-simple-vchan $RPM_BUILD_ROOT/usr/bin/pacat-simple-vchan
 install -D shmoverride/X_wrapper_qubes $RPM_BUILD_ROOT/usr/bin/X_wrapper_qubes
 install -D shmoverride/shmoverride.so $RPM_BUILD_ROOT/%{_libdir}/shmoverride.so
 install -D vchan/vchan/libvchan.so $RPM_BUILD_ROOT/%{_libdir}/libvchan.so
-mkdir -p $RPM_BUILD_ROOT/var/log/qubes
-mkdir -p $RPM_BUILD_ROOT/var/run/qubes
 
 %triggerin -- xorg-x11-server-Xorg
 ln -sf /usr/bin/X_wrapper_qubes /usr/bin/X
@@ -84,5 +82,3 @@ rm -rf $RPM_BUILD_ROOT
 /usr/bin/X_wrapper_qubes
 %{_libdir}/shmoverride.so
 %{_libdir}/libvchan.so
-%attr(2770,root,qubes) %dir /var/log/qubes
-%attr(770,root,qubes) %dir /var/run/qubes
