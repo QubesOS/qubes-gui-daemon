@@ -1245,9 +1245,19 @@ void parse_cmdline(int argc, char **argv)
 	}
 }
 
+void set_alive_flag(int domid)
+{
+	char buf[256];
+	int fd;
+	snprintf(buf, sizeof(buf), "/var/run/qubes/guid_running.%d",
+		 domid);
+	fd = open(buf, O_WRONLY | O_CREAT | O_NOFOLLOW, 0600);
+	close(fd);
+}
+
 int main(int argc, char **argv)
 {
-	int xfd, cmd_socket;
+	int xfd;
 	char *vmname;
 	FILE *f;
 	int childpid;
@@ -1316,7 +1326,7 @@ int main(int argc, char **argv)
 	vmname = peer_client_init(ghandles.domid, 6000);
 	exec_pacat(ghandles.domid);
 	setuid(getuid());
-	cmd_socket = get_cmd_socket(ghandles.domid);
+	set_alive_flag(ghandles.domid);
 	write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully
 
 	signal(SIGTERM, dummy_signal_handler);
@@ -1336,7 +1346,7 @@ int main(int argc, char **argv)
 	}
 
 	for (;;) {
-		int select_fds[2] = { xfd, cmd_socket };
+		int select_fds[2] = { xfd };
 		fd_set retset;
 		int busy;
 		if (signal_caught) {
@@ -1354,12 +1364,7 @@ int main(int argc, char **argv)
 				busy = 1;
 			}
 		} while (busy);
-		wait_for_vchan_or_argfd(2, select_fds, &retset);
-		if (FD_ISSET(cmd_socket, &retset)) {
-			char *cmd = get_line_from_cmd_socket(cmd_socket);
-			if (cmd)
-				send_cmd_to_vm(cmd);
-		}
+		wait_for_vchan_or_argfd(1, select_fds, &retset);
 	}
 	return 0;
 }
