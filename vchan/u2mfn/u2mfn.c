@@ -26,7 +26,7 @@
 #include <linux/sched.h>
 #include <xen/page.h>
 #include <linux/highmem.h>
-#include "u2mfn.h"
+#include "/usr/include/u2mfn-kernel.h"
 
 static inline unsigned long virt_to_phys(volatile void *address)
 {
