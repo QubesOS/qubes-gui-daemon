@@ -42,6 +42,12 @@ Source:		.
 BuildRequires:	xorg-x11-server-devel
 BuildRequires:	libtool-ltdl-devel
 BuildRequires:	pulseaudio-libs-devel
+BuildRequires:	gcc
+BuildRequires:	xen-devel
+BuildRequires:	xorg-x11-server-devel
+BuildRequires:	libtool-ltdl-devel
+BuildRequires:	libXdamage-devel
+BuildRequires:	kernel-devel
 Requires:	qubes-core-vm qubes-vchan-vm xen-qubes-vm-essentials 
 Requires:	pulseaudio = %{pa_ver}
 AutoReq: 0
