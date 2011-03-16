@@ -1,0 +1,4 @@
+libsetup-vchan-early.so
+module-vchan-sink.so
+pacat-simple-vchan
+
