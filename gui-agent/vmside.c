@@ -50,6 +50,8 @@ struct _global_handles {
 	GC context;
 	Atom wmDeleteMessage;
 	Atom wmProtocols;
+	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
+	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
 	int xserver_fd;
 	Window clipboard_win;
 	unsigned char *clipboard_data;
@@ -58,6 +60,19 @@ struct _global_handles {
 
 struct genlist *windows_list;
 typedef struct _global_handles Ghandles;
+
+#define SYSTEM_TRAY_REQUEST_DOCK    0
+#define SYSTEM_TRAY_BEGIN_MESSAGE   1
+#define SYSTEM_TRAY_CANCEL_MESSAGE  2
+
+#define XEMBED_EMBEDDED_NOTIFY          0
+#define XEMBED_WINDOW_ACTIVATE          1
+#define XEMBED_WINDOW_DEACTIVATE        2
+#define XEMBED_REQUEST_FOCUS            3
+#define XEMBED_FOCUS_IN                 4
+#define XEMBED_FOCUS_OUT                5
+#define XEMBED_FOCUS_NEXT               6   
+#define XEMBED_FOCUS_PREV               7
 
 #define SKIP_NONMANAGED_WINDOW if (!list_lookup(windows_list, window)) return
 
@@ -408,6 +423,40 @@ void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 	send_wmname(g, window);
 }
 
+void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
+{
+	fprintf(stderr, "handle message %s to window 0x%x\n",
+		XGetAtomName(g->display, ev->message_type), (int) ev->window);
+	if (ev->message_type == g->tray_opcode) {
+		XClientMessageEvent nev;
+		Window w;
+		switch (ev->data.l[1]) {
+		case SYSTEM_TRAY_REQUEST_DOCK:
+			w = ev->data.l[2];
+			fprintf(stderr, "tray request dock for window 0x%x\n", (int) w);
+			XReparentWindow(g->display, w, g->root_win, 0, 0);
+			XMapWindow(g->display, w);
+			memset(&nev, 0, sizeof(ev));
+			nev.type = ClientMessage;
+			nev.window = w;
+			nev.message_type = XInternAtom(g->display, "_XEMBED", False);
+			nev.format = 32;
+			nev.data.l[0] = ev->data.l[0];
+			nev.data.l[1] = XEMBED_EMBEDDED_NOTIFY;
+			nev.data.l[3] = ev->window;
+			nev.data.l[4] = 0;
+			nev.display = g->display;
+			XSendEvent(nev.display, nev.window, False, NoEventMask, (XEvent *) & ev);
+			XSync(g->display, False);
+			fprintf(stderr, "Sent message XEMBED_EMBEDDED_NOTIFY to 0x%x\n", (int) nev.window);
+			XSelectInput(g->display, ev->window, StructureNotifyMask | PropertyChangeMask);
+			break;
+		default:
+			fprintf(stderr, "unhandled tray opcode: %ld\n", ev->data.l[1]);
+		}
+	}
+}
+
 void process_xevent(Ghandles * g)
 {
 	XDamageNotifyEvent *dev;
@@ -448,6 +497,9 @@ void process_xevent(Ghandles * g)
 		process_xevent_property(g, event_buffer.xproperty.window,
 					(XPropertyEvent *) & event_buffer);
 		break;
+	case ClientMessage:
+		process_xevent_message(g, (XClientMessageEvent *) & event_buffer);
+		break;
 	default:
 		if (event_buffer.type == (damage_event + XDamageNotify)) {
 			dev = (XDamageNotifyEvent *) & event_buffer;
@@ -469,6 +521,7 @@ extern void wait_for_unix_socket(int *fd);
 
 void mkghandles(Ghandles * g)
 {
+	char tray_sel_atom_name[64];
 	wait_for_unix_socket(&g->xserver_fd);	// wait for Xorg qubes_drv to connect to us
 	g->display = XOpenDisplay(NULL);
 	if (!g->display) {
@@ -490,6 +543,10 @@ void mkghandles(Ghandles * g)
 							  g->screen));
 	g->clipboard_data = NULL;
 	g->clipboard_data_len = 0;
+	snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
+		"_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display));
+	g->tray_selection = XInternAtom(g->display, tray_sel_atom_name, False);
+	g->tray_opcode = XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
 }
 
 void handle_keypress(Ghandles * g, XID winid)
@@ -917,6 +974,23 @@ int main(int argc, char **argv)
 	do_execute(NULL, "/usr/bin/start-pulseaudio-with-vchan");
 	windows_list = list_new();
 	XSetErrorHandler(dummy_handler);
+	XSetSelectionOwner(g.display, g.tray_selection,
+		g.clipboard_win, CurrentTime);
+	if (XGetSelectionOwner(g.display, g.tray_selection) == g.clipboard_win) {
+		XClientMessageEvent ev;
+		memset(&ev, 0, sizeof(ev));
+		ev.type = ClientMessage;
+		ev.send_event = True;
+		ev.message_type = XInternAtom(g.display, "MANAGER", False);
+		ev.window = DefaultRootWindow(g.display);
+		ev.format = 32;
+		ev.data.l[0] = CurrentTime;
+		ev.data.l[1] = g.tray_selection;
+		ev.data.l[2] = g.clipboard_win;
+		ev.display = g.display;
+		XSendEvent(ev.display, ev.window, False, NoEventMask, (XEvent *) & ev);
+		fprintf(stderr, "Acquired MANAGER selection for tray\n");
+	}
 	xfd = ConnectionNumber(g.display);
 	for (;;) {
 		int busy;
