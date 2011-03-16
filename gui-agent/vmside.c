@@ -723,7 +723,7 @@ void handle_configure(Ghandles * g, XID winid)
 void handle_close(Ghandles * g, XID winid)
 {
 	XClientMessageEvent ev;
-
+	memset(&ev, 0, sizeof(ev));
 	ev.type = ClientMessage;
 	ev.display = g->display;
 	ev.window = winid;
