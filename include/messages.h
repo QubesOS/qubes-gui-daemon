@@ -46,6 +46,7 @@ enum {
 	MSG_CLIPBOARD_DATA,
 	MSG_WMNAME,
 	MSG_KEYMAP_NOTIFY,
+	MSG_DOCK,
 	MSG_MAX
 };
 struct msg_map_info {

@@ -44,6 +44,7 @@
 #include "shm_cmd.h"
 #include "cmd_socket.h"
 #include "qlimits.h"
+#include "tray.h"
 
 struct _global_handles {
 	Display *display;
@@ -51,6 +52,9 @@ struct _global_handles {
 	Window root_win;	/* root attributes */
 	GC context;
 	Atom wmDeleteMessage;
+	Atom tray_selection;  /* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
+	Atom tray_opcode;     /* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
+	Atom xembed_message;  /* Atom: _XEMBED */
 	char vmname[16];
 	struct shm_cmd *shmcmd;
 	int cmd_shmid;
@@ -72,6 +76,7 @@ struct conndata {
 	int x;
 	int y;
 	int is_mapped;
+	int is_docked;
 	XID remote_winid;
 	Window local_winid;
 	struct conndata *parent;
@@ -173,6 +178,7 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 
 void mkghandles(Ghandles * g)
 {
+	char tray_sel_atom_name[64];
 	g->display = XOpenDisplay(NULL);
 	if (!g->display) {
 		perror("XOpenDisplay");
@@ -182,8 +188,13 @@ void mkghandles(Ghandles * g)
 	g->root_win = RootWindow(g->display, g->screen);
 	g->context = XCreateGC(g->display, g->root_win, 0, NULL);
 	g->wmDeleteMessage =
-	    XInternAtom(g->display, "WM_DELETE_WINDOW", True);
+		XInternAtom(g->display, "WM_DELETE_WINDOW", True);
 	g->clipboard_requested = 0;
+	snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
+		"_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display));
+	g->tray_selection = XInternAtom(g->display, tray_sel_atom_name, False);
+	g->tray_opcode = XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
+	g->xembed_message = XInternAtom(g->display, "_XEMBED", False);
 }
 
 struct conndata *check_nonmanged_window(XID id)
@@ -398,13 +409,27 @@ void process_xevent_configure(XConfigureEvent * ev)
 		return;
 	conn->width = ev->width;
 	conn->height = ev->height;
-	conn->x = ev->x;
-	conn->y = ev->y;
+	if (!conn->is_docked) {
+		conn->x = ev->x;
+		conn->y = ev->y;
+	}
+	else {
+		/* docked window is reparented to root_win on vmside */
+		XWindowAttributes attr;
+		Window win;
+		int x, y;
+		XGetWindowAttributes(ghandles.display, ev->window, &attr);
+		if (XTranslateCoordinates(ghandles.display, ev->window, ghandles.root_win,
+					attr.x, attr.y, &x, &y, &win) == True) {
+			conn->x = x;
+			conn->y = y;
+		}
+	}
 // if AppVM has not unacknowledged previous resize msg, do not send another one
 	if (conn->have_queued_configure)
 		return;
 	conn->have_queued_configure = 1;
-	send_configure(conn, ev->x, ev->y, ev->width, ev->height);
+	send_configure(conn, conn->x, conn->y, conn->width, conn->height);
 }
 
 void handle_configure_from_vm(Ghandles * g, struct conndata *item)
@@ -840,9 +865,31 @@ void handle_map(struct conndata *item)
 	} else
 		item->transient_for = 0;
 	item->override_redirect = 0;
-	if (txt.override_redirect)
+	if (txt.override_redirect || item->is_docked)
 		fix_menu(item);
 	(void) XMapWindow(ghandles.display, item->local_winid);
+}
+
+void handle_dock(Ghandles * g, struct conndata *item)
+{
+	Window tray;
+	fprintf(stderr, "docking window 0x%x\n", (int) item->local_winid);
+	fix_menu(item);
+	tray = XGetSelectionOwner(g->display, g->tray_selection);
+	if (tray != None) {
+		XClientMessageEvent msg;
+		memset(&msg, 0, sizeof(msg));
+		msg.type = ClientMessage;
+		msg.window = tray;
+		msg.message_type = g->tray_opcode;
+		msg.format = 32;
+		msg.data.l[0] = CurrentTime;
+		msg.data.l[1] = SYSTEM_TRAY_REQUEST_DOCK;
+		msg.data.l[2] = item->local_winid;
+		msg.display = g->display;
+		XSendEvent(msg.display, msg.window, False, NoEventMask, (XEvent *) & msg);
+	}
+	item->is_docked = 1;
 }
 
 void inter_appviewer_lock(int mode)
@@ -1016,6 +1063,9 @@ void handle_message()
 		break;
 	case MSG_WMNAME:
 		handle_wmname(&ghandles, item);
+		break;
+	case MSG_DOCK:
+		handle_dock(&ghandles, item);
 		break;
 	default:
 		fprintf(stderr, "got msg type %d\n", hdr.type);
