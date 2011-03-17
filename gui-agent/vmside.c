@@ -41,6 +41,7 @@
 #include "qlimits.h"
 #include "libvchan.h"
 #include "u2mfnlib.h"
+#include "tray.h"
 
 int damage_event, damage_error;
 struct _global_handles {
@@ -60,19 +61,6 @@ struct _global_handles {
 
 struct genlist *windows_list;
 typedef struct _global_handles Ghandles;
-
-#define SYSTEM_TRAY_REQUEST_DOCK    0
-#define SYSTEM_TRAY_BEGIN_MESSAGE   1
-#define SYSTEM_TRAY_CANCEL_MESSAGE  2
-
-#define XEMBED_EMBEDDED_NOTIFY          0
-#define XEMBED_WINDOW_ACTIVATE          1
-#define XEMBED_WINDOW_DEACTIVATE        2
-#define XEMBED_REQUEST_FOCUS            3
-#define XEMBED_FOCUS_IN                 4
-#define XEMBED_FOCUS_OUT                5
-#define XEMBED_FOCUS_NEXT               6   
-#define XEMBED_FOCUS_PREV               7
 
 #define SKIP_NONMANAGED_WINDOW if (!list_lookup(windows_list, window)) return
 
