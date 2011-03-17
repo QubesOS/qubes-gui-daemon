@@ -587,10 +587,18 @@ void process_xevent_mapnotify(XMapEvent * ev)
 	if (conn->is_mapped)
 		return;
 	XGetWindowAttributes(ghandles.display, conn->local_winid, &attr);
-	if (attr.map_state == IsViewable) {
+/*	if (attr.map_state != IsViewable) {
 		(void) XUnmapWindow(ghandles.display, conn->local_winid);
 		fprintf(stderr, "WM tried to map 0x%x, revert\n",
 			(int) conn->local_winid);
+	} else */{
+		struct msghdr hdr;
+		struct msg_map_info map_info;
+		map_info.override_redirect = attr.override_redirect;
+		hdr.type = MSG_MAP;
+		hdr.window = conn->remote_winid;
+		write_struct(hdr);
+		write_struct(map_info);
 	}
 }
 
