@@ -94,7 +94,7 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 	Window child_win;
 	Window parent;
 	XSizeHints my_size_hints;	/* hints for the window manager */
-	Atom atom_label, atom_vmname;
+	Atom atom_label;
 
 	my_size_hints.flags = PSize;
 	my_size_hints.height = item->width;
@@ -164,7 +164,7 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 	atom_label = XInternAtom(g->display, "_QUBES_VMNAME", 0);
 	XChangeProperty(g->display, child_win, atom_label, XA_STRING,
 			8 /* 8 bit is enough */ , PropModeReplace,
-			g->vmname, strlen(g->vmname));
+			(const unsigned char *) g->vmname, strlen(g->vmname));
 
 
 	return child_win;
