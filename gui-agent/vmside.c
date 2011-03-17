@@ -416,28 +416,33 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 	fprintf(stderr, "handle message %s to window 0x%x\n",
 		XGetAtomName(g->display, ev->message_type), (int) ev->window);
 	if (ev->message_type == g->tray_opcode) {
-		XClientMessageEvent nev;
+		XClientMessageEvent resp;
 		Window w;
+		struct msghdr hdr;
+
 		switch (ev->data.l[1]) {
 		case SYSTEM_TRAY_REQUEST_DOCK:
 			w = ev->data.l[2];
+
 			fprintf(stderr, "tray request dock for window 0x%x\n", (int) w);
 			XReparentWindow(g->display, w, g->root_win, 0, 0);
-			XMapWindow(g->display, w);
-			memset(&nev, 0, sizeof(ev));
-			nev.type = ClientMessage;
-			nev.window = w;
-			nev.message_type = XInternAtom(g->display, "_XEMBED", False);
-			nev.format = 32;
-			nev.data.l[0] = ev->data.l[0];
-			nev.data.l[1] = XEMBED_EMBEDDED_NOTIFY;
-			nev.data.l[3] = ev->window;
-			nev.data.l[4] = 0;
-			nev.display = g->display;
-			XSendEvent(nev.display, nev.window, False, NoEventMask, (XEvent *) & ev);
+
+			memset(&resp, 0, sizeof(ev));
+			resp.type = ClientMessage;
+			resp.window = w;
+			resp.message_type = XInternAtom(g->display, "_XEMBED", False);
+			resp.format = 32;
+			resp.data.l[0] = ev->data.l[0];
+			resp.data.l[1] = XEMBED_EMBEDDED_NOTIFY;
+			resp.data.l[3] = ev->window;
+			resp.data.l[4] = 0;
+			resp.display = g->display;
+			XSendEvent(resp.display, resp.window, False, NoEventMask, (XEvent *) & ev);
 			XSync(g->display, False);
-			fprintf(stderr, "Sent message XEMBED_EMBEDDED_NOTIFY to 0x%x\n", (int) nev.window);
-			XSelectInput(g->display, ev->window, StructureNotifyMask | PropertyChangeMask);
+
+			hdr.type = MSG_DOCK;
+			hdr.window = w;
+			write_struct(hdr);
 			break;
 		default:
 			fprintf(stderr, "unhandled tray opcode: %ld\n", ev->data.l[1]);
