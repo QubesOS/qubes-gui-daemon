@@ -770,6 +770,19 @@ void handle_configure(Ghandles * g, XID winid)
 
 }
 
+void handle_map(Ghandles * g, XID winid)
+{
+	struct msg_map_info inf;
+	XSetWindowAttributes attr;
+	read_data((char *) &inf, sizeof(inf));
+	attr.override_redirect = inf.override_redirect;
+	XChangeWindowAttributes(g->display, winid,
+		CWOverrideRedirect, &attr);
+	XMapWindow(g->display, winid);
+	fprintf(stderr, "map msg for 0x%x\n", (int) winid);
+
+}
+
 void handle_close(Ghandles * g, XID winid)
 {
 	XClientMessageEvent ev;
@@ -881,6 +894,9 @@ void handle_message(Ghandles * g)
 		break;
 	case MSG_CONFIGURE:
 		handle_configure(g, hdr.window);
+		break;
+	case MSG_MAP:
+		handle_map(g, hdr.window);
 		break;
 	case MSG_BUTTON:
 		handle_button(g, hdr.window);
