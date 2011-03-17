@@ -627,6 +627,18 @@ void process_xevent_mapnotify(XMapEvent * ev)
 	}
 }
 
+void process_xevent_xembed(XClientMessageEvent * ev)
+{
+	CHECK_NONMANAGED_WINDOW(ev->window);
+	fprintf(stderr, "_XEMBED message %ld\n", ev->data.l[1]);
+	if (ev->data.l[1] == XEMBED_EMBEDDED_NOTIFY) {
+		if (conn->is_docked < 2) {
+			conn->is_docked = 2;
+			if (!conn->is_mapped)
+				XMapWindow(ghandles.display, ev->window);
+		}
+	}
+}
 void process_xevent()
 {
 	XEvent event_buffer;
@@ -662,12 +674,14 @@ void process_xevent()
 		process_xevent_mapnotify((XMapEvent *) & event_buffer);
 		break;
 	case ClientMessage:
-//              fprintf(stderr, "xclient, atom=%s, wm=0x%x\n",
+//              fprintf(stderr, "xclient, atom=%s\n",
 //                      XGetAtomName(ghandles.display,
-//                                   event_buffer.xclient.message_type),
-//                      ghandles.wmDeleteMessage);
-		if (event_buffer.xclient.data.l[0] ==
-		    ghandles.wmDeleteMessage) {
+//                                   event_buffer.xclient.message_type));
+		if (event_buffer.xclient.message_type == ghandles.xembed_message) {
+			process_xevent_xembed((XClientMessageEvent *) & event_buffer);
+		}
+		else if (event_buffer.xclient.data.l[0] ==
+				ghandles.wmDeleteMessage) {
 			fprintf(stderr, "close for 0x%x\n",
 				(int) event_buffer.xclient.window);
 			process_xevent_close(event_buffer.xclient.window);
