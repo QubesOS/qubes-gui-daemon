@@ -113,7 +113,7 @@ struct msg_focus {
 	uint32_t mode;
 	uint32_t detail;
 };
-	
+
 struct msg_execute {
 	char cmd[255];
 };
