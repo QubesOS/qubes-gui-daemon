@@ -612,11 +612,16 @@ void process_xevent_mapnotify(XMapEvent * ev)
 	if (conn->is_mapped)
 		return;
 	XGetWindowAttributes(ghandles.display, conn->local_winid, &attr);
-/*	if (attr.map_state != IsViewable) {
+	if (attr.map_state != IsViewable && !conn->is_docked) {
+        /* Unmap windows that are not visible on vmside.
+         * WM may try to map non-viewable windows ie. when
+         * switching desktops.
+         */
 		(void) XUnmapWindow(ghandles.display, conn->local_winid);
 		fprintf(stderr, "WM tried to map 0x%x, revert\n",
 			(int) conn->local_winid);
-	} else */{
+	} else {
+        /* Tray windows shall be visible always */
 		struct msghdr hdr;
 		struct msg_map_info map_info;
 		map_info.override_redirect = attr.override_redirect;
