@@ -52,9 +52,9 @@ struct _global_handles {
 	Window root_win;	/* root attributes */
 	GC context;
 	Atom wmDeleteMessage;
-	Atom tray_selection;  /* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
-	Atom tray_opcode;     /* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
-	Atom xembed_message;  /* Atom: _XEMBED */
+	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
+	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
+	Atom xembed_message;	/* Atom: _XEMBED */
 	char vmname[16];
 	struct shm_cmd *shmcmd;
 	int cmd_shmid;
@@ -169,7 +169,8 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 	atom_label = XInternAtom(g->display, "_QUBES_VMNAME", 0);
 	XChangeProperty(g->display, child_win, atom_label, XA_STRING,
 			8 /* 8 bit is enough */ , PropModeReplace,
-			(const unsigned char *) g->vmname, strlen(g->vmname));
+			(const unsigned char *) g->vmname,
+			strlen(g->vmname));
 
 
 	return child_win;
@@ -188,12 +189,14 @@ void mkghandles(Ghandles * g)
 	g->root_win = RootWindow(g->display, g->screen);
 	g->context = XCreateGC(g->display, g->root_win, 0, NULL);
 	g->wmDeleteMessage =
-		XInternAtom(g->display, "WM_DELETE_WINDOW", True);
+	    XInternAtom(g->display, "WM_DELETE_WINDOW", True);
 	g->clipboard_requested = 0;
 	snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
-		"_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display));
-	g->tray_selection = XInternAtom(g->display, tray_sel_atom_name, False);
-	g->tray_opcode = XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
+		 "_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display));
+	g->tray_selection =
+	    XInternAtom(g->display, tray_sel_atom_name, False);
+	g->tray_opcode =
+	    XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
 	g->xembed_message = XInternAtom(g->display, "_XEMBED", False);
 }
 
@@ -412,15 +415,15 @@ void process_xevent_configure(XConfigureEvent * ev)
 	if (!conn->is_docked) {
 		conn->x = ev->x;
 		conn->y = ev->y;
-	}
-	else {
+	} else {
 		/* docked window is reparented to root_win on vmside */
 		XWindowAttributes attr;
 		Window win;
 		int x, y;
 		XGetWindowAttributes(ghandles.display, ev->window, &attr);
-		if (XTranslateCoordinates(ghandles.display, ev->window, ghandles.root_win,
-					attr.x, attr.y, &x, &y, &win) == True) {
+		if (XTranslateCoordinates
+		    (ghandles.display, ev->window, ghandles.root_win,
+		     attr.x, attr.y, &x, &y, &win) == True) {
 			conn->x = x;
 			conn->y = y;
 		}
@@ -612,11 +615,16 @@ void process_xevent_mapnotify(XMapEvent * ev)
 	if (conn->is_mapped)
 		return;
 	XGetWindowAttributes(ghandles.display, conn->local_winid, &attr);
-/*	if (attr.map_state != IsViewable) {
+	if (attr.map_state != IsViewable && !conn->is_docked) {
+		/* Unmap windows that are not visible on vmside.
+		 * WM may try to map non-viewable windows ie. when
+		 * switching desktops.
+		 */
 		(void) XUnmapWindow(ghandles.display, conn->local_winid);
 		fprintf(stderr, "WM tried to map 0x%x, revert\n",
 			(int) conn->local_winid);
-	} else */{
+	} else {
+		/* Tray windows shall be visible always */
 		struct msghdr hdr;
 		struct msg_map_info map_info;
 		map_info.override_redirect = attr.override_redirect;
@@ -639,6 +647,7 @@ void process_xevent_xembed(XClientMessageEvent * ev)
 		}
 	}
 }
+
 void process_xevent()
 {
 	XEvent event_buffer;
@@ -677,11 +686,12 @@ void process_xevent()
 //              fprintf(stderr, "xclient, atom=%s\n",
 //                      XGetAtomName(ghandles.display,
 //                                   event_buffer.xclient.message_type));
-		if (event_buffer.xclient.message_type == ghandles.xembed_message) {
-			process_xevent_xembed((XClientMessageEvent *) & event_buffer);
-		}
-		else if (event_buffer.xclient.data.l[0] ==
-				ghandles.wmDeleteMessage) {
+		if (event_buffer.xclient.message_type ==
+		    ghandles.xembed_message) {
+			process_xevent_xembed((XClientMessageEvent *) &
+					      event_buffer);
+		} else if (event_buffer.xclient.data.l[0] ==
+			   ghandles.wmDeleteMessage) {
 			fprintf(stderr, "close for 0x%x\n",
 				(int) event_buffer.xclient.window);
 			process_xevent_close(event_buffer.xclient.window);
@@ -901,7 +911,8 @@ void handle_dock(Ghandles * g, struct conndata *item)
 		msg.data.l[1] = SYSTEM_TRAY_REQUEST_DOCK;
 		msg.data.l[2] = item->local_winid;
 		msg.display = g->display;
-		XSendEvent(msg.display, msg.window, False, NoEventMask, (XEvent *) & msg);
+		XSendEvent(msg.display, msg.window, False, NoEventMask,
+			   (XEvent *) & msg);
 	}
 	item->is_docked = 1;
 }
