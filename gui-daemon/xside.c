@@ -1176,12 +1176,14 @@ void exec_pacat(int domid)
 	}
 }
 
+#define XORG_DEFAULT_XINC 8
+#define _VIRTUALX(x) ( (((x)+XORG_DEFAULT_XINC-1)/XORG_DEFAULT_XINC)*XORG_DEFAULT_XINC )
 void send_xconf(Ghandles * g)
 {
 	struct msg_xconf xconf;
 	XWindowAttributes attr;
 	XGetWindowAttributes(g->display, g->root_win, &attr);
-	xconf.w = attr.width;
+	xconf.w = _VIRTUALX(attr.width);
 	xconf.h = attr.height;
 	xconf.depth = attr.depth;
 	xconf.mem = xconf.w * xconf.h * 4 / 1024 + 1;
