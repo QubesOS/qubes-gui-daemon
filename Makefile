@@ -28,9 +28,6 @@ help:
 	    echo "make rpms_dom0        <--- create binary rpms for dom0"; \
 	    echo "make rpms_appvm       <--- create binary rpms for appvm"; \
 	    echo "make rpms_appvm_kmods <--- create kernel module rpms for appvm"; \
-	    echo; \
-	    echo "make update-repo      <-- copy newly generated rpms to qubes yum repo";\
-	    echo "make update-repo-testing  <-- same, but to "testing" repo";\
 	    echo "make clean            <--- clean all the binary files";\
 	    exit 0;
 
@@ -86,22 +83,6 @@ rpms_dom0:
 
 tar:
 	git archive --format=tar --prefix=qubes-gui/ HEAD -o qubes-gui.tar
-
-update-repo:
-	ln -f rpm/x86_64/qubes-gui-vm-*.rpm ../yum/r1/appvm/rpm/
-	ln -f rpm/x86_64/qubes-gui-vm-*.rpm ../yum/r1/netvm/rpm/
-	ln -f rpm/x86_64/qubes-vchan-vm-*.rpm ../yum/r1/appvm/rpm/
-	ln -f rpm/x86_64/qubes-vchan-vm-*.rpm ../yum/r1/netvm/rpm/
-	ln -f rpm/x86_64/qubes-gui-dom0-*.rpm ../yum/r1/dom0/rpm/
-
-update-repo-testing:
-	ln -f rpm/x86_64/qubes-gui-vm-*.rpm ../yum/r1-testing/appvm/rpm/
-	ln -f rpm/x86_64/qubes-gui-vm-*.rpm ../yum/r1-testing/netvm/rpm/
-	ln -f rpm/x86_64/qubes-vchan-vm-*.rpm ../yum/r1-testing/appvm/rpm/
-	ln -f rpm/x86_64/qubes-vchan-vm-*.rpm ../yum/r1-testing/netvm/rpm/
-	ln -f rpm/x86_64/qubes-gui-dom0-*.rpm ../yum/r1-testing/dom0/rpm/
-
-
 
 clean:
 	(cd common; $(MAKE) clean)
