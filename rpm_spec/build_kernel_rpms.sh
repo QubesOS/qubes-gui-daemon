@@ -5,7 +5,7 @@ do
     krnl=`basename $dir`
     echo Building rpm for kernel version $krnl...
     echo =========================================================================
-    rpmbuild --target i686 --define "_target_cpu i686" --define "_rpmdir rpm/" --define "kernel_version $krnl" -bb rpm_spec/vchan-vm.spec || \
+    rpmbuild --target i686 --define "_target_cpu i686" --define "_rpmdir rpm/" --define "kernel_version $krnl" -bb rpm_spec/u2mfn-vm.spec || \
     	echo WARNING: BUILD FAILD!!!!!!!!!
 done
 
@@ -16,7 +16,7 @@ do
     krnl=`basename $dir`
     echo Building rpm for kernel version $krnl...
     echo =========================================================================
-    rpmbuild --target x86_64 --define "_rpmdir rpm/" --define "kernel_version $krnl" -bb rpm_spec/vchan-vm.spec || \
+    rpmbuild --target x86_64 --define "_rpmdir rpm/" --define "kernel_version $krnl" -bb rpm_spec/u2mfn-vm.spec || \
     	echo WARNING: BUILD FAILD!!!!!!!!!
 done
 

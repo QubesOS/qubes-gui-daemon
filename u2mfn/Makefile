@@ -23,4 +23,6 @@ obj-m                       += u2mfn.o
 
 clean:
 	rm -f *.o *.ko *~
+	rm -f .u2mfn.* *.mod.c Module.symvers modules.order
+	rm -fr .tmp_versions
 	rm -f Makefile.xen

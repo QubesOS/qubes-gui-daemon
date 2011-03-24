@@ -33,7 +33,7 @@ help:
 
 dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
 
-appvm: gui-agent/qubes-gui vchan/u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so
+appvm: gui-agent/qubes-gui u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so
 
 gui-daemon/qubes-guid:
 	(cd gui-daemon; $(MAKE))
@@ -53,8 +53,8 @@ relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so:
 gui-agent/qubes-gui:
 	(cd gui-agent; $(MAKE))
 
-vchan/u2mfn/u2mfn.ko:
-	(cd vchan/u2mfn; ./buildme.sh)
+u2mfn/u2mfn.ko:
+	(cd u2mfn; ./buildme.sh)
 
 xf86-input-mfndev/src/.libs/qubes_drv.so:
 	(cd xf86-input-mfndev && ./bootstrap && ./configure && make LDFLAGS=-lu2mfn)
@@ -92,6 +92,6 @@ clean:
 	(cd shmoverride; $(MAKE) clean)
 	$(MAKE) -C pulse clean
 	(cd xf86-input-mfndev; if [ -e Makefile ] ; then $(MAKE) distclean; fi; ./bootstrap --clean || echo )
-	(cd vchan/u2mfn; ./cleanup.sh || echo)
+	(cd u2mfn; $(MAKE) clean)
 	$(MAKE) -C relaxed_xf86ValidateModes clean
 

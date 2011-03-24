@@ -23,17 +23,17 @@
 #
 
 
-%define _builddir %(pwd)/vchan
+%define _builddir %(pwd)/u2mfn
 # the following can be overwritten via cmdline
 
 %{!?kernel_version:%{error: "You must define kernel_version in rpmbuild cmdline!"}}
 
-%{!?version: %define version %(cat version_vchan)}
+%{!?version: %define version %(cat version_u2mfn)}
 
-Name:		qubes-vchan-vm-{kernel-%{kernel_version}}
+Name:		qubes-u2mfn-vm-{kernel-%{kernel_version}}
 Version:	%{version}
 Release:	1
-Summary:	The vchan library for the Qubes GUI Agent for AppVMs
+Summary:	The u2mfn kernel module for the Qubes GUI Agent for AppVMs
 
 Group:		Qubes
 Vendor:		Invisible Things Lab
@@ -45,11 +45,11 @@ Source:		.
 BuildRequires:	kernel-devel
 Requires:	qubes-core-vm
 AutoReq:    0
-Provides:	qubes-vchan-vm
+Provides:	qubes-u2mfn-vm
 
 
 %description
-The vchan library for the Qubes GUI Agent to be installed in VM.
+The u2mfn kernel module for the Qubes GUI Agent for AppVMs.
 
 %prep
 # we operate on the current directory, so no need to unpack anything
@@ -60,26 +60,18 @@ make clean
 KERNDIR=/usr/src/kernels/%{kernel_version}
 HAVE_GET_PHYS_TO_MACHINE=1
 grep -q get_phys_to_machine.*EXPORT_SYMBOL $KERNDIR/Module.symvers || HAVE_GET_PHYS_TO_MACHINE=0
-#make -C /usr/src/kernels/%{kernel_version} SUBDIRS=%{_builddir}/event_channel modules \
-#        EXTRA_CFLAGS=-I%{_builddir}/xenincl
 
-make -C $KERNDIR SUBDIRS=%{_builddir}/u2mfn modules \
-        EXTRA_CFLAGS="-I%{_builddir}/xenincl -DHAVE_GET_PHYS_TO_MACHINE=$HAVE_GET_PHYS_TO_MACHINE"
-
-#cd vchan && make
+make -C $KERNDIR SUBDIRS=%{_builddir} modules \
+        EXTRA_CFLAGS="-DHAVE_GET_PHYS_TO_MACHINE=$HAVE_GET_PHYS_TO_MACHINE"
 
 %install
 rm -rf $RPM_BUILD_ROOT
 
-#install -D event_channel/evtchn.ko $RPM_BUILD_ROOT/lib/modules/%{kernel_version}/extra/evtchn.ko
-install -D u2mfn/u2mfn.ko $RPM_BUILD_ROOT/lib/modules/%{kernel_version}/extra/u2mfn.ko
-#install -D vchan/libvchan.so $RPM_BUILD_ROOT/%{_libdir}/libvchan.so
-install -D ../appvm_scripts/etc/sysconfig/modules/qubes_vchan.modules $RPM_BUILD_ROOT/etc/sysconfig/modules/qubes_vchan.modules
+install -D u2mfn.ko $RPM_BUILD_ROOT/lib/modules/%{kernel_version}/extra/u2mfn.ko
+install -D ../appvm_scripts/etc/sysconfig/modules/qubes_u2mfn.modules $RPM_BUILD_ROOT/etc/sysconfig/modules/qubes_u2mfn.modules
 
 %post
 depmod -a %{kernel_version}
-#modprobe evtchn
-#modprobe u2mfn
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -87,10 +79,8 @@ rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root,-)
-#/lib/modules/%{kernel_version}/extra/evtchn.ko
 /lib/modules/%{kernel_version}/extra/u2mfn.ko
-#/%{_libdir}/libvchan.so
-/etc/sysconfig/modules/qubes_vchan.modules
+/etc/sysconfig/modules/qubes_u2mfn.modules
 
 
 

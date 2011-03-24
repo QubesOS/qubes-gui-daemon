@@ -50,7 +50,7 @@ BuildRequires:	libtool-ltdl-devel
 BuildRequires:	pulseaudio-libs-devel
 BuildRequires:	xen-devel
 BuildRequires:	xorg-x11-server-devel
-Requires:	qubes-core-vm qubes-vchan-vm xen-qubes-vm-essentials 
+Requires:	qubes-core-vm qubes-u2mfn-vm xen-qubes-vm-essentials
 Requires:	pulseaudio = %{pa_ver}
 AutoReq: 0
 
