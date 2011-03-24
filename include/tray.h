@@ -1,7 +1,7 @@
 /*
  * The Qubes OS Project, http://www.qubes-os.org
  *
- * Copyright (C) 2010  Rafal Wojtczuk  <rafal@invisiblethingslab.com>
+ * Copyright (C) 2011  Tomasz Sterna <tomek@xiaoka.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,6 +19,15 @@
  *
  */
 
-int u2mfn_get_mfn_for_page(long va, int *mfn) ;
-int u2mfn_get_last_mfn(int *mfn) ;
-char *u2mfn_alloc_kpage(void) ;
+#define SYSTEM_TRAY_REQUEST_DOCK    0
+#define SYSTEM_TRAY_BEGIN_MESSAGE   1
+#define SYSTEM_TRAY_CANCEL_MESSAGE  2
+
+#define XEMBED_EMBEDDED_NOTIFY          0
+#define XEMBED_WINDOW_ACTIVATE          1
+#define XEMBED_WINDOW_DEACTIVATE        2
+#define XEMBED_REQUEST_FOCUS            3
+#define XEMBED_FOCUS_IN                 4
+#define XEMBED_FOCUS_OUT                5
+#define XEMBED_FOCUS_NEXT               6
+#define XEMBED_FOCUS_PREV               7

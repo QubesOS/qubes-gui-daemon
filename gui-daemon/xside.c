@@ -44,6 +44,7 @@
 #include "shm_cmd.h"
 #include "cmd_socket.h"
 #include "qlimits.h"
+#include "tray.h"
 
 struct _global_handles {
 	Display *display;
@@ -51,6 +52,9 @@ struct _global_handles {
 	Window root_win;	/* root attributes */
 	GC context;
 	Atom wmDeleteMessage;
+	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
+	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
+	Atom xembed_message;	/* Atom: _XEMBED */
 	char vmname[16];
 	struct shm_cmd *shmcmd;
 	int cmd_shmid;
@@ -72,6 +76,7 @@ struct conndata {
 	int x;
 	int y;
 	int is_mapped;
+	int is_docked;
 	XID remote_winid;
 	Window local_winid;
 	struct conndata *parent;
@@ -94,7 +99,7 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 	Window child_win;
 	Window parent;
 	XSizeHints my_size_hints;	/* hints for the window manager */
-	Atom atom_label, atom_vmname;
+	Atom atom_label;
 
 	my_size_hints.flags = PSize;
 	my_size_hints.height = item->width;
@@ -164,7 +169,8 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 	atom_label = XInternAtom(g->display, "_QUBES_VMNAME", 0);
 	XChangeProperty(g->display, child_win, atom_label, XA_STRING,
 			8 /* 8 bit is enough */ , PropModeReplace,
-			g->vmname, strlen(g->vmname));
+			(const unsigned char *) g->vmname,
+			strlen(g->vmname));
 
 
 	return child_win;
@@ -173,6 +179,7 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 
 void mkghandles(Ghandles * g)
 {
+	char tray_sel_atom_name[64];
 	g->display = XOpenDisplay(NULL);
 	if (!g->display) {
 		perror("XOpenDisplay");
@@ -184,6 +191,13 @@ void mkghandles(Ghandles * g)
 	g->wmDeleteMessage =
 	    XInternAtom(g->display, "WM_DELETE_WINDOW", True);
 	g->clipboard_requested = 0;
+	snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
+		 "_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display));
+	g->tray_selection =
+	    XInternAtom(g->display, tray_sel_atom_name, False);
+	g->tray_opcode =
+	    XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
+	g->xembed_message = XInternAtom(g->display, "_XEMBED", False);
 }
 
 struct conndata *check_nonmanged_window(XID id)
@@ -398,13 +412,27 @@ void process_xevent_configure(XConfigureEvent * ev)
 		return;
 	conn->width = ev->width;
 	conn->height = ev->height;
-	conn->x = ev->x;
-	conn->y = ev->y;
+	if (!conn->is_docked) {
+		conn->x = ev->x;
+		conn->y = ev->y;
+	} else {
+		/* docked window is reparented to root_win on vmside */
+		XWindowAttributes attr;
+		Window win;
+		int x, y;
+		XGetWindowAttributes(ghandles.display, ev->window, &attr);
+		if (XTranslateCoordinates
+		    (ghandles.display, ev->window, ghandles.root_win,
+		     attr.x, attr.y, &x, &y, &win) == True) {
+			conn->x = x;
+			conn->y = y;
+		}
+	}
 // if AppVM has not unacknowledged previous resize msg, do not send another one
 	if (conn->have_queued_configure)
 		return;
 	conn->have_queued_configure = 1;
-	send_configure(conn, ev->x, ev->y, ev->width, ev->height);
+	send_configure(conn, conn->x, conn->y, conn->width, conn->height);
 }
 
 void handle_configure_from_vm(Ghandles * g, struct conndata *item)
@@ -587,10 +615,36 @@ void process_xevent_mapnotify(XMapEvent * ev)
 	if (conn->is_mapped)
 		return;
 	XGetWindowAttributes(ghandles.display, conn->local_winid, &attr);
-	if (attr.map_state == IsViewable) {
+	if (attr.map_state != IsViewable && !conn->is_docked) {
+		/* Unmap windows that are not visible on vmside.
+		 * WM may try to map non-viewable windows ie. when
+		 * switching desktops.
+		 */
 		(void) XUnmapWindow(ghandles.display, conn->local_winid);
 		fprintf(stderr, "WM tried to map 0x%x, revert\n",
 			(int) conn->local_winid);
+	} else {
+		/* Tray windows shall be visible always */
+		struct msghdr hdr;
+		struct msg_map_info map_info;
+		map_info.override_redirect = attr.override_redirect;
+		hdr.type = MSG_MAP;
+		hdr.window = conn->remote_winid;
+		write_struct(hdr);
+		write_struct(map_info);
+	}
+}
+
+void process_xevent_xembed(XClientMessageEvent * ev)
+{
+	CHECK_NONMANAGED_WINDOW(ev->window);
+	fprintf(stderr, "_XEMBED message %ld\n", ev->data.l[1]);
+	if (ev->data.l[1] == XEMBED_EMBEDDED_NOTIFY) {
+		if (conn->is_docked < 2) {
+			conn->is_docked = 2;
+			if (!conn->is_mapped)
+				XMapWindow(ghandles.display, ev->window);
+		}
 	}
 }
 
@@ -629,12 +683,15 @@ void process_xevent()
 		process_xevent_mapnotify((XMapEvent *) & event_buffer);
 		break;
 	case ClientMessage:
-//              fprintf(stderr, "xclient, atom=%s, wm=0x%x\n",
+//              fprintf(stderr, "xclient, atom=%s\n",
 //                      XGetAtomName(ghandles.display,
-//                                   event_buffer.xclient.message_type),
-//                      ghandles.wmDeleteMessage);
-		if (event_buffer.xclient.data.l[0] ==
-		    ghandles.wmDeleteMessage) {
+//                                   event_buffer.xclient.message_type));
+		if (event_buffer.xclient.message_type ==
+		    ghandles.xembed_message) {
+			process_xevent_xembed((XClientMessageEvent *) &
+					      event_buffer);
+		} else if (event_buffer.xclient.data.l[0] ==
+			   ghandles.wmDeleteMessage) {
 			fprintf(stderr, "close for 0x%x\n",
 				(int) event_buffer.xclient.window);
 			process_xevent_close(event_buffer.xclient.window);
@@ -832,9 +889,32 @@ void handle_map(struct conndata *item)
 	} else
 		item->transient_for = 0;
 	item->override_redirect = 0;
-	if (txt.override_redirect)
+	if (txt.override_redirect || item->is_docked)
 		fix_menu(item);
 	(void) XMapWindow(ghandles.display, item->local_winid);
+}
+
+void handle_dock(Ghandles * g, struct conndata *item)
+{
+	Window tray;
+	fprintf(stderr, "docking window 0x%x\n", (int) item->local_winid);
+	fix_menu(item);
+	tray = XGetSelectionOwner(g->display, g->tray_selection);
+	if (tray != None) {
+		XClientMessageEvent msg;
+		memset(&msg, 0, sizeof(msg));
+		msg.type = ClientMessage;
+		msg.window = tray;
+		msg.message_type = g->tray_opcode;
+		msg.format = 32;
+		msg.data.l[0] = CurrentTime;
+		msg.data.l[1] = SYSTEM_TRAY_REQUEST_DOCK;
+		msg.data.l[2] = item->local_winid;
+		msg.display = g->display;
+		XSendEvent(msg.display, msg.window, False, NoEventMask,
+			   (XEvent *) & msg);
+	}
+	item->is_docked = 1;
 }
 
 void inter_appviewer_lock(int mode)
@@ -1009,6 +1089,9 @@ void handle_message()
 	case MSG_WMNAME:
 		handle_wmname(&ghandles, item);
 		break;
+	case MSG_DOCK:
+		handle_dock(&ghandles, item);
+		break;
 	default:
 		fprintf(stderr, "got msg type %d\n", hdr.type);
 		exit(1);
@@ -1093,12 +1176,14 @@ void exec_pacat(int domid)
 	}
 }
 
+#define XORG_DEFAULT_XINC 8
+#define _VIRTUALX(x) ( (((x)+XORG_DEFAULT_XINC-1)/XORG_DEFAULT_XINC)*XORG_DEFAULT_XINC )
 void send_xconf(Ghandles * g)
 {
 	struct msg_xconf xconf;
 	XWindowAttributes attr;
 	XGetWindowAttributes(g->display, g->root_win, &attr);
-	xconf.w = attr.width;
+	xconf.w = _VIRTUALX(attr.width);
 	xconf.h = attr.height;
 	xconf.depth = attr.depth;
 	xconf.mem = xconf.w * xconf.h * 4 / 1024 + 1;
@@ -1245,9 +1330,19 @@ void parse_cmdline(int argc, char **argv)
 	}
 }
 
+void set_alive_flag(int domid)
+{
+	char buf[256];
+	int fd;
+	snprintf(buf, sizeof(buf), "/var/run/qubes/guid_running.%d",
+		 domid);
+	fd = open(buf, O_WRONLY | O_CREAT | O_NOFOLLOW, 0600);
+	close(fd);
+}
+
 int main(int argc, char **argv)
 {
-	int xfd, cmd_socket;
+	int xfd;
 	char *vmname;
 	FILE *f;
 	int childpid;
@@ -1316,7 +1411,7 @@ int main(int argc, char **argv)
 	vmname = peer_client_init(ghandles.domid, 6000);
 	exec_pacat(ghandles.domid);
 	setuid(getuid());
-	cmd_socket = get_cmd_socket(ghandles.domid);
+	set_alive_flag(ghandles.domid);
 	write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully
 
 	signal(SIGTERM, dummy_signal_handler);
@@ -1336,7 +1431,7 @@ int main(int argc, char **argv)
 	}
 
 	for (;;) {
-		int select_fds[2] = { xfd, cmd_socket };
+		int select_fds[2] = { xfd };
 		fd_set retset;
 		int busy;
 		if (signal_caught) {
@@ -1354,12 +1449,7 @@ int main(int argc, char **argv)
 				busy = 1;
 			}
 		} while (busy);
-		wait_for_vchan_or_argfd(2, select_fds, &retset);
-		if (FD_ISSET(cmd_socket, &retset)) {
-			char *cmd = get_line_from_cmd_socket(cmd_socket);
-			if (cmd)
-				send_cmd_to_vm(cmd);
-		}
+		wait_for_vchan_or_argfd(1, select_fds, &retset);
 	}
 	return 0;
 }

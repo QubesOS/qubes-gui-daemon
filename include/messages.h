@@ -20,7 +20,7 @@
  */
 
 #include <stdint.h>
-#define QUBES_GUID_PROTOCOL_VERSION 3
+#define QUBES_GUID_PROTOCOL_VERSION 4
 struct msghdr {
 	uint32_t type;
 	uint32_t window;
@@ -46,6 +46,7 @@ enum {
 	MSG_CLIPBOARD_DATA,
 	MSG_WMNAME,
 	MSG_KEYMAP_NOTIFY,
+	MSG_DOCK,
 	MSG_MAX
 };
 struct msg_map_info {
@@ -112,7 +113,7 @@ struct msg_focus {
 	uint32_t mode;
 	uint32_t detail;
 };
-	
+
 struct msg_execute {
 	char cmd[255];
 };

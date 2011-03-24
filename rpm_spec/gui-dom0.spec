@@ -27,7 +27,7 @@
 
 Name:		qubes-gui-dom0	
 Version:	%{version}
-Release:	1
+Release:	1%{dist}
 Summary:	The Qubes GUI virtualization (Dom0 side) 
 
 Group:		Qubes
@@ -38,11 +38,12 @@ URL:		http://www.qubes-os.org
 Source:		.
 
 Requires:	qubes-core-dom0 >= 1.3.14
-Requires:   xorg-x11-server-Xorg kdm pulseaudio-libs
+Requires:	xorg-x11-server-Xorg kdm pulseaudio-libs
 Requires:	/usr/bin/kdialog
 BuildRequires:  pulseaudio-libs-devel
 BuildRequires:  xen-devel
 BuildRequires:  libXt-devel
+BuildRequires:	gcc
 
 %define _builddir %(pwd)
 
@@ -64,7 +65,6 @@ install -D gui-daemon/qubes_guid $RPM_BUILD_ROOT/usr/bin/qubes_guid
 install -D pulse/pacat-simple-vchan $RPM_BUILD_ROOT/usr/bin/pacat-simple-vchan
 install -D shmoverride/X_wrapper_qubes $RPM_BUILD_ROOT/usr/bin/X_wrapper_qubes
 install -D shmoverride/shmoverride.so $RPM_BUILD_ROOT/%{_libdir}/shmoverride.so
-install -D vchan/vchan/libvchan.so $RPM_BUILD_ROOT/%{_libdir}/libvchan.so
 
 %triggerin -- xorg-x11-server-Xorg
 ln -sf /usr/bin/X_wrapper_qubes /usr/bin/X
@@ -84,4 +84,3 @@ rm -rf $RPM_BUILD_ROOT
 /usr/bin/pacat-simple-vchan
 /usr/bin/X_wrapper_qubes
 %{_libdir}/shmoverride.so
-%{_libdir}/libvchan.so

@@ -34,9 +34,9 @@ help:
 	    echo "make clean            <--- clean all the binary files";\
 	    exit 0;
 
-dom0: vchan/vchan/libvchan.so gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
+dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
 
-appvm: vchan/vchan/libvchan.so gui-agent/qubes-gui vchan/u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so
+appvm: gui-agent/qubes-gui vchan/u2mfn/u2mfn.ko xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so
 
 gui-daemon/qubes-guid:
 	(cd gui-daemon; $(MAKE))
@@ -47,10 +47,6 @@ shmoverride/shmoverride.so:
 shmoverride/X_wrapper_qubes:
 	(cd shmoverride; $(MAKE) X_wrapper_qubes)
 	
-
-vchan/vchan/libvchan.so: vchan/u2mfn/u2mfnlib.o
-	(cd vchan/vchan; $(MAKE) libvchan.so)
-
 pulse/pacat-simple-vchan:
 	$(MAKE) -C pulse pacat-simple-vchan
 
@@ -63,11 +59,8 @@ gui-agent/qubes-gui:
 vchan/u2mfn/u2mfn.ko:
 	(cd vchan/u2mfn; ./buildme.sh)
 
-vchan/u2mfn/u2mfnlib.o:
-	(cd vchan/u2mfn; make)
-
 xf86-input-mfndev/src/.libs/qubes_drv.so:
-	(cd xf86-input-mfndev && ./bootstrap && ./configure && make)
+	(cd xf86-input-mfndev && ./bootstrap && ./configure && make LDFLAGS=-lu2mfn)
 
 pulse/module-vchan-sink.so:
 	$(MAKE) -C pulse module-vchan-sink.so
@@ -118,8 +111,6 @@ clean:
 	(cd shmoverride; $(MAKE) clean)
 	$(MAKE) -C pulse clean
 	(cd xf86-input-mfndev; if [ -e Makefile ] ; then $(MAKE) distclean; fi; ./bootstrap --clean || echo )
-	(cd vchan; $(MAKE) clean)
-	(cd vchan/event_channel; ./cleanup.sh || echo)
 	(cd vchan/u2mfn; ./cleanup.sh || echo)
 	$(MAKE) -C relaxed_xf86ValidateModes clean
 
