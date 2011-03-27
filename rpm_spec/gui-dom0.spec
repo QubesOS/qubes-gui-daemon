@@ -45,6 +45,8 @@ BuildRequires:  pulseaudio-libs-devel
 BuildRequires:  xen-devel
 BuildRequires:  libXt-devel
 BuildRequires:	gcc
+BuildRequires:	qubes-core-appvm-devel
+BuildRequires:	qubes-core-appvm-libs
 
 %define _builddir %(pwd)
 
