@@ -554,7 +554,7 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 	if (conn->image_height > conn->height)
 		hoff = (conn->image_height - conn->height) / 2;
 	if (conn->image_width > conn->width)
-		hoff = (conn->image_width - conn->width) / 2;
+		woff = (conn->image_width - conn->width) / 2;
 	if (x < 0 || y < 0) {
 		fprintf(stderr,
 			"do_shm_update for 0x%x(remote 0x%x), x=%d, y=%d, w=%d, h=%d ?\n",
