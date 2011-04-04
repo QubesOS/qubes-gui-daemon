@@ -19,16 +19,19 @@
 #
 #
 
+RPMS_DIR=rpm/
+VERSION := $(shell cat version)
+
 help:
 	@echo "Qubes GUI main Makefile:" ;\
-	    echo "make dom0             <--- make GUI code for Dom0"; \
-	    echo "make appvm            <--- make GUI agent code for VM"; \
+	    echo "make rpms                 <--- make all rpms and sign them";\
+	    echo "make rpms_dom0            <--- create binary rpms for dom0"; \
+	    echo "make rpms_appvm           <--- create binary rpms for appvm"; \
+	    echo "make rpms_appvm_kmods     <--- create kernel module rpms for appvm"; \
 	    echo; \
-	    echo "make rpms             <--- make all rpms and sign them";\
-	    echo "make rpms_dom0        <--- create binary rpms for dom0"; \
-	    echo "make rpms_appvm       <--- create binary rpms for appvm"; \
-	    echo "make rpms_appvm_kmods <--- create kernel module rpms for appvm"; \
-	    echo "make clean            <--- clean all the binary files";\
+	    echo "make clean                <--- clean all the binary files";\
+	    echo "make update-repo-current  <-- copy newly generated rpms to qubes yum repo";\
+	    echo "make update-repo-unstable <-- same, but to -testing repo";\
 	    exit 0;
 
 dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
@@ -67,8 +70,8 @@ make rpms:
 	@make rpms_appvm_kmods
 	@make rpms_appvm
 
-	rpm --addsign rpm/x86_64/*.rpm
-	(if [ -d rpm/i686 ] ; then rpm --addsign rpm/i686/*.rpm; fi)
+	rpm --addsign rpm/x86_64/*$(VERSION)*.rpm
+	(if [ -d rpm/i686 ] ; then rpm --addsign rpm/i686/*$(VERSION)*.rpm; fi)
 
 rpms_appvm:
 	rpmbuild --define "_rpmdir rpm/" -bb rpm_spec/gui-vm.spec
@@ -95,3 +98,10 @@ clean:
 	(cd u2mfn; $(MAKE) clean)
 	$(MAKE) -C relaxed_xf86ValidateModes clean
 
+update-repo-current:
+	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*.rpm ../yum/current-release/current/dom0/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*.rpm ../yum/current-release/current/vm/rpm/
+
+update-repo-unstable:
+	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*.rpm ../yum/current-release/unstable/dom0/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*.rpm ../yum/current-release/unstable/vm/rpm/
