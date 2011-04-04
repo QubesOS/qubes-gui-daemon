@@ -401,6 +401,27 @@ void send_configure(struct conndata *conn, int x, int y, int w, int h)
 	write_message(hdr, msg);
 }
 
+int fix_docked_xy(struct conndata *conn)
+{
+
+	/* docked window is reparented to root_win on vmside */
+	XWindowAttributes attr;
+	Window win;
+	int x, y, ret = 0;
+	XGetWindowAttributes(ghandles.display, conn->local_winid, &attr);
+	if (XTranslateCoordinates
+	    (ghandles.display, conn->local_winid, ghandles.root_win,
+	     0, 0, &x, &y, &win) == True) {
+		if (conn->x != x || conn->y != y)
+			ret = 1;
+		conn->x = x;
+		conn->y = y;
+	}
+	return ret;
+}
+
+
+
 void process_xevent_configure(XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(ev->window);
@@ -415,19 +436,9 @@ void process_xevent_configure(XConfigureEvent * ev)
 	if (!conn->is_docked) {
 		conn->x = ev->x;
 		conn->y = ev->y;
-	} else {
-		/* docked window is reparented to root_win on vmside */
-		XWindowAttributes attr;
-		Window win;
-		int x, y;
-		XGetWindowAttributes(ghandles.display, ev->window, &attr);
-		if (XTranslateCoordinates
-		    (ghandles.display, ev->window, ghandles.root_win,
-		     attr.x, attr.y, &x, &y, &win) == True) {
-			conn->x = x;
-			conn->y = y;
-		}
-	}
+	} else
+		fix_docked_xy(conn);
+
 // if AppVM has not unacknowledged previous resize msg, do not send another one
 	if (conn->have_queued_configure)
 		return;
@@ -455,6 +466,17 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 	else
 		conf_changed = 0;
 	item->override_redirect = conf.override_redirect;
+
+/* We do not allow a docked window to change its size, period. */
+	if (item->is_docked) {
+		if (conf_changed)
+			send_configure(item, item->x, item->y, item->width,
+				       item->height);
+		item->have_queued_configure = 0;
+		return;
+	}
+
+
 	if (item->have_queued_configure) {
 		if (conf_changed) {
 			send_configure(item, item->x, item->y, item->width,
@@ -488,6 +510,11 @@ void process_xevent_motion(XMotionEvent * ev)
 	struct msghdr hdr;
 	struct msg_motion k;
 	CHECK_NONMANAGED_WINDOW(ev->window);
+
+	if (conn->is_docked && fix_docked_xy(conn))
+		send_configure(conn, conn->x, conn->y, conn->width,
+			       conn->height);
+
 
 	k.x = ev->x;
 	k.y = ev->y;
@@ -554,7 +581,7 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 	if (conn->image_height > conn->height)
 		hoff = (conn->image_height - conn->height) / 2;
 	if (conn->image_width > conn->width)
-		hoff = (conn->image_width - conn->width) / 2;
+		woff = (conn->image_width - conn->width) / 2;
 	if (x < 0 || y < 0) {
 		fprintf(stderr,
 			"do_shm_update for 0x%x(remote 0x%x), x=%d, y=%d, w=%d, h=%d ?\n",
@@ -590,8 +617,74 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 
 	if (w <= 0 || h <= 0)
 		return;
-	XShmPutImage(ghandles.display, conn->local_winid, ghandles.context,
-		     conn->image, x + woff, y + hoff, x, y, w, h, 0);
+
+	if (conn->is_docked) {
+		char *data, *datap;
+		int xp, yp;
+		data = datap = calloc(1, conn->width * conn->height);
+		if (!data) {
+			perror("malloc");
+			exit(1);
+		}
+
+		/* Create local pixmap, put vmside image to it
+		 * then get local image of the copy.
+		 * This is needed because XGetPixel does not seem to work
+		 * with XShmImage data. */
+		Pixmap pixmap =
+		    XCreatePixmap(ghandles.display, conn->local_winid,
+				  conn->image_width, conn->image_height,
+				  24);
+		XShmPutImage(ghandles.display, pixmap, ghandles.context,
+			     conn->image, 0, 0, 0, 0, conn->image_width,
+			     conn->image_height, 0);
+		XImage *image =
+		    XGetImage(ghandles.display, pixmap, x, y, w, h,
+			      0xFFFFFFFF, ZPixmap);
+		/* Use top-left corner pixel color as transparency color */
+		unsigned long back = XGetPixel(image, 0, 0);
+		/* Generate data for transparency mask Bitmap */
+		for (yp = y; yp < h; yp++) {
+			int step = 0;
+			for (xp = x; xp < w; xp++) {
+				if (XGetPixel(image, xp, yp) != back)
+					*datap |= 1 << (step % 8);
+				if (step % 8 == 7)
+					datap++;
+				step++;
+			}
+			if ((step - 1) % 8 != 7)
+				datap++;
+		}
+		Pixmap mask = XCreateBitmapFromData(ghandles.display,
+						    conn->local_winid,
+						    data, w, h);
+		/* set trayicon background to VM color */
+		XFillRectangle(ghandles.display, conn->local_winid,
+			       ghandles.frame_gc, 0, 0, conn->width,
+			       conn->height);
+		/* Paint clipped Image */
+		XSetClipMask(ghandles.display, ghandles.context, mask);
+		XPutImage(ghandles.display, conn->local_winid,
+			  ghandles.context, image, x + woff, y + hoff, x,
+			  y, w, h);
+		/* Remove clipping */
+		XSetClipMask(ghandles.display, ghandles.context, None);
+		/* Draw VM color frame in case VM tries to cheat
+		 * and puts its own background color */
+		XDrawRectangle(ghandles.display, conn->local_winid,
+			       ghandles.frame_gc, 0, 0,
+			       conn->width - 1, conn->height - 1);
+
+		XFreePixmap(ghandles.display, mask);
+		XDestroyImage(image);
+		XFreePixmap(ghandles.display, pixmap);
+		free(data);
+		return;
+	} else
+		XShmPutImage(ghandles.display, conn->local_winid,
+			     ghandles.context, conn->image, x + woff,
+			     y + hoff, x, y, w, h, 0);
 	if (!do_border)
 		return;
 	for (i = 0; i < border_width; i++)
@@ -898,7 +991,6 @@ void handle_dock(Ghandles * g, struct conndata *item)
 {
 	Window tray;
 	fprintf(stderr, "docking window 0x%x\n", (int) item->local_winid);
-	fix_menu(item);
 	tray = XGetSelectionOwner(g->display, g->tray_selection);
 	if (tray != None) {
 		XClientMessageEvent msg;
