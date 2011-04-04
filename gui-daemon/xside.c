@@ -401,6 +401,27 @@ void send_configure(struct conndata *conn, int x, int y, int w, int h)
 	write_message(hdr, msg);
 }
 
+int fix_docked_xy(struct conndata *conn)
+{
+
+	/* docked window is reparented to root_win on vmside */
+	XWindowAttributes attr;
+	Window win;
+	int x, y, ret = 0;
+	XGetWindowAttributes(ghandles.display, conn->local_winid, &attr);
+	if (XTranslateCoordinates
+	    (ghandles.display, conn->local_winid, ghandles.root_win,
+	     0, 0, &x, &y, &win) == True) {
+		if (conn->x != x || conn->y != y)
+			ret = 1;
+		conn->x = x;
+		conn->y = y;
+	}
+	return ret;
+}
+
+
+
 void process_xevent_configure(XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(ev->window);
@@ -415,19 +436,9 @@ void process_xevent_configure(XConfigureEvent * ev)
 	if (!conn->is_docked) {
 		conn->x = ev->x;
 		conn->y = ev->y;
-	} else {
-		/* docked window is reparented to root_win on vmside */
-		XWindowAttributes attr;
-		Window win;
-		int x, y;
-		XGetWindowAttributes(ghandles.display, ev->window, &attr);
-		if (XTranslateCoordinates
-		    (ghandles.display, ev->window, ghandles.root_win,
-		     attr.x, attr.y, &x, &y, &win) == True) {
-			conn->x = x;
-			conn->y = y;
-		}
-	}
+	} else
+		fix_docked_xy(conn);
+
 // if AppVM has not unacknowledged previous resize msg, do not send another one
 	if (conn->have_queued_configure)
 		return;
@@ -488,6 +499,11 @@ void process_xevent_motion(XMotionEvent * ev)
 	struct msghdr hdr;
 	struct msg_motion k;
 	CHECK_NONMANAGED_WINDOW(ev->window);
+
+	if (conn->is_docked && fix_docked_xy(conn))
+		send_configure(conn, conn->x, conn->y, conn->width,
+			       conn->height);
+
 
 	k.x = ev->x;
 	k.y = ev->y;
