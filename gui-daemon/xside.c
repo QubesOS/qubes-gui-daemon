@@ -466,6 +466,17 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 	else
 		conf_changed = 0;
 	item->override_redirect = conf.override_redirect;
+
+/* We do not allow a docked window to change its size, period. */
+	if (item->is_docked) {
+		if (conf_changed)
+			send_configure(item, item->x, item->y, item->width,
+				       item->height);
+		item->have_queued_configure = 0;
+		return;
+	}
+
+
 	if (item->have_queued_configure) {
 		if (conf_changed) {
 			send_configure(item, item->x, item->y, item->width,
