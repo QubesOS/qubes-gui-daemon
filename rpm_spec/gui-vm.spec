@@ -67,7 +67,9 @@ make appvm
 %install
 rm -rf $RPM_BUILD_ROOT
 install -D gui-agent/qubes_gui $RPM_BUILD_ROOT/usr/bin/qubes_gui
+install -D appvm_scripts/usrbin/qubes-session $RPM_BUILD_ROOT/usr/bin/qubes-session
 install -D appvm_scripts/usrbin/qubes_run_xorg.sh $RPM_BUILD_ROOT/usr/bin/qubes_run_xorg.sh
+install -D appvm_scripts/usrbin/qubes_xorg_wrapper.sh $RPM_BUILD_ROOT/usr/bin/qubes_xorg_wrapper.sh
 install -D pulse/start-pulseaudio-with-vchan $RPM_BUILD_ROOT/usr/bin/start-pulseaudio-with-vchan
 install -D pulse/libsetup-vchan-early.so $RPM_BUILD_ROOT/%{_libdir}/libsetup-vchan-early.so
 install -D pulse/module-vchan-sink.so $RPM_BUILD_ROOT/%{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
@@ -78,6 +80,7 @@ install -D appvm_scripts/etc/X11/xorg-qubes.conf.template $RPM_BUILD_ROOT/etc/X1
 install -D appvm_scripts/etc/init.d/qubes_gui $RPM_BUILD_ROOT/etc/init.d/qubes_gui
 install -D appvm_scripts/etc/profile.d/qubes_gui.sh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.sh
 install -D appvm_scripts/etc/profile.d/qubes_gui.csh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.csh
+install -D appvm_scripts/etc/sysconfig/desktop $RPM_BUILD_ROOT/etc/sysconfig/desktop
 install -d $RPM_BUILD_ROOT/var/log/qubes
 
 %post
@@ -95,7 +98,9 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root,-)
 /usr/bin/qubes_gui
+/usr/bin/qubes-session
 /usr/bin/qubes_run_xorg.sh
+/usr/bin/qubes_xorg_wrapper.sh
 /usr/bin/start-pulseaudio-with-vchan
 %{_libdir}/libsetup-vchan-early.so
 %{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
@@ -106,4 +111,5 @@ rm -rf $RPM_BUILD_ROOT
 /etc/init.d/qubes_gui
 /etc/profile.d/qubes_gui.sh
 /etc/profile.d/qubes_gui.csh
+%config /etc/sysconfig/desktop
 %dir /var/log/qubes
