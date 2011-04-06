@@ -21,6 +21,7 @@
 
 RPMS_DIR=rpm/
 VERSION := $(shell cat version)
+VERSION_U2MFN := $(shell cat version_u2mfn)
 
 help:
 	@echo "Qubes GUI main Makefile:" ;\
@@ -70,7 +71,7 @@ make rpms:
 	@make rpms_appvm_kmods
 	@make rpms_appvm
 
-	rpm --addsign rpm/x86_64/*$(VERSION)*.rpm
+	rpm --addsign rpm/x86_64/*$(VERSION)*.rpm rpm/x86_64/qubes-u2mfn*$(VERSION_U2MFN)*.rpm
 	(if [ -d rpm/i686 ] ; then rpm --addsign rpm/i686/*$(VERSION)*.rpm; fi)
 
 rpms_appvm:
@@ -99,9 +100,15 @@ clean:
 	$(MAKE) -C relaxed_xf86ValidateModes clean
 
 update-repo-current:
-	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*.rpm ../yum/current-release/current/dom0/rpm/
-	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*.rpm ../yum/current-release/current/vm/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../yum/current-release/current/dom0/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc13*.rpm ../yum/current-release/current/vm/f13/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc14*.rpm ../yum/current-release/current/vm/f14/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/current/vm/f13/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/current/vm/f14/rpm/
 
 update-repo-unstable:
-	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*.rpm ../yum/current-release/unstable/dom0/rpm/
-	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*.rpm ../yum/current-release/unstable/vm/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../yum/current-release/unstable/dom0/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc13*.rpm ../yum/current-release/unstable/vm/f13/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc14*.rpm ../yum/current-release/unstable/vm/f14/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/unstable/vm/f13/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/unstable/vm/f14/rpm/
