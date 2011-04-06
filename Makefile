@@ -105,6 +105,7 @@ update-repo-current:
 	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc14*.rpm ../yum/current-release/current/vm/f14/rpm/
 	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/current/vm/f13/rpm/
 	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/current/vm/f14/rpm/
+	cd ../yum && ./update_repo.sh
 
 update-repo-unstable:
 	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../yum/current-release/unstable/dom0/rpm/
@@ -112,3 +113,4 @@ update-repo-unstable:
 	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc14*.rpm ../yum/current-release/unstable/vm/f14/rpm/
 	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/unstable/vm/f13/rpm/
 	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/unstable/vm/f14/rpm/
+	cd ../yum && ./update_repo.sh
