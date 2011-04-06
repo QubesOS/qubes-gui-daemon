@@ -33,6 +33,7 @@ help:
 	    echo "make clean                <--- clean all the binary files";\
 	    echo "make update-repo-current  <-- copy newly generated rpms to qubes yum repo";\
 	    echo "make update-repo-unstable <-- same, but to -testing repo";\
+	    echo "make update-repo-installer -- copy dom0 rpms to installer repo"
 	    exit 0;
 
 dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
@@ -114,3 +115,7 @@ update-repo-unstable:
 	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/unstable/vm/f13/rpm/
 	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/unstable/vm/f14/rpm/
 	cd ../yum && ./update_repo.sh
+
+update-repo-installer:
+	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../installer/yum/qubes-dom0/rpm/
+	cd ../installer/yum && ./update_repo.sh
