@@ -36,6 +36,9 @@ for D in /etc/xdg/autostart/*.desktop; do
 done
 fi # VMTYPE
 
+# Wait some time to pick up zombie children
+sleep 1m
+
 # Now hang myself so Xorg may live :'(
 # ____
 # |/ |
