@@ -63,6 +63,7 @@ struct _global_handles {
 	char cmd_for_vm[256];
 	int clipboard_requested;
 	GC frame_gc;
+	GC tray_gc;
 	char *cmdline_color;
 	char *cmdline_icon;
 	int label_index;
@@ -659,9 +660,9 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 		Pixmap mask = XCreateBitmapFromData(ghandles.display,
 						    conn->local_winid,
 						    data, w, h);
-		/* set trayicon background to VM color */
+		/* set trayicon background to white color */
 		XFillRectangle(ghandles.display, conn->local_winid,
-			       ghandles.frame_gc, 0, 0, conn->width,
+			       ghandles.tray_gc, 0, 0, conn->width,
 			       conn->height);
 		/* Paint clipped Image */
 		XSetClipMask(ghandles.display, ghandles.context, mask);
@@ -1322,6 +1323,14 @@ void get_frame_gc(Ghandles * g, char *name)
 	    XCreateGC(g->display, g->root_win, GCForeground, &values);
 }
 
+void get_tray_gc(Ghandles * g)
+{
+	XGCValues values;
+	values.foreground = WhitePixel(g->display, g->screen);
+	g->tray_gc =
+	    XCreateGC(g->display, g->root_win, GCForeground, &values);
+}
+
 void wait_for_connection_in_parent(int *pipe_notify)
 {
 	// inside the parent process
@@ -1491,6 +1500,7 @@ int main(int argc, char **argv)
 	}
 	mkghandles(&ghandles);
 	get_frame_gc(&ghandles, ghandles.cmdline_color ? : "red");
+	get_tray_gc(&ghandles);
 #if 0
 	if (ghandles.cmdline_icon)
 		setup_icon(ghandles.cmdline_icon);
