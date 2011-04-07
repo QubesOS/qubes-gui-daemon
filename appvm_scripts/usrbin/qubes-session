@@ -40,6 +40,11 @@ for D in /etc/xdg/autostart/*.desktop; do
 done
 fi # VMTYPE
 
+# Save user environment for later
+umask 0377
+rm -f /tmp/qubes-session-env
+env > /tmp/qubes-session-env
+
 # Wait some time to pick up zombie children
 sleep 1m
 

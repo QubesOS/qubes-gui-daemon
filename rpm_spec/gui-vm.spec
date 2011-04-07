@@ -80,6 +80,7 @@ install -D appvm_scripts/etc/X11/xorg-qubes.conf.template $RPM_BUILD_ROOT/etc/X1
 install -D appvm_scripts/etc/init.d/qubes_gui $RPM_BUILD_ROOT/etc/init.d/qubes_gui
 install -D appvm_scripts/etc/profile.d/qubes_gui.sh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.sh
 install -D appvm_scripts/etc/profile.d/qubes_gui.csh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.csh
+install -D appvm_scripts/etc/profile.d/qubes-session.sh $RPM_BUILD_ROOT/etc/profile.d/qubes-session.sh
 install -D appvm_scripts/etc/sysconfig/desktop $RPM_BUILD_ROOT/etc/sysconfig/desktop
 install -d $RPM_BUILD_ROOT/var/log/qubes
 
@@ -111,5 +112,6 @@ rm -rf $RPM_BUILD_ROOT
 /etc/init.d/qubes_gui
 /etc/profile.d/qubes_gui.sh
 /etc/profile.d/qubes_gui.csh
+/etc/profile.d/qubes-session.sh
 %config /etc/sysconfig/desktop
 %dir /var/log/qubes
