@@ -20,6 +20,10 @@
 #
 #
 
+# Switch user to 'user'
+[[ "$USER" != "user" ]] && exec su user -c $0
+
+# Get VM type from XenStore
 VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
 
 if [[ -n "$VMTYPE" ]] && [[ "$VMTYPE" != "DisposableVM" ]]; then
