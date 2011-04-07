@@ -109,7 +109,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libsetup-vchan-early.so
 %{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
 %{_libdir}/xorg/modules/drivers/qubes_drv.so
-%{_libdir}/relaxed_xf86ValidateModes.so
+%attr(4755,root,root) %{_libdir}/relaxed_xf86ValidateModes.so
 %attr(0644,root,root) /etc/X11/xorg-qubes.conf.template
 /etc/init.d/qubes_gui
 /etc/profile.d/qubes_gui.sh
