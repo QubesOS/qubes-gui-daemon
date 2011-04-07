@@ -45,4 +45,4 @@ sed -e  s/%MEM%/$MEM/ \
 	    -e  s/%VREFR_END%/"$VREFR_END"/ \
 	    -e  s/%RES%/QB$RES/ < /etc/X11/xorg-qubes.conf.template \
 	    > /etc/X11/xorg-qubes.conf
-exec /usr/bin/xinit /etc/X11/xinit/xinitrc -- /usr/bin/qubes_xorg_wrapper.sh :0 -nolisten tcp vt07 -wr -config /etc/X11/xorg-qubes.conf
+exec su user -c '/usr/bin/xinit /etc/X11/xinit/xinitrc -- /usr/bin/qubes_xorg_wrapper.sh :0 -nolisten tcp vt07 -wr -config xorg-qubes.conf'
