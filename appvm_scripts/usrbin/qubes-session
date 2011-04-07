@@ -22,7 +22,7 @@
 
 VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
 
-if [[ -n "$VMTYPE" ]]; then
+if [[ -n "$VMTYPE" ]] && [[ "$VMTYPE" != "DisposableVM" ]]; then
 # Process XDG Autostart files
 shopt -s nullglob
 for D in /etc/xdg/autostart/*.desktop; do
