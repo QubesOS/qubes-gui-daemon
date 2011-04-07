@@ -20,9 +20,13 @@
 #
 #
 
+# Switch user to 'user'
+[[ "$USER" != "user" ]] && exec su user -c $0
+
+# Get VM type from XenStore
 VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
 
-if [[ -n "$VMTYPE" ]]; then
+if [[ -n "$VMTYPE" ]] && [[ "$VMTYPE" != "DisposableVM" ]]; then
 # Process XDG Autostart files
 shopt -s nullglob
 for D in /etc/xdg/autostart/*.desktop; do
@@ -35,6 +39,11 @@ for D in /etc/xdg/autostart/*.desktop; do
 	$EXEC &
 done
 fi # VMTYPE
+
+# Save user environment for later
+umask 0377
+rm -f /tmp/qubes-session-env
+env > /tmp/qubes-session-env
 
 # Wait some time to pick up zombie children
 sleep 1m
