@@ -28,6 +28,9 @@ umask 0377
 rm -f /tmp/qubes-session-env
 env > /tmp/qubes-session-env
 
+# Wake waiting for environment processes
+[ -s /tmp/qubes-session-waiter ] && kill -KILL `cat /tmp/qubes-session-waiter` 
+
 # Get VM type from XenStore
 VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
 
