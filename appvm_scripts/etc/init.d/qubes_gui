@@ -9,7 +9,7 @@
 start()
 {
 	echo -n $"Starting Qubes GUI agent:"
-	rm -f /tmp/qubes-session-env 2> /dev/null
+	rm -f /tmp/qubes-session-env /tmp/qubes-session-waiter
 	DISPLAY=:0 /usr/bin/qubes_gui 2> /var/log/qubes/gui_agent.log &
 	export DISPLAY=:0
 	success
