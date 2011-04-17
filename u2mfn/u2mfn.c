@@ -24,7 +24,9 @@
 #include <linux/fs.h>
 #include <linux/mm.h>
 #include <linux/sched.h>
+#ifndef FOREIGN_FRAME_BIT
 #include <xen/page.h>
+#endif
 #include <linux/highmem.h>
 #include "/usr/include/u2mfn-kernel.h"
 
