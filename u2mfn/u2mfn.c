@@ -50,7 +50,7 @@ static inline unsigned long VIRT_TO_MFN(void *addr)
     \param data the user-specified address
     \return mfn corresponding to "data" argument, or -1 on error
 */
-static int u2mfn_ioctl(struct inode *i, struct file *f, unsigned int cmd,
+static long u2mfn_ioctl(struct file *f, unsigned int cmd,
 		       unsigned long data)
 {
 	struct page *user_page;
@@ -132,7 +132,7 @@ static int u2mfn_release(struct inode *i, struct file *f)
 }
 
 static struct file_operations u2mfn_fops = {
-	.ioctl = u2mfn_ioctl,
+	.unlocked_ioctl = u2mfn_ioctl,
 	.mmap = u2mfn_mmap,
 	.release = u2mfn_release
 };
