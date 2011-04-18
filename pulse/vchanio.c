@@ -25,7 +25,11 @@
 #include <libvchan.h>
 #include <xenctrl.h>
 
+#ifdef XENCTRL_HAS_XC_INTERFACE
+static xc_interface *xc_handle = NULL;
+#else
 static int xc_handle = -1;
+#endif
 /* 
 the following is really a workaround for the fact that when the server
 side dies because of "xm destroy", we get no wakeup. So we have to check
@@ -88,8 +92,13 @@ struct libvchan *peer_client_init(int dom, int port)
 		if (ctrl == NULL)
 			sleep(1);
 	} while (ctrl == NULL);
+#ifdef XENCTRL_HAS_XC_INTERFACE
+	xc_handle = xc_interface_open(NULL, 0, 0);
+	if (xc_handle == NULL) {
+#else
 	xc_handle = xc_interface_open();
 	if (xc_handle < 0) {
+#endif
 		perror("xc_interface_open");
 		exit(1);
 	}

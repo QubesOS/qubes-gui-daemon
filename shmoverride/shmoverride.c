@@ -42,7 +42,11 @@ static int (*real_shmctl) (int shmid, int cmd, struct shmid_ds * buf);
 static int local_shmid = 0xabcdef;
 static struct shm_cmd *cmd_pages;
 static struct genlist *addr_list;
+#ifdef XENCTRL_HAS_XC_INTERFACE
+static xc_interface *xc_hnd;
+#else
 static int xc_hnd;
+#endif
 static int list_len;
 
 void *shmat(int shmid, const void *shmaddr, int shmflg)
@@ -106,8 +110,13 @@ int __attribute__ ((constructor)) initfunc()
 	real_shmat = dlsym(RTLD_NEXT, "shmat");
 	real_shmctl = dlsym(RTLD_NEXT, "shmctl");
 	real_shmdt = dlsym(RTLD_NEXT, "shmdt");
+#ifdef XENCTRL_HAS_XC_INTERFACE
+	xc_hnd = xc_interface_open(NULL, NULL, 0);
+	if (!xc_hnd) {
+#else
 	xc_hnd = xc_interface_open();
 	if (xc_hnd < 0) {
+#endif
 		perror("shmoverride xc_interface_open");
 		return 0;	//allow it to run when not under Xen
 	}
