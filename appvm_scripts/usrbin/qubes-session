@@ -44,8 +44,7 @@ for D in /etc/xdg/autostart/*.desktop; do
 	[[ -n "$XDG_CONFIG_DIRS" ]] && [[ -d "$XDG_CONFIG_DIRS/autostart" ]] && USER_AUTOSTART="$XDG_CONFIG_DIRS/autostart" || USER_AUTOSTART="$HOME/.config/autostart"
 	[[ -r "$USER_AUTOSTART/${D##*/}" ]] && D="$D $USER_AUTOSTART/${D##*/}"
 	# Skip Terminal, Hidden, NotShowIn=QUBES and ! OnlyShowIn=QUBES
-	MATCH="\(QUBES\|$VMTYPE\)"
-	[[ -n `sed -n "/^Terminal.*[tT1]/p;/^Hidden.*[tT1]/p;/^NotShowIn.*=.*$MATCH/p;/^OnlyShowIn/{s/.*$MATCH.*//;p}" $D` ]] && continue
+	[[ -n `sed -n "/^Terminal.*[tT1]/p;/^Hidden.*[tT1]/p;/^X-GNOME-Autostart-enabled.*[fF0]/p;/^NotShowIn.*=.*$MATCH/p;/^OnlyShowIn/{s/.*$MATCH.*//;p}" $D` ]] && continue
 	# Extract Exec= line
 	EXEC=`sed -n '/^Exec[ \t=]/s/^[^=]\+=[ \t]*//p' $D | tail -n1`
 	[[ -z "$EXEC" ]] && continue
