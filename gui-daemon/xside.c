@@ -631,7 +631,11 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 		/* Create local pixmap, put vmside image to it
 		 * then get local image of the copy.
 		 * This is needed because XGetPixel does not seem to work
-		 * with XShmImage data. */
+		 * with XShmImage data.
+		 *
+		 * Always use 0,0 w+x,h+y coordinates to generate proper mask. */
+		w = w + x + woff;
+		h = h + y + hoff;
 		Pixmap pixmap =
 		    XCreatePixmap(ghandles.display, conn->local_winid,
 				  conn->image_width, conn->image_height,
@@ -640,14 +644,14 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 			     conn->image, 0, 0, 0, 0, conn->image_width,
 			     conn->image_height, 0);
 		XImage *image =
-		    XGetImage(ghandles.display, pixmap, x, y, w, h,
+		    XGetImage(ghandles.display, pixmap, 0, 0, w, h,
 			      0xFFFFFFFF, ZPixmap);
 		/* Use top-left corner pixel color as transparency color */
 		unsigned long back = XGetPixel(image, 0, 0);
 		/* Generate data for transparency mask Bitmap */
-		for (yp = y; yp < h; yp++) {
+		for (yp = 0; yp < h; yp++) {
 			int step = 0;
-			for (xp = x; xp < w; xp++) {
+			for (xp = 0; xp < w; xp++) {
 				if (XGetPixel(image, xp, yp) != back)
 					*datap |= 1 << (step % 8);
 				if (step % 8 == 7)
@@ -667,8 +671,7 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 		/* Paint clipped Image */
 		XSetClipMask(ghandles.display, ghandles.context, mask);
 		XPutImage(ghandles.display, conn->local_winid,
-			  ghandles.context, image, x + woff, y + hoff, x,
-			  y, w, h);
+			  ghandles.context, image, 0, 0, 0, 0, w, h);
 		/* Remove clipping */
 		XSetClipMask(ghandles.display, ghandles.context, None);
 		/* Draw VM color frame in case VM tries to cheat
