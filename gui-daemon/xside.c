@@ -512,11 +512,6 @@ void process_xevent_motion(XMotionEvent * ev)
 	struct msg_motion k;
 	CHECK_NONMANAGED_WINDOW(ev->window);
 
-	if (conn->is_docked && fix_docked_xy(conn))
-		send_configure(conn, conn->x, conn->y, conn->width,
-			       conn->height);
-
-
 	k.x = ev->x;
 	k.y = ev->y;
 	k.state = ev->state;
@@ -729,6 +724,9 @@ void process_xevent_mapnotify(XMapEvent * ev)
 		hdr.window = conn->remote_winid;
 		write_struct(hdr);
 		write_struct(map_info);
+		if (conn->is_docked && fix_docked_xy(conn))
+			send_configure(conn, conn->x, conn->y, conn->width,
+				       conn->height);
 	}
 }
 
