@@ -24,7 +24,7 @@
 [[ "$USER" != "user" ]] && exec su user -c $0
 
 # Save user environment for later
-umask 0377
+umask 0077
 rm -f /tmp/qubes-session-env
 env > /tmp/qubes-session-env
 
