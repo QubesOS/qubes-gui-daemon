@@ -747,7 +747,12 @@ void handle_focus(Ghandles * g, XID winid)
 		XSetInputFocus(g->display, winid, RevertToParent,
 			       CurrentTime);
 		fprintf(stderr, "0x%x raised\n", (int) winid);
-	}
+	} else if (key.type == FocusOut
+	    && (key.mode == NotifyNormal || key.mode == NotifyUngrab)) {
+		XSetInputFocus(g->display, None, RevertToParent,
+			       CurrentTime);
+		fprintf(stderr, "0x%x lost focus\n", (int) winid);
+    }
 }
 
 int bitset(unsigned char *keys, int num)
