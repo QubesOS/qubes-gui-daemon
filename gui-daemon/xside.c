@@ -532,6 +532,12 @@ void process_xevent_crossing(XCrossingEvent * ev)
 	struct msg_crossing k;
 	CHECK_NONMANAGED_WINDOW(ev->window);
 
+	// fix tray position, as we don't get notify when tray moved...
+	if (conn->is_docked && fix_docked_xy(conn)) {
+		send_configure(conn, conn->x, conn->y, conn->width,
+				conn->height);
+	}
+
 	hdr.type = MSG_CROSSING;
 	hdr.window = conn->remote_winid;
 	k.type = ev->type;
@@ -743,6 +749,11 @@ void process_xevent_xembed(XClientMessageEvent * ev)
 			conn->is_docked = 2;
 			if (!conn->is_mapped)
 				XMapWindow(ghandles.display, ev->window);
+			/* move tray to correct position in VM */
+			if (fix_docked_xy(conn)) {
+				send_configure(conn, conn->x, conn->y, conn->width,
+						conn->height);
+			}
 		}
 	}
 }
