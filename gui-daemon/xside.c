@@ -413,6 +413,9 @@ int fix_docked_xy(struct conndata *conn)
 	if (XTranslateCoordinates
 	    (ghandles.display, conn->local_winid, ghandles.root_win,
 	     0, 0, &x, &y, &win) == True) {
+		/* ignore offscreen coordinates */
+		if (x < 0 || y < 0)
+			x = y = 0;
 		if (conn->x != x || conn->y != y)
 			ret = 1;
 		conn->x = x;
