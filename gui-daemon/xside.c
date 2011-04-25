@@ -378,8 +378,8 @@ void process_xevent_button(XButtonEvent * ev)
 	hdr.type = MSG_BUTTON;
 	hdr.window = conn->remote_winid;
 	write_message(hdr, k);
-	fprintf(stderr, "xside: win 0x%x(0x%x) type=%d button=%d\n",
-		(int) ev->window, hdr.window, k.type, k.button);
+	fprintf(stderr, "xside: win 0x%x(0x%x) type=%d button=%d x=%d, y=%d\n",
+		(int) ev->window, hdr.window, k.type, k.button, k.x, k.y);
 }
 
 void process_xevent_close(XID window)
@@ -429,9 +429,10 @@ int fix_docked_xy(struct conndata *conn)
 void process_xevent_configure(XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(ev->window);
-//      fprintf(stderr, "process_xevent_configure, %d/%d, was"
-//              "%d/%d\n", ev->width, ev->height,
-//              conn->width, conn->height);
+      fprintf(stderr, "process_xevent_configure, %d/%d, was "
+              "%d/%d; xy %d/%d, was %d/%d\n", ev->width, ev->height,
+              conn->width, conn->height,
+		ev->x, ev->y, conn->x, conn->y);
 	if (conn->width == ev->width && conn->height == ev->height
 	    && conn->x == ev->x && conn->y == ev->y)
 		return;
@@ -457,8 +458,8 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 
 	read_struct(conf);
 	fprintf(stderr, "handle_configure_from_vm, %d/%d, was"
-		" %d/%d, ovr=%d\n", conf.width, conf.height,
-		item->width, item->height, conf.override_redirect);
+		" %d/%d, ovr=%d, xy %d/%d, was %d/%d\n", conf.width, conf.height,
+		item->width, item->height, conf.override_redirect, conf.x, conf.y, item->x, item->y);
 	if (conf.width > MAX_WINDOW_WIDTH)
 		conf.width = MAX_WINDOW_WIDTH;
 	if (conf.height > MAX_WINDOW_HEIGHT)
