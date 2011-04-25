@@ -408,10 +408,8 @@ int fix_docked_xy(struct conndata *conn)
 {
 
 	/* docked window is reparented to root_win on vmside */
-	XWindowAttributes attr;
 	Window win;
 	int x, y, ret = 0;
-	XGetWindowAttributes(ghandles.display, conn->local_winid, &attr);
 	if (XTranslateCoordinates
 	    (ghandles.display, conn->local_winid, ghandles.root_win,
 	     0, 0, &x, &y, &win) == True) {
