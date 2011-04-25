@@ -55,6 +55,7 @@ struct _global_handles {
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
 	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
 	Atom xembed_message;	/* Atom: _XEMBED */
+	Atom xembed_info;	/* Atom: _XEMBED_INFO */
 	char vmname[16];
 	struct shm_cmd *shmcmd;
 	int cmd_shmid;
@@ -199,6 +200,7 @@ void mkghandles(Ghandles * g)
 	g->tray_opcode =
 	    XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
 	g->xembed_message = XInternAtom(g->display, "_XEMBED", False);
+	g->xembed_info = XInternAtom(g->display, "_XEMBED_INFO", False);
 }
 
 struct conndata *check_nonmanged_window(XID id)
@@ -995,7 +997,15 @@ void handle_dock(Ghandles * g, struct conndata *item)
 	fprintf(stderr, "docking window 0x%x\n", (int) item->local_winid);
 	tray = XGetSelectionOwner(g->display, g->tray_selection);
 	if (tray != None) {
+		long data[2];
 		XClientMessageEvent msg;
+
+		data[0] = 1;
+		data[1] = 1;
+		XChangeProperty(g->display, item->local_winid, g->xembed_info, g->xembed_info,
+				32, PropModeReplace,
+				(unsigned char *) data, 2);
+
 		memset(&msg, 0, sizeof(msg));
 		msg.type = ClientMessage;
 		msg.window = tray;
