@@ -1269,19 +1269,54 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 {
 	struct msg_window_hints msg;
-    XSizeHints size_hints;
+	XSizeHints size_hints;
+
+	memset(&size_hints, 0, sizeof(size_hints));
 
 	read_struct(msg);
 
-    size_hints.flags       = msg.flags & (PMinSize|PMaxSize|PResizeInc|PBaseSize);
-    size_hints.min_width   = msg.min_width;
-    size_hints.min_height  = msg.min_height;
-    size_hints.max_width   = msg.max_width;
-    size_hints.max_height  = msg.max_height;
-    size_hints.width_inc   = msg.width_inc;
-    size_hints.height_inc  = msg.height_inc;
-    size_hints.base_width  = msg.base_width;
-    size_hints.base_height = msg.base_height;
+	size_hints.flags       = 0;
+	/* check every value and pass it only when sane */
+	if ((msg.flags & PMinSize) &&
+			msg.min_width >= 0 && msg.min_width <= MAX_WINDOW_WIDTH &&
+			msg.min_height >= 0 && msg.min_height <= MAX_WINDOW_HEIGHT) {
+		size_hints.flags |= PMinSize;
+		size_hints.min_width   = msg.min_width;
+		size_hints.min_height  = msg.min_height;
+	} else
+		fprintf(stderr, "invalid PMinSize for 0x%x (%d/%d)\n",
+				(int) item->local_winid, msg.min_width, msg.min_height);
+	if ((msg.flags & PMaxSize) &&
+			msg.max_width > 0 && msg.max_width <= MAX_WINDOW_WIDTH &&
+			msg.max_height > 0 && msg.max_height <= MAX_WINDOW_HEIGHT) {
+		size_hints.flags |= PMaxSize;
+		size_hints.max_width   = msg.max_width;
+		size_hints.max_height  = msg.max_height;
+	} else
+		fprintf(stderr, "invalid PMaxSize for 0x%x (%d/%d)\n",
+				(int) item->local_winid, msg.max_width, msg.max_height);
+	if ((msg.flags & PResizeInc) &&
+			size_hints.width_inc >= 0 && size_hints.width_inc < MAX_WINDOW_WIDTH &&
+			size_hints.height_inc >= 0 && size_hints.height_inc < MAX_WINDOW_HEIGHT) {
+		size_hints.flags |= PResizeSize;
+		size_hints.width_inc   = msg.width_inc;
+		size_hints.height_inc  = msg.height_inc;
+	} else
+		fprintf(stderr, "invalid PResizeInc for 0x%x (%d/%d)\n",
+				(int) item->local_winid, msg.width_inc, msg.height_inc);
+	if ((msg.flags & PBaseSize) &&
+			size_hints.base_width >= 0 && size_hints.base_width <= MAX_WINDOW_WIDTH &&
+			size_hints.base_height >= 0 && size_hints.base_height <= MAX_WINDOW_HEIGHT) {
+		size_hints.flags |= PBaseSize;
+		size_hints.base_width  = msg.base_width;
+		size_hints.base_height = msg.base_height;
+	} else
+		fprintf(stderr, "invalid PBaseSize for 0x%x (%d/%d)\n",
+				(int) item->local_winid, msg.base_width, msg.base_height);
+
+	/* if no valid values self - do not send it to X server */
+	if (size_hints.flags == 0)
+		return;
 
 	fprintf(stderr, "set WM_NORMAL_HINTS for window 0x%x to min=%d/%d, max=%d/%d, base=%d/%d, inc=%d/%d (flags 0x%x)\n",
 		(int) vm_window->local_winid, 
