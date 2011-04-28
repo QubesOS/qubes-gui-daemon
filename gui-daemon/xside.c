@@ -1298,7 +1298,7 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 	if ((msg.flags & PResizeInc) &&
 			size_hints.width_inc >= 0 && size_hints.width_inc < MAX_WINDOW_WIDTH &&
 			size_hints.height_inc >= 0 && size_hints.height_inc < MAX_WINDOW_HEIGHT) {
-		size_hints.flags |= PResizeSize;
+		size_hints.flags |= PResizeInc;
 		size_hints.width_inc   = msg.width_inc;
 		size_hints.height_inc  = msg.height_inc;
 	} else
