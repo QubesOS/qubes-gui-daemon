@@ -52,6 +52,7 @@ BuildRequires:	xen-devel
 BuildRequires:	xorg-x11-server-devel
 BuildRequires:	qubes-core-appvm-devel
 BuildRequires:	qubes-core-appvm-libs
+BuildRequires:	ConsoleKit-devel
 Requires:	qubes-core-vm qubes-u2mfn-vm xen-qubes-vm-essentials
 Requires:	pulseaudio = %{pa_ver}
 AutoReq: 0
@@ -74,6 +75,7 @@ install -D gui-agent/qubes_gui $RPM_BUILD_ROOT/usr/bin/qubes_gui
 install -D appvm_scripts/usrbin/qubes-session $RPM_BUILD_ROOT/usr/bin/qubes-session
 install -D appvm_scripts/usrbin/qubes_run_xorg.sh $RPM_BUILD_ROOT/usr/bin/qubes_run_xorg.sh
 install -D appvm_scripts/usrbin/qubes_xorg_wrapper.sh $RPM_BUILD_ROOT/usr/bin/qubes_xorg_wrapper.sh
+install -D consolekit/ck-xinit-session-qubes $RPM_BUILD_ROOT/usr/bin/ck-xinit-session-qubes
 install -D pulse/start-pulseaudio-with-vchan $RPM_BUILD_ROOT/usr/bin/start-pulseaudio-with-vchan
 install -D pulse/libsetup-vchan-early.so $RPM_BUILD_ROOT/%{_libdir}/libsetup-vchan-early.so
 install -D pulse/module-vchan-sink.so $RPM_BUILD_ROOT/%{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
@@ -90,10 +92,18 @@ install -d $RPM_BUILD_ROOT/var/log/qubes
 %post
 chkconfig qubes_gui on
 
+# use qubes-specific consolekit plugin
+sed -i 's#/usr/bin/ck-xinit-session\([^-]\)#/usr/bin/ck-xinit-session-qubes\1#' /etc/X11/xinit/xinitrc-common
+
 %preun
 if [ "$1" = 0 ] ; then
 	chkconfig qubes_gui off
 fi
+
+%triggerin -- xorg-x11-xinit
+
+# use qubes-specific consolekit plugin
+sed -i 's#/usr/bin/ck-xinit-session\([^-]\)#/usr/bin/ck-xinit-session-qubes\1#' /etc/X11/xinit/xinitrc-common
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -105,6 +115,7 @@ rm -rf $RPM_BUILD_ROOT
 /usr/bin/qubes-session
 /usr/bin/qubes_run_xorg.sh
 /usr/bin/qubes_xorg_wrapper.sh
+%attr(4755,root,root)/usr/bin/ck-xinit-session-qubes
 /usr/bin/start-pulseaudio-with-vchan
 %{_libdir}/libsetup-vchan-early.so
 %{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
