@@ -622,7 +622,7 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 	if (conn->is_docked) {
 		char *data, *datap;
 		int xp, yp;
-		data = datap = calloc(1, conn->width * conn->height);
+		data = datap = calloc(1, conn->image_width * conn->image_height);
 		if (!data) {
 			perror("malloc");
 			exit(1);
