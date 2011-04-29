@@ -641,6 +641,10 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 		 * Always use 0,0 w+x,h+y coordinates to generate proper mask. */
 		w = w + x + woff;
 		h = h + y + hoff;
+		if (w > conn->image_width)
+			w = conn->image_width;
+		if (h > conn->image_height)
+			h = conn->image_height;
 		Pixmap pixmap =
 		    XCreatePixmap(ghandles.display, conn->local_winid,
 				  conn->image_width, conn->image_height,
