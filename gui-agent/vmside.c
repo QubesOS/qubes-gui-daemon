@@ -419,6 +419,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 	if (ev->message_type == g->tray_opcode) {
 		XClientMessageEvent resp;
 		Window w;
+		int ret;
 		struct msghdr hdr;
 
 		switch (ev->data.l[1]) {
@@ -428,7 +429,12 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 			fprintf(stderr,
 				"tray request dock for window 0x%x\n",
 				(int) w);
-			XReparentWindow(g->display, w, g->root_win, 0, 0);
+			ret = XReparentWindow(g->display, w, g->root_win, 0, 0);
+			if (ret != 1) {
+				fprintf(stderr, "XReparentWindow for 0x%x failed in "
+						"handle_dock, ret=0x%x\n", (int) w, ret);
+				return;
+			};
 
 			memset(&resp, 0, sizeof(ev));
 			resp.type = ClientMessage;
