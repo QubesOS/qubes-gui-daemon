@@ -99,6 +99,7 @@ clean:
 	(cd gui-common; $(MAKE) clean)
 	(cd gui-daemon; $(MAKE) clean)
 	(cd shmoverride; $(MAKE) clean)
+	(cd consolekit; $(MAKE) clean)
 	$(MAKE) -C pulse clean
 	(cd xf86-input-mfndev; if [ -e Makefile ] ; then $(MAKE) distclean; fi; ./bootstrap --clean || echo )
 	(cd u2mfn; $(MAKE) clean)
