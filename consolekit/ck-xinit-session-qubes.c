@@ -145,6 +145,8 @@ main(int argc, char **argv)
 	} else {
 		syslog(LOG_ERR, "error setting up to connect to console-kit");
 	}
+	/* drop root privileges */
+	setuid(getuid());
 	if (argc > 1) {
 		execvp(argv[1], argv + 1);
 	} else {
