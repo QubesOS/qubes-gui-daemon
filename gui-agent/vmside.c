@@ -102,8 +102,8 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 		return;
 	};
 
-//      fprintf(stderr, "XDamageCreate for 0x%x class 0x%x\n",
-//              (int) window, attr.class);
+    fprintf(stderr, "Create for 0x%x class 0x%x\n",
+            (int) ev->window, attr.class);
 	if (list_lookup(windows_list, ev->window)) {
 		fprintf(stderr, "CREATE for already existing 0x%x\n",
 			(int) ev->window);
