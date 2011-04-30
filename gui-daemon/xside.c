@@ -921,6 +921,7 @@ void handle_destroy(Ghandles * g, struct genlist *l)
 	l2 = list_lookup(wid2conndata, item->local_winid);
 	list_remove(l);
 	list_remove(l2);
+	free(item);
 }
 
 void sanitize_string_from_vm(unsigned char *s)
