@@ -24,7 +24,7 @@
  */
 
 #include <stdint.h>
-#define QUBES_GUID_PROTOCOL_VERSION 4
+#define QUBES_GUID_PROTOCOL_VERSION 5
 struct msghdr {
 	uint32_t type;
 	uint32_t window;
