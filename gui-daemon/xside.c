@@ -32,6 +32,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <execinfo.h>
+#include <assert.h>
 #include <X11/Xlib.h>
 #include <X11/Intrinsic.h>
 #include <X11/Xutil.h>
@@ -93,6 +94,18 @@ struct conndata *last_input_window;
 struct genlist *remote2local;
 struct genlist *wid2conndata;
 
+#define VERIFY(x) if (!(x)) { \
+		fprintf(stderr, \
+			"%s:%d: Received values doesn't pass verification: %s\nAborting\n", \
+				__FILE__, __LINE__, __STRING(x)); \
+		exit(1); \
+	}
+#ifndef min
+#define min(x,y) ((x)>(y)?(y):(x))
+#endif
+#ifndef max
+#define max(x,y) ((x)<(y)?(y):(x))
+#endif
 
 Window mkwindow(Ghandles * g, struct conndata *item)
 {
@@ -239,27 +252,31 @@ void get_qubes_clipboard(char **data, int *len)
 	truncate(QUBES_CLIPBOARD_FILENAME, 0);
 	file = fopen(QUBES_CLIPBOARD_FILENAME ".source", "w+");
 	fclose(file);
-      out:
+out:
 	inter_appviewer_lock(0);
 }
 
-void handle_clipboard_data(unsigned int len)
+void handle_clipboard_data(unsigned int untrusted_len)
 {
 	FILE *file;
-	char *data;
-	fprintf(stderr, "handle_clipboard_data, len=0x%x\n", len);
-	if (len > MAX_CLIPBOARD_SIZE) {
-		fprintf(stderr, "clipboard data len 0x%x?\n", len);
+	char *untrusted_data;
+	size_t untrusted_data_sz;
+	fprintf(stderr, "handle_clipboard_data, len=0x%x\n", untrusted_len);
+	if (untrusted_len > MAX_CLIPBOARD_SIZE) {
+		fprintf(stderr, "clipboard data len 0x%x?\n", untrusted_len);
 		exit(1);
 	}
-	data = malloc(len);
-	if (!data) {
+	/* now sanitized */
+	untrusted_data_sz = untrusted_len;
+	untrusted_data = malloc(untrusted_data_sz);
+	if (!untrusted_data) {
 		perror("malloc");
 		exit(1);
 	}
-	read_data(data, len);
+	read_data(untrusted_data, untrusted_data_sz);
 	if (!ghandles.clipboard_requested) {
-		free(data);	//warn maybe ?
+		free(untrusted_data);
+		fprintf(stderr, "received clipboard data when not requested\n");
 		return;
 	}
 	inter_appviewer_lock(1);
@@ -268,7 +285,7 @@ void handle_clipboard_data(unsigned int len)
 		perror("open " QUBES_CLIPBOARD_FILENAME);
 		exit(1);
 	}
-	fwrite(data, len, 1, file);
+	fwrite(untrusted_data, untrusted_data_sz, 1, file);
 	fclose(file);
 	file = fopen(QUBES_CLIPBOARD_FILENAME ".source", "w");
 	if (!file) {
@@ -279,7 +296,7 @@ void handle_clipboard_data(unsigned int len)
 	fclose(file);
 	inter_appviewer_lock(0);
 	ghandles.clipboard_requested = 0;
-	free(data);
+	free(untrusted_data);
 }
 
 int is_special_keypress(XKeyEvent * ev, XID remote_winid)
@@ -449,24 +466,37 @@ void process_xevent_configure(XConfigureEvent * ev)
 
 void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 {
-	struct msg_configure conf;
+	struct msg_configure untrusted_conf;
+	unsigned int x,y,width,height,override_redirect;
 	int conf_changed;
 
-	read_struct(conf);
+	read_struct(untrusted_conf);
 	fprintf(stderr, "handle_configure_from_vm, %d/%d, was"
-		" %d/%d, ovr=%d\n", conf.width, conf.height,
-		item->width, item->height, conf.override_redirect);
-	if (conf.width > MAX_WINDOW_WIDTH)
-		conf.width = MAX_WINDOW_WIDTH;
-	if (conf.height > MAX_WINDOW_HEIGHT)
-		conf.height = MAX_WINDOW_HEIGHT;
+		" %d/%d, ovr=%d\n", untrusted_conf.width, untrusted_conf.height,
+		item->width, item->height, untrusted_conf.override_redirect);
+	/* sanitize start */
+	if (untrusted_conf.width > MAX_WINDOW_WIDTH)
+		untrusted_conf.width = MAX_WINDOW_WIDTH;
+	if (untrusted_conf.height > MAX_WINDOW_HEIGHT)
+		untrusted_conf.height = MAX_WINDOW_HEIGHT;
+	width = untrusted_conf.width;
+	height = untrusted_conf.height;
+	VERIFY(width >= 0 && height >= 0);
+	if (untrusted_conf.override_redirect > 0)
+		override_redirect = 1;
+	else
+		override_redirect = 0;
+	/* TODO */
+	x = untrusted_conf.x;
+	y = untrusted_conf.y;
+	/* sanitize end */
 
-	if (item->width != conf.width || item->height != conf.height ||
-	    item->x != conf.x || item->y != conf.y)
+	if (item->width != width || item->height != height ||
+	    item->x != x || item->y != y)
 		conf_changed = 1;
 	else
 		conf_changed = 0;
-	item->override_redirect = conf.override_redirect;
+	item->override_redirect = override_redirect;
 
 /* We do not allow a docked window to change its size, period. */
 	if (item->is_docked) {
@@ -490,12 +520,12 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 	}
 	if (!conf_changed)
 		return;
-	item->width = conf.width;
-	item->height = conf.height;
-	item->x = conf.x;
-	item->y = conf.y;
+	item->width = width;
+	item->height = height;
+	item->x = x;
+	item->y = y;
 	if (item->override_redirect) {
-		// do not let menu window hide its color frame by moving outside of the screen  
+		// do not let menu window hide its color frame by moving outside of the screen
 		// if it is located offscreen, then allow negative x/y
 		if (item->x < 0 && item->x + item->width > 0)
 			item->x = 0;
@@ -565,64 +595,84 @@ void process_xevent_focus(XFocusChangeEvent * ev)
 	}
 }
 
-void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
+void do_shm_update(struct conndata *conn, int untrusted_x, int untrusted_y, int untrusted_w, int untrusted_h)
 {
 	int border_width = 2;
+	int x,y,w,h;
+
+	/* sanitize start */
+	if (untrusted_x < 0 || untrusted_y < 0) {
+		fprintf(stderr,
+			"do_shm_update for 0x%x(remote 0x%x), x=%d, y=%d, w=%d, h=%d ?\n",
+			(int) conn->local_winid, (int) conn->remote_winid,
+			untrusted_x, untrusted_y, untrusted_w, untrusted_h);
+		return;
+	}
+	x = min(untrusted_x, conn->image_width);
+	y = min(untrusted_y, conn->image_height);
+	w = min(max(untrusted_w, 0), conn->image_width - x);
+	h = min(max(untrusted_h, 0), conn->image_height - y);
+	/* sanitize end */
 
 	if (!conn->override_redirect) {
 		// Window Manager will take care of the frame...
 		border_width = 0;
 	}
 
-
 	int do_border = 0;
 	int hoff = 0, woff = 0, delta, i;
 	if (!conn->image)
 		return;
+	/* when image larger than local window - place middle part of image in the
+	 * window */
 	if (conn->image_height > conn->height)
 		hoff = (conn->image_height - conn->height) / 2;
 	if (conn->image_width > conn->width)
 		woff = (conn->image_width - conn->width) / 2;
-	if (x < 0 || y < 0) {
-		fprintf(stderr,
-			"do_shm_update for 0x%x(remote 0x%x), x=%d, y=%d, w=%d, h=%d ?\n",
-			(int) conn->local_winid, (int) conn->remote_winid,
-			x, y, w, h);
-		return;
-	}
+	/* window contains only (forced) frame, so no content to update */
 	if (conn->width < border_width * 2
 	    || conn->height < border_width * 2)
 		return;
+	/* force frame to be visible: */
+	/*   * left */
 	delta = border_width - x;
 	if (delta > 0) {
 		w -= delta;
 		x = border_width;
 		do_border = 1;
 	}
+	/*   * right */
 	delta = x + w - (conn->width - border_width);
 	if (delta > 0) {
 		w -= delta;
 		do_border = 1;
 	}
+	/*   * top */
 	delta = border_width - y;
 	if (delta > 0) {
 		h -= delta;
 		y = border_width;
 		do_border = 1;
 	}
+	/*   * bottom */
 	delta = y + h - (conn->height - border_width);
 	if (delta > 0) {
 		h -= delta;
 		do_border = 1;
 	}
 
+	/* again check if something left to update */
 	if (w <= 0 || h <= 0)
 		return;
 
 	if (conn->is_docked) {
 		char *data, *datap;
+		size_t data_sz;
 		int xp, yp;
-		data = datap = calloc(1, conn->image_width * conn->image_height);
+
+		/* allocate image_width _bits_ for each image line */
+		data_sz = (conn->image_width / 8 + 1) * conn->image_height;
+		data = datap = calloc(1, data_sz);
 		if (!data) {
 			perror("malloc");
 			exit(1);
@@ -646,6 +696,7 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 		unsigned long back = XGetPixel(image, 0, 0);
 		/* Generate data for transparency mask Bitmap */
 		for (yp = y; yp < h; yp++) {
+			assert(datap - data < data_sz);
 			int step = 0;
 			for (xp = x; xp < w; xp++) {
 				if (XGetPixel(image, xp, yp) != back)
@@ -654,6 +705,7 @@ void do_shm_update(struct conndata *conn, int x, int y, int w, int h)
 					datap++;
 				step++;
 			}
+			/* ensure that new line will start at new byte */
 			if ((step - 1) % 8 != 7)
 				datap++;
 		}
@@ -799,11 +851,15 @@ void process_xevent()
 
 void handle_shmimage(Ghandles * g, struct conndata *item)
 {
-	struct msg_shmimage mx;
-	read_struct(mx);
+	struct msg_shmimage untrusted_mx;
+
+	read_struct(untrusted_mx);
 	if (!item->is_mapped)
 		return;
-	do_shm_update(item, mx.x, mx.y, mx.width, mx.height);
+	/* WARNING: passing raw values, input validation is done inside of
+	 * do_shm_update */
+	do_shm_update(item, untrusted_mx.x, untrusted_mx.y, untrusted_mx.width,
+			untrusted_mx.height);
 }
 
 int windows_count;
@@ -842,35 +898,37 @@ void handle_create(XID window)
 {
 	struct conndata *item;
 	struct genlist *l;
-	struct msg_create crt;
+	struct msg_create untrusted_crt;
+	XID parent;
 	if (windows_count++ > windows_count_limit)
 		ask_whether_flooding();
 	item = (struct conndata *) calloc(1, sizeof(struct conndata));
+	if (!item) {
+		perror("malloc(item in handle_create)");
+		exit(1);
+	}
 #if 0
 	because of calloc item->image = 0;
 	item->is_mapped = 0;
 	item->local_winid = 0;
 	item->dest = item->src = item->pix = 0;
 #endif
+	read_struct(untrusted_crt);
+	/* sanitize start */
+	VERIFY((int)untrusted_crt.width >= 0 && (int)untrusted_crt.height >= 0);
+	item->width = min((int)untrusted_crt.width, MAX_WINDOW_WIDTH);
+	item->height = min((int)untrusted_crt.height, MAX_WINDOW_HEIGHT);
+	item->x = untrusted_crt.x; /* TODO: checks? */
+	item->y = untrusted_crt.y; /* TODO: checks? */
+	if (untrusted_crt.override_redirect)
+		item->override_redirect = 1;
+	else
+		item->override_redirect = 0;
+	parent = untrusted_crt.parent; /* TODO: checks? */
+	/* sanitize end */
 	item->remote_winid = window;
 	list_insert(remote2local, window, item);
-	read_struct(crt);
-	item->width = crt.width;
-	item->height = crt.height;
-	if (item->width < 0 || item->height < 0) {
-		fprintf(stderr,
-			"handle_create for remote 0x%x got w/h %d %d\n",
-			(int) window, item->width, item->height);
-		exit(1);
-	}
-	if (item->width > MAX_WINDOW_WIDTH)	//XXX should we abort ?
-		item->width = MAX_WINDOW_WIDTH;
-	if (item->height > MAX_WINDOW_HEIGHT)
-		item->height = MAX_WINDOW_HEIGHT;
-	item->x = crt.x;
-	item->y = crt.y;
-	item->override_redirect = crt.override_redirect;
-	l = list_lookup(remote2local, crt.parent);
+	l = list_lookup(remote2local, parent);
 	if (l)
 		item->parent = l->data;
 	else
@@ -881,7 +939,7 @@ void handle_create(XID window)
 		"Created 0x%x(0x%x) parent 0x%x(0x%x) ovr=%d\n",
 		(int) item->local_winid, (int) window,
 		(int) (item->parent ? item->parent->local_winid : 0),
-		crt.parent, crt.override_redirect);
+		(unsigned)parent, item->override_redirect);
 	list_insert(wid2conndata, item->local_winid, item);
 }
 
@@ -903,23 +961,23 @@ void handle_destroy(Ghandles * g, struct genlist *l)
 	list_remove(l2);
 }
 
-void sanitize_string_from_vm(unsigned char *s)
+void sanitize_string_from_vm(unsigned char *untrusted_s)
 {
 	static unsigned char allowed_chars[] = { '-', '_', ' ', '.' };
 	int i, ok;
-	for (; *s; s++) {
-		if (*s >= '0' || *s <= '9')
+	for (; *untrusted_s; untrusted_s++) {
+		if (*untrusted_s >= '0' || *untrusted_s <= '9')
 			continue;
-		if (*s >= 'a' || *s <= 'z')
+		if (*untrusted_s >= 'a' || *untrusted_s <= 'z')
 			continue;
-		if (*s >= 'A' || *s <= 'Z')
+		if (*untrusted_s >= 'A' || *untrusted_s <= 'Z')
 			continue;
 		ok = 0;
 		for (i = 0; i < sizeof(allowed_chars); i++)
-			if (*s == allowed_chars[i])
+			if (*untrusted_s == allowed_chars[i])
 				ok = 1;
 		if (!ok)
-			*s = '_';
+			*untrusted_s = '_';
 	}
 }
 
@@ -934,7 +992,7 @@ void fix_menu(struct conndata *item)
 	item->override_redirect = 1;
 
 	// do not let menu window hide its color frame by moving outside of the screen
-	// if it is located offscreen, then allow negative x/y  
+	// if it is located offscreen, then allow negative x/y
 	if (item->x < 0 && item->x + item->width > 0) {
 		item->x = 0;
 		do_move = 1;
@@ -951,14 +1009,16 @@ void fix_menu(struct conndata *item)
 void handle_wmname(Ghandles * g, struct conndata *item)
 {
 	XTextProperty text_prop;
-	struct msg_wmname msg;
-	char buf[sizeof(msg.data) + 1];
+	struct msg_wmname untrusted_msg;
+	char buf[sizeof(untrusted_msg.data) + 1];
 	char *list[1] = { buf };
 
-	read_struct(msg);
-	msg.data[sizeof(msg.data) - 1] = 0;
-	sanitize_string_from_vm((unsigned char *) (msg.data));
-	snprintf(buf, sizeof(buf), "%s", msg.data);
+	read_struct(untrusted_msg);
+	/* sanitize start */
+	untrusted_msg.data[sizeof(untrusted_msg.data) - 1] = 0;
+	sanitize_string_from_vm((unsigned char *) (untrusted_msg.data));
+	snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
+	/* sanitize end */
 	fprintf(stderr, "set title for window 0x%x to %s\n",
 		(int) item->local_winid, buf);
 	XmbTextListToTextProperty(g->display, list, 1, XStringStyle,
@@ -971,11 +1031,12 @@ void handle_wmname(Ghandles * g, struct conndata *item)
 void handle_map(struct conndata *item)
 {
 	struct genlist *trans;
-	struct msg_map_info txt;
+	struct msg_map_info untrusted_txt;
+
+	read_struct(untrusted_txt);
 	item->is_mapped = 1;
-	read_struct(txt);
-	if (txt.transient_for
-	    && (trans = list_lookup(remote2local, txt.transient_for))) {
+	if (untrusted_txt.transient_for
+	    && (trans = list_lookup(remote2local, untrusted_txt.transient_for))) {
 		struct conndata *transdata = trans->data;
 		item->transient_for = transdata;
 		XSetTransientForHint(ghandles.display, item->local_winid,
@@ -983,7 +1044,7 @@ void handle_map(struct conndata *item)
 	} else
 		item->transient_for = 0;
 	item->override_redirect = 0;
-	if (txt.override_redirect || item->is_docked)
+	if (untrusted_txt.override_redirect || item->is_docked)
 		fix_menu(item);
 	(void) XMapWindow(ghandles.display, item->local_winid);
 }
@@ -1046,39 +1107,35 @@ void release_mapped_mfns(Ghandles * g, struct conndata *item)
 char dummybuf[100];
 void handle_mfndump(Ghandles * g, struct conndata *item)
 {
-	char shmcmd_data_from_remote[4096 * SHM_CMD_NUM_PAGES];
-	struct shm_cmd *tmp_shmcmd =
-	    (struct shm_cmd *) shmcmd_data_from_remote;
+	char untrusted_shmcmd_data_from_remote[4096 * SHM_CMD_NUM_PAGES];
+	struct shm_cmd *untrusted_shmcmd =
+	    (struct shm_cmd *) untrusted_shmcmd_data_from_remote;
+	unsigned num_mfn, off;
+
+
 	if (item->image)
 		release_mapped_mfns(g, item);
-	read_data(shmcmd_data_from_remote, sizeof(struct shm_cmd));
-	if (tmp_shmcmd->num_mfn > MAX_MFN_COUNT) {
-		fprintf(stderr, "got num_mfn=0x%x\n", tmp_shmcmd->num_mfn);
-		pause();
-		exit(1);
-	}
-	item->image_width = tmp_shmcmd->width;
-	item->image_height = tmp_shmcmd->height;
-	if (item->image_width < 0 || item->image_height < 0) {
+	read_data(untrusted_shmcmd_data_from_remote, sizeof(struct shm_cmd));
+	/* sanitize start */
+	VERIFY(untrusted_shmcmd->num_mfn <= MAX_MFN_COUNT);
+	num_mfn = untrusted_shmcmd->num_mfn;
+	VERIFY((int)untrusted_shmcmd->width >= 0 && (int)untrusted_shmcmd->height >= 0);
+	VERIFY((int)untrusted_shmcmd->width < MAX_WINDOW_WIDTH && (int)untrusted_shmcmd->height < MAX_WINDOW_HEIGHT);
+	VERIFY(untrusted_shmcmd->off < 4096);
+	off = untrusted_shmcmd->off;
+	if (num_mfn * 4096 <
+	    item->image->bytes_per_line * item->image->height + off) {
 		fprintf(stderr,
-			"handle_mfndump for window 0x%x(remote 0x%x) got w/h %d %d\n",
+			"handle_mfndump for window 0x%x(remote 0x%x)"
+			" got too small num_mfn= 0x%x\n",
 			(int) item->local_winid, (int) item->remote_winid,
-			item->image_width, item->image_height);
+			num_mfn);
 		exit(1);
 	}
-	if (item->image_width > MAX_WINDOW_WIDTH)	//XXX should we abort ?
-		item->image_width = MAX_WINDOW_WIDTH;
-	if (item->image_height > MAX_WINDOW_HEIGHT)
-		item->image_height = MAX_WINDOW_HEIGHT;
-	if (tmp_shmcmd->off >= 4096) {
-		fprintf(stderr,
-			"handle_mfndump for window 0x%x(remote 0x%x) got shmcmd->off 0x%x\n",
-			(int) item->local_winid, (int) item->remote_winid,
-			tmp_shmcmd->off);
-		exit(1);
-	}
-	read_data((char *) tmp_shmcmd->mfns,
-		  SIZEOF_SHARED_MFN * tmp_shmcmd->num_mfn);
+	/* TODO: untrusted_shmcmd->bpp */
+	/* sanitize end */
+	read_data((char *) untrusted_shmcmd->mfns,
+		  SIZEOF_SHARED_MFN * num_mfn);
 	item->image =
 	    XShmCreateImage(g->display,
 			    DefaultVisual(g->display, g->screen), 24,
@@ -1088,26 +1145,18 @@ void handle_mfndump(Ghandles * g, struct conndata *item)
 		perror("XShmCreateImage");
 		exit(1);
 	}
-	if (tmp_shmcmd->num_mfn * 4096 <
-	    item->image->bytes_per_line * item->image->height +
-	    tmp_shmcmd->off) {
-		fprintf(stderr,
-			"handle_mfndump for window 0x%x(remote 0x%x)"
-			" got too small num_mfn= 0x%x\n",
-			(int) item->local_winid, (int) item->remote_winid,
-			tmp_shmcmd->num_mfn);
-		exit(1);
-	}
 	// temporary shmid; see shmoverride/README
 	item->shminfo.shmid = shmget(IPC_PRIVATE, 1, IPC_CREAT | 0700);
 	if (item->shminfo.shmid < 0) {
 		perror("shmget");
 		exit(1);
 	}
-	tmp_shmcmd->shmid = item->shminfo.shmid;
-	tmp_shmcmd->domid = g->domid;
+	/* ensure that _every_ not sanitized field is overrided by some trusted
+	 * value */
+	untrusted_shmcmd->shmid = item->shminfo.shmid;
+	untrusted_shmcmd->domid = g->domid;
 	inter_appviewer_lock(1);
-	memcpy(g->shmcmd, shmcmd_data_from_remote,
+	memcpy(g->shmcmd, untrusted_shmcmd_data_from_remote,
 	       4096 * SHM_CMD_NUM_PAGES);
 	item->shminfo.shmaddr = item->image->data = dummybuf;
 	item->shminfo.readOnly = True;
@@ -1125,40 +1174,46 @@ void handle_mfndump(Ghandles * g, struct conndata *item)
 
 void handle_message()
 {
-	struct msghdr hdr;
+	struct msghdr untrusted_hdr;
+	uint32_t type;
+	XID window;
 	struct genlist *l;
 	struct conndata *item = 0;
-	read_struct(hdr);
-	if (hdr.type <= MSG_MIN || hdr.type >= MSG_MAX) {
-		fprintf(stderr, "msg type 0x%x window 0x%x\n",
-			hdr.type, hdr.window);
-		exit(1);
-	}
-	if (hdr.type == MSG_CLIPBOARD_DATA) {
-		handle_clipboard_data(hdr.window);
+
+	read_struct(untrusted_hdr);
+	VERIFY(untrusted_hdr.type > MSG_MIN && untrusted_hdr.type < MSG_MAX);
+	/* sanitized msg type */
+	type = untrusted_hdr.type;
+	if (type == MSG_CLIPBOARD_DATA) {
+		/* window field has special meaning here */
+		handle_clipboard_data(untrusted_hdr.window);
 		return;
 	}
-	l = list_lookup(remote2local, hdr.window);
-	if (hdr.type == MSG_CREATE) {
+	l = list_lookup(remote2local, untrusted_hdr.window);
+	if (type == MSG_CREATE) {
 		if (l) {
 			fprintf(stderr,
 				"CREATE for already existing window id 0x%x?\n",
-				hdr.window);
+				untrusted_hdr.window);
 			exit(1);
 		}
+		window = untrusted_hdr.window; /* TODO: checks? */
 	} else {
 		if (!l) {
 			fprintf(stderr,
 				"msg 0x%x without CREATE for 0x%x\n",
-				hdr.type, hdr.window);
+				type, untrusted_hdr.window);
 			exit(1);
 		}
 		item = l->data;
+		/* not needed as it is in item struct
+		window = untrusted_hdr.window;
+		*/
 	}
 
-	switch (hdr.type) {
+	switch (type) {
 	case MSG_CREATE:
-		handle_create(hdr.window);
+		handle_create(untrusted_hdr.window);
 		break;
 	case MSG_DESTROY:
 		handle_destroy(&ghandles, l);
@@ -1186,7 +1241,7 @@ void handle_message()
 		handle_dock(&ghandles, item);
 		break;
 	default:
-		fprintf(stderr, "got msg type %d\n", hdr.type);
+		fprintf(stderr, "got msg type %d\n", type);
 		exit(1);
 	}
 }
@@ -1285,17 +1340,17 @@ void send_xconf(Ghandles * g)
 
 void get_protocol_version()
 {
-	uint32_t version;
+	uint32_t untrusted_version;
 	char message[1024];
-	read_struct(version);
-	if (version == QUBES_GUID_PROTOCOL_VERSION)
+	read_struct(untrusted_version);
+	if (untrusted_version == QUBES_GUID_PROTOCOL_VERSION)
 		return;
 	snprintf(message, sizeof message, "kdialog --sorry \"The remote "
 		 "protocol version is %d, the local protocol version is %d. Upgrade "
 		 "qubes-gui-dom0 (in dom0) and qubes-gui-vm (in template VM) packages "
 		 "so that they provide compatible/latest software. You can run 'xm console "
 		 "vmname' (as root) to access shell prompt in the VM.\"",
-		 version, QUBES_GUID_PROTOCOL_VERSION);
+		 untrusted_version, QUBES_GUID_PROTOCOL_VERSION);
 	system(message);
 	exit(1);
 }
