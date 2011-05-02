@@ -51,6 +51,8 @@ struct _global_handles {
 	Display *display;
 	int screen;		/* shortcut to the default screen */
 	Window root_win;	/* root attributes */
+	int root_width;
+	int root_height;
 	GC context;
 	Atom wmDeleteMessage;
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
@@ -93,6 +95,8 @@ struct conndata {
 struct conndata *last_input_window;
 struct genlist *remote2local;
 struct genlist *wid2conndata;
+
+#define BORDER_WIDTH 2
 
 #define VERIFY(x) if (!(x)) { \
 		fprintf(stderr, \
@@ -191,9 +195,12 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 }
 
 
+#define XORG_DEFAULT_XINC 8
+#define _VIRTUALX(x) ( (((x)+XORG_DEFAULT_XINC-1)/XORG_DEFAULT_XINC)*XORG_DEFAULT_XINC )
 void mkghandles(Ghandles * g)
 {
 	char tray_sel_atom_name[64];
+	XWindowAttributes attr;
 	g->display = XOpenDisplay(NULL);
 	if (!g->display) {
 		perror("XOpenDisplay");
@@ -201,6 +208,9 @@ void mkghandles(Ghandles * g)
 	}
 	g->screen = DefaultScreen(g->display);
 	g->root_win = RootWindow(g->display, g->screen);
+	XGetWindowAttributes(g->display, g->root_win, &attr);
+	g->root_width = _VIRTUALX(attr.width);
+	g->root_height = attr.height;
 	g->context = XCreateGC(g->display, g->root_win, 0, NULL);
 	g->wmDeleteMessage =
 	    XInternAtom(g->display, "WM_DELETE_WINDOW", True);
@@ -438,7 +448,29 @@ int fix_docked_xy(struct conndata *conn)
 	return ret;
 }
 
+int force_on_screen(struct conndata *item, int border_width) {
+	int do_move;
 
+	if (item->x < border_width && item->x + item->width > 0) {
+		item->x = border_width;
+		do_move = 1;
+	}
+	if (item->y < border_width && item->y + item->height > 0) {
+		item->y = border_width;
+		do_move = 1;
+	}
+	if (item->x < ghandles.root_width && 
+			item->x + item->width > ghandles.root_width - border_width) {
+		item->width = ghandles.root_width - item->x - border_width;
+		do_move = 1;
+	}
+	if (item->y < ghandles.root_height && 
+			item->y + item->height > ghandles.root_height - border_width) {
+		item->height = ghandles.root_height - item->y - border_width;
+		do_move = 1;
+	}
+	return do_move;
+}
 
 void process_xevent_configure(XConfigureEvent * ev)
 {
@@ -486,11 +518,11 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 		override_redirect = 1;
 	else
 		override_redirect = 0;
-	/* TODO */
+	VERIFY((int)untrusted_conf.x >= -g->root_width && (int)untrusted_conf.x <= 2*g->root_width);
+	VERIFY((int)untrusted_conf.y >= -g->root_height && (int)untrusted_conf.y <= 2*g->root_height);
 	x = untrusted_conf.x;
 	y = untrusted_conf.y;
 	/* sanitize end */
-
 	if (item->width != width || item->height != height ||
 	    item->x != x || item->y != y)
 		conf_changed = 1;
@@ -498,7 +530,7 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 		conf_changed = 0;
 	item->override_redirect = override_redirect;
 
-/* We do not allow a docked window to change its size, period. */
+	/* We do not allow a docked window to change its size, period. */
 	if (item->is_docked) {
 		if (conf_changed)
 			send_configure(item, item->x, item->y, item->width,
@@ -524,14 +556,10 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 	item->height = height;
 	item->x = x;
 	item->y = y;
-	if (item->override_redirect) {
+	if (item->override_redirect)
 		// do not let menu window hide its color frame by moving outside of the screen
 		// if it is located offscreen, then allow negative x/y
-		if (item->x < 0 && item->x + item->width > 0)
-			item->x = 0;
-		if (item->y < 0 && item->y + item->height > 0)
-			item->y = 0;
-	}
+		force_on_screen(item, 0);
 	XMoveResizeWindow(g->display, item->local_winid, item->x, item->y,
 			  item->width, item->height);
 }
@@ -597,7 +625,7 @@ void process_xevent_focus(XFocusChangeEvent * ev)
 
 void do_shm_update(struct conndata *conn, int untrusted_x, int untrusted_y, int untrusted_w, int untrusted_h)
 {
-	int border_width = 2;
+	int border_width = BORDER_WIDTH;
 	int x,y,w,h;
 
 	/* sanitize start */
@@ -894,12 +922,13 @@ void ask_whether_flooding()
 }
 
 
-void handle_create(XID window)
+void handle_create(Ghandles * g, XID window)
 {
 	struct conndata *item;
 	struct genlist *l;
 	struct msg_create untrusted_crt;
 	XID parent;
+
 	if (windows_count++ > windows_count_limit)
 		ask_whether_flooding();
 	item = (struct conndata *) calloc(1, sizeof(struct conndata));
@@ -918,13 +947,15 @@ void handle_create(XID window)
 	VERIFY((int)untrusted_crt.width >= 0 && (int)untrusted_crt.height >= 0);
 	item->width = min((int)untrusted_crt.width, MAX_WINDOW_WIDTH);
 	item->height = min((int)untrusted_crt.height, MAX_WINDOW_HEIGHT);
-	item->x = untrusted_crt.x; /* TODO: checks? */
-	item->y = untrusted_crt.y; /* TODO: checks? */
+	VERIFY((int)untrusted_crt.x >= -g->root_width && (int)untrusted_crt.x <= 2*g->root_width);
+	VERIFY((int)untrusted_crt.y >= -g->root_height && (int)untrusted_crt.y <= 2*g->root_height);
+	item->x = untrusted_crt.x;
+	item->y = untrusted_crt.y;
 	if (untrusted_crt.override_redirect)
 		item->override_redirect = 1;
 	else
 		item->override_redirect = 0;
-	parent = untrusted_crt.parent; /* TODO: checks? */
+	parent = untrusted_crt.parent;
 	/* sanitize end */
 	item->remote_winid = window;
 	list_insert(remote2local, window, item);
@@ -941,6 +972,10 @@ void handle_create(XID window)
 		(int) (item->parent ? item->parent->local_winid : 0),
 		(unsigned)parent, item->override_redirect);
 	list_insert(wid2conndata, item->local_winid, item);
+	/* do not allow to hide color frame off the screen */
+    if (item->override_redirect && force_on_screen(item, 0))
+		XMoveResizeWindow(ghandles.display, item->local_winid, item->x,
+			    item->y, item->width, item->height);
 }
 
 void release_mapped_mfns(Ghandles * g, struct conndata *item);
@@ -983,7 +1018,6 @@ void sanitize_string_from_vm(unsigned char *untrusted_s)
 
 void fix_menu(struct conndata *item)
 {
-	int do_move = 0;
 	XSetWindowAttributes attr;
 
 	attr.override_redirect = 1;
@@ -993,17 +1027,9 @@ void fix_menu(struct conndata *item)
 
 	// do not let menu window hide its color frame by moving outside of the screen
 	// if it is located offscreen, then allow negative x/y
-	if (item->x < 0 && item->x + item->width > 0) {
-		item->x = 0;
-		do_move = 1;
-	}
-	if (item->y < 0 && item->y + item->height > 0) {
-		item->y = 0;
-		do_move = 1;
-	}
-	if (do_move)
-		XMoveWindow(ghandles.display, item->local_winid, item->x,
-			    item->y);
+	if (force_on_screen(item, 0))
+		XMoveResizeWindow(ghandles.display, item->local_winid, item->x,
+			    item->y, item->width, item->height);
 }
 
 void handle_wmname(Ghandles * g, struct conndata *item)
@@ -1132,7 +1158,7 @@ void handle_mfndump(Ghandles * g, struct conndata *item)
 			num_mfn);
 		exit(1);
 	}
-	/* TODO: untrusted_shmcmd->bpp */
+	/* unused for now: VERIFY(untrusted_shmcmd->bpp == 24); */
 	/* sanitize end */
 	read_data((char *) untrusted_shmcmd->mfns,
 		  SIZEOF_SHARED_MFN * num_mfn);
@@ -1197,7 +1223,7 @@ void handle_message()
 				untrusted_hdr.window);
 			exit(1);
 		}
-		window = untrusted_hdr.window; /* TODO: checks? */
+		window = untrusted_hdr.window;
 	} else {
 		if (!l) {
 			fprintf(stderr,
@@ -1213,7 +1239,7 @@ void handle_message()
 
 	switch (type) {
 	case MSG_CREATE:
-		handle_create(untrusted_hdr.window);
+		handle_create(&ghandles, window);
 		break;
 	case MSG_DESTROY:
 		handle_destroy(&ghandles, l);
@@ -1324,8 +1350,6 @@ void exec_pacat(int domid)
 	}
 }
 
-#define XORG_DEFAULT_XINC 8
-#define _VIRTUALX(x) ( (((x)+XORG_DEFAULT_XINC-1)/XORG_DEFAULT_XINC)*XORG_DEFAULT_XINC )
 void send_xconf(Ghandles * g)
 {
 	struct msg_xconf xconf;
