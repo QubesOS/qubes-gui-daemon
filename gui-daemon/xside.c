@@ -1551,6 +1551,15 @@ void set_alive_flag(int domid)
 	close(fd);
 }
 
+/* remove guid_running file at exit */
+void unset_alive_flag()
+{
+	char buf[256];
+	snprintf(buf, sizeof(buf), "/var/run/qubes/guid_running.%d",
+		 ghandles.domid);
+	unlink(buf);
+}
+
 int main(int argc, char **argv)
 {
 	int xfd;
@@ -1615,6 +1624,8 @@ int main(int argc, char **argv)
 	/* drop root privileges */
 	setuid(getuid());
 	set_alive_flag(ghandles.domid);
+	atexit(unset_alive_flag);
+
 	write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully
 
 	signal(SIGTERM, dummy_signal_handler);
