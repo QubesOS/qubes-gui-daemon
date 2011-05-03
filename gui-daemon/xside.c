@@ -59,6 +59,26 @@
 /* limit of created windows - after exceed, warning the user */
 #define WINDOWS_COUNT_LIMIT 100
 
+/* per-window data */
+struct windowdata {
+	int width;
+	int height;
+	int x;
+	int y;
+	int is_mapped;
+	int is_docked;				/* is it docked tray icon */
+	XID remote_winid;			/* window id on VM side */
+	Window local_winid;			/* window id on X side */
+	struct windowdata *parent;	/* parent window */
+	struct windowdata *transient_for; /* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
+	int override_redirect;		/* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
+	XShmSegmentInfo shminfo;	/* temporary shmid; see shmoverride/README */
+	XImage *image;				/* image with window content */
+	int image_height;			/* size of window content, not always the same as window in dom0! */
+	int image_width;
+	int have_queued_configure;	/* have configure request been sent to VM - waiting for confirmation */
+};
+
 /* global variables
  * keep them in this struct for readability
  */
@@ -86,44 +106,22 @@ struct _global_handles {
 	char *cmdline_color;	/* color of frame */
 	char *cmdline_icon;		/* icon hint for WM */
 	int label_index;		/* label (frame color) hint for WM */
+	/* lists of windows: */
+	/*   indexed by remote window id */
+	struct genlist *remote2local;
+	/*   indexed by local window id */
+	struct genlist *wid2windowdata;
 	/* counters and other state */
 	int clipboard_requested;/* if clippoard content was requested by dom0 */
 	int windows_count;		/* created window count */
 	int windows_count_limit;/* current window limit; ask user what to do when exceeded */
+	struct windowdata *last_input_window;
+	/* signal was caught */
+	int volatile signal_caught;
 };
 
 typedef struct _global_handles Ghandles;
 Ghandles ghandles;
-
-/* per-window data */
-struct windowdata {
-	int width;
-	int height;
-	int x;
-	int y;
-	int is_mapped;
-	int is_docked;				/* is it docked tray icon */
-	XID remote_winid;			/* window id on VM side */
-	Window local_winid;			/* window id on X side */
-	struct windowdata *parent;	/* parent window */
-	struct windowdata *transient_for; /* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
-	int override_redirect;		/* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
-	XShmSegmentInfo shminfo;	/* temporary shmid; see shmoverride/README */
-	XImage *image;				/* image with window content */
-	int image_height;			/* size of window content, not always the same as window in dom0! */
-	int image_width;
-	int have_queued_configure;	/* have configure request been sent to VM - waiting for confirmation */
-};
-struct windowdata *last_input_window;
-
-/* lists of windows: */
-/*   indexed by remote window id */
-struct genlist *remote2local;
-/*   indexed by local window id */
-struct genlist *wid2windowdata;
-
-/* signal was caught */
-static int volatile signal_caught;
 
 /* macro used to verify data from VM */
 #define VERIFY(x) if (!(x)) { \
@@ -140,8 +138,8 @@ static int volatile signal_caught;
 /* short macro for beginning of each xevent handling function
  * checks if this window is managed by guid and declares windowdata struct
  * pointer */
-#define CHECK_NONMANAGED_WINDOW(id) struct windowdata *vm_window; \
-	if (!(vm_window=check_nonmanged_window(id))) return
+#define CHECK_NONMANAGED_WINDOW(g, id) struct windowdata *vm_window; \
+	if (!(vm_window=check_nonmanged_window(g, id))) return
 
 #ifndef min
 #define min(x,y) ((x)>(y)?(y):(x))
@@ -152,6 +150,39 @@ static int volatile signal_caught;
 
 void inter_appviewer_lock(int mode);
 void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
+
+/* prepare graphic context for painting colorful frame */
+void get_frame_gc(Ghandles * g, char *name)
+{
+	XGCValues values;
+	XColor fcolor, dummy;
+	if (name[0] == '0' && (name[1] == 'x' || name[1] == 'X')) {
+		unsigned int rgb = strtoul(name, 0, 16);
+		fcolor.blue = (rgb & 0xff) * 257;
+		rgb >>= 8;
+		fcolor.green = (rgb & 0xff) * 257;
+		rgb >>= 8;
+		fcolor.red = (rgb & 0xff) * 257;
+		XAllocColor(g->display,
+			    XDefaultColormap(g->display, g->screen),
+			    &fcolor);
+	} else
+		XAllocNamedColor(g->display,
+				 XDefaultColormap(g->display, g->screen),
+				 name, &fcolor, &dummy);
+	values.foreground = fcolor.pixel;
+	g->frame_gc =
+	    XCreateGC(g->display, g->root_win, GCForeground, &values);
+}
+
+/* prepare graphic context for tray background */
+void get_tray_gc(Ghandles * g)
+{
+	XGCValues values;
+	values.foreground = WhitePixel(g->display, g->screen);
+	g->tray_gc =
+	    XCreateGC(g->display, g->root_win, GCForeground, &values);
+}
 
 
 /* create local window - on VM request.
@@ -239,14 +270,20 @@ void mkghandles(Ghandles * g)
 	g->tray_opcode =
 	    XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
 	g->xembed_message = XInternAtom(g->display, "_XEMBED", False);
+	/* create graphical contexts */
+	get_frame_gc(g, g->cmdline_color ? : "red");
+	get_tray_gc(g);
 	/* initialize windows limit */
 	g->windows_count_limit = WINDOWS_COUNT_LIMIT;
+	/* init window lists */
+	g->remote2local = list_new();
+	g->wid2windowdata = list_new();
 }
 
 /* find if window (given by id) is managed by this guid */
-struct windowdata *check_nonmanged_window(XID id)
+struct windowdata *check_nonmanged_window(Ghandles * g, XID id)
 {
-	struct genlist *item = list_lookup(wid2windowdata, id);
+	struct genlist *item = list_lookup(g->wid2windowdata, id);
 	if (!item) {
 		fprintf(stderr, "cannot lookup 0x%x in wid2windowdata\n",
 			(int) id);
@@ -374,8 +411,8 @@ void process_xevent_keypress(Ghandles * g, XKeyEvent * ev)
 {
 	struct msghdr hdr;
 	struct msg_keypress k;
-	CHECK_NONMANAGED_WINDOW(ev->window);
-	last_input_window = vm_window;
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
+	g->last_input_window = vm_window;
 	if (is_special_keypress(g, ev, vm_window->remote_winid))
 		return;
 	k.type = ev->type;
@@ -393,8 +430,8 @@ void process_xevent_keypress(Ghandles * g, XKeyEvent * ev)
 // debug routine
 void dump_mapped(Ghandles * g)
 {
-	struct genlist *item = wid2windowdata->next;
-	for (; item != wid2windowdata; item = item->next) {
+	struct genlist *item = g->wid2windowdata->next;
+	for (; item != g->wid2windowdata; item = item->next) {
 		struct windowdata *c = item->data;
 		if (c->is_mapped) {
 			fprintf(stderr,
@@ -412,7 +449,7 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 {
 	struct msghdr hdr;
 	struct msg_button k;
-	CHECK_NONMANAGED_WINDOW(ev->window);
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
 // for debugging only, inactive
 	if (0 && ev->button == 4) {
@@ -420,7 +457,7 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 		return;
 	}
 
-	last_input_window = vm_window;
+	g->last_input_window = vm_window;
 	k.type = ev->type;
 
 	k.x = ev->x;
@@ -436,10 +473,10 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 
 /* handle local Xserver event: XCloseEvent
  * send to relevant window in VM */
-void process_xevent_close(XID window)
+void process_xevent_close(Ghandles * g, XID window)
 {
 	struct msghdr hdr;
-	CHECK_NONMANAGED_WINDOW(window);
+	CHECK_NONMANAGED_WINDOW(g, window);
 	hdr.type = MSG_CLOSE;
 	hdr.window = vm_window->remote_winid;
 	write_struct(hdr);
@@ -512,7 +549,7 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window, int border_width
  * after some checks/fixes send to relevant window in VM */
 void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 {
-	CHECK_NONMANAGED_WINDOW(ev->window);
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
 //      fprintf(stderr, "process_xevent_configure, %d/%d, was"
 //              "%d/%d\n", ev->width, ev->height,
 //              vm_window->width, vm_window->height);
@@ -610,7 +647,7 @@ void process_xevent_motion(Ghandles * g, XMotionEvent * ev)
 {
 	struct msghdr hdr;
 	struct msg_motion k;
-	CHECK_NONMANAGED_WINDOW(ev->window);
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
 	if (vm_window->is_docked && fix_docked_xy(g, vm_window))
 		send_configure(vm_window, vm_window->x, vm_window->y, vm_window->width,
@@ -633,7 +670,7 @@ void process_xevent_focus(Ghandles * g, XFocusChangeEvent * ev)
 {
 	struct msghdr hdr;
 	struct msg_focus k;
-	CHECK_NONMANAGED_WINDOW(ev->window);
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	hdr.type = MSG_FOCUS;
 	hdr.window = vm_window->remote_winid;
 	k.type = ev->type;
@@ -813,7 +850,7 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window, int untrusted_x,
  */
 void process_xevent_expose(Ghandles * g, XExposeEvent * ev)
 {
-	CHECK_NONMANAGED_WINDOW(ev->window);
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	do_shm_update(g, vm_window, ev->x, ev->y, ev->width, ev->height);
 }
 
@@ -822,7 +859,7 @@ void process_xevent_expose(Ghandles * g, XExposeEvent * ev)
 void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 {
 	XWindowAttributes attr;
-	CHECK_NONMANAGED_WINDOW(ev->window);
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	if (vm_window->is_mapped)
 		return;
 	XGetWindowAttributes(g->display, vm_window->local_winid, &attr);
@@ -850,7 +887,7 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
  * if window isn't mapped already - map it now */
 void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
 {
-	CHECK_NONMANAGED_WINDOW(ev->window);
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	fprintf(stderr, "_XEMBED message %ld\n", ev->data.l[1]);
 	if (ev->data.l[1] == XEMBED_EMBEDDED_NOTIFY) {
 		if (vm_window->is_docked < 2) {
@@ -904,7 +941,7 @@ void process_xevent(Ghandles * g)
 			   g->wmDeleteMessage) {
 			fprintf(stderr, "close for 0x%x\n",
 				(int) event_buffer.xclient.window);
-			process_xevent_close(event_buffer.xclient.window);
+			process_xevent_close(g, event_buffer.xclient.window);
 		}
 		break;
 	default:;
@@ -996,8 +1033,8 @@ void handle_create(Ghandles * g, XID window)
 	parent = untrusted_crt.parent;
 	/* sanitize end */
 	vm_window->remote_winid = window;
-	list_insert(remote2local, window, vm_window);
-	l = list_lookup(remote2local, parent);
+	list_insert(g->remote2local, window, vm_window);
+	l = list_lookup(g->remote2local, parent);
 	if (l)
 		vm_window->parent = l->data;
 	else
@@ -1009,7 +1046,7 @@ void handle_create(Ghandles * g, XID window)
 		(int) vm_window->local_winid, (int) window,
 		(int) (vm_window->parent ? vm_window->parent->local_winid : 0),
 		(unsigned)parent, vm_window->override_redirect);
-	list_insert(wid2windowdata, vm_window->local_winid, vm_window);
+	list_insert(g->wid2windowdata, vm_window->local_winid, vm_window);
 	/* do not allow to hide color frame off the screen */
     if (vm_window->override_redirect && force_on_screen(g, vm_window, 0))
 		XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x,
@@ -1023,13 +1060,13 @@ void handle_destroy(Ghandles * g, struct genlist *l)
 	struct genlist *l2;
 	struct windowdata *vm_window = l->data;
 	g->windows_count--;
-	if (vm_window == last_input_window)
-		last_input_window = NULL;
+	if (vm_window == g->last_input_window)
+		g->last_input_window = NULL;
 	XDestroyWindow(g->display, vm_window->local_winid);
 	fprintf(stderr, " XDestroyWindow 0x%x\n", (int) vm_window->local_winid);
 	if (vm_window->image)
 		release_mapped_mfns(g, vm_window);
-	l2 = list_lookup(wid2windowdata, vm_window->local_winid);
+	l2 = list_lookup(g->wid2windowdata, vm_window->local_winid);
 	list_remove(l);
 	list_remove(l2);
 }
@@ -1108,7 +1145,7 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 	read_struct(untrusted_txt);
 	vm_window->is_mapped = 1;
 	if (untrusted_txt.transient_for
-	    && (trans = list_lookup(remote2local, untrusted_txt.transient_for))) {
+	    && (trans = list_lookup(g->remote2local, untrusted_txt.transient_for))) {
 		struct windowdata *transdata = trans->data;
 		vm_window->transient_for = transdata;
 		XSetTransientForHint(g->display, vm_window->local_winid,
@@ -1271,7 +1308,7 @@ void handle_message(Ghandles * g)
 		handle_clipboard_data(g, untrusted_hdr.window);
 		return;
 	}
-	l = list_lookup(remote2local, untrusted_hdr.window);
+	l = list_lookup(g->remote2local, untrusted_hdr.window);
 	if (type == MSG_CREATE) {
 		if (l) {
 			fprintf(stderr,
@@ -1331,7 +1368,7 @@ void handle_message(Ghandles * g)
 /* signal handler - connected to SIGTERM */
 void dummy_signal_handler(int x)
 {
-	signal_caught = 1;
+	ghandles.signal_caught = 1;
 }
 
 void print_backtrace(void)
@@ -1358,7 +1395,7 @@ void release_all_mapped_mfns()
 	struct genlist *curr;
 	fprintf(stderr, "release_all_mapped_mfns running\n");
 	print_backtrace();
-	for (curr = wid2windowdata->next; curr != wid2windowdata;
+	for (curr = ghandles.wid2windowdata->next; curr != ghandles.wid2windowdata;
 	     curr = curr->next) {
 		struct windowdata *vm_window = curr->data;
 		if (vm_window->image)
@@ -1428,39 +1465,6 @@ void get_protocol_version()
 		 untrusted_version, QUBES_GUID_PROTOCOL_VERSION);
 	system(message);
 	exit(1);
-}
-
-/* prepare graphic context for painting colorful frame */
-void get_frame_gc(Ghandles * g, char *name)
-{
-	XGCValues values;
-	XColor fcolor, dummy;
-	if (name[0] == '0' && (name[1] == 'x' || name[1] == 'X')) {
-		unsigned int rgb = strtoul(name, 0, 16);
-		fcolor.blue = (rgb & 0xff) * 257;
-		rgb >>= 8;
-		fcolor.green = (rgb & 0xff) * 257;
-		rgb >>= 8;
-		fcolor.red = (rgb & 0xff) * 257;
-		XAllocColor(g->display,
-			    XDefaultColormap(g->display, g->screen),
-			    &fcolor);
-	} else
-		XAllocNamedColor(g->display,
-				 XDefaultColormap(g->display, g->screen),
-				 name, &fcolor, &dummy);
-	values.foreground = fcolor.pixel;
-	g->frame_gc =
-	    XCreateGC(g->display, g->root_win, GCForeground, &values);
-}
-
-/* prepare graphic context for tray background */
-void get_tray_gc(Ghandles * g)
-{
-	XGCValues values;
-	values.foreground = WhitePixel(g->display, g->screen);
-	g->tray_gc =
-	    XCreateGC(g->display, g->root_win, GCForeground, &values);
 }
 
 /* wait until child process connects to VM */
@@ -1605,10 +1609,6 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	mkghandles(&ghandles);
-	get_frame_gc(&ghandles, ghandles.cmdline_color ? : "red");
-	get_tray_gc(&ghandles);
-	remote2local = list_new();
-	wid2windowdata = list_new();
 	XSetErrorHandler(dummy_handler);
 	vmname = peer_client_init(ghandles.domid, 6000);
 	exec_pacat(ghandles.domid);
@@ -1637,7 +1637,7 @@ int main(int argc, char **argv)
 		int select_fds[2] = { xfd };
 		fd_set retset;
 		int busy;
-		if (signal_caught) {
+		if (ghandles.signal_caught) {
 			fprintf(stderr, "exiting on signal...\n");
 			exit(0);
 		}
