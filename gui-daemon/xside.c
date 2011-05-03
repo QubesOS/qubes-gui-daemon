@@ -57,7 +57,7 @@
 #define BORDER_WIDTH 2
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes_clipboard.bin"
 /* limit of created windows - after exceed, warning the user */
-int windows_count_limit = 100;
+#define WINDOWS_COUNT_LIMIT 100
 
 /* global variables
  * keep them in this struct for readability
@@ -89,6 +89,7 @@ struct _global_handles {
 	/* counters and other state */
 	int clipboard_requested;/* if clippoard content was requested by dom0 */
 	int windows_count;		/* created window count */
+	int windows_count_limit;/* current window limit; ask user what to do when exceeded */
 };
 
 typedef struct _global_handles Ghandles;
@@ -238,6 +239,8 @@ void mkghandles(Ghandles * g)
 	g->tray_opcode =
 	    XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
 	g->xembed_message = XInternAtom(g->display, "_XEMBED", False);
+	/* initialize windows limit */
+	g->windows_count_limit = WINDOWS_COUNT_LIMIT;
 }
 
 /* find if window (given by id) is managed by this guid */
@@ -944,7 +947,7 @@ void ask_whether_flooding()
 		case 1:	/* NO */
 			exit(1);
 		case 0:	/*YES */
-			windows_count_limit += 100;
+			ghandles.windows_count_limit += WINDOWS_COUNT_LIMIT;
 			break;
 		default:
 			fprintf(stderr, "Problems executing kdialog ?\n");
@@ -963,7 +966,7 @@ void handle_create(Ghandles * g, XID window)
 	struct msg_create untrusted_crt;
 	XID parent;
 
-	if (g->windows_count++ > windows_count_limit)
+	if (g->windows_count++ > g->windows_count_limit)
 		ask_whether_flooding();
 	vm_window = (struct windowdata *) calloc(1, sizeof(struct windowdata));
 	if (!vm_window) {
