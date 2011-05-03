@@ -22,14 +22,20 @@
 #ifndef SHM_CMD_H
 #define SHM_CMD_H
 #include <stdint.h>
+
+/* Messages are described here:
+ * http://wiki.qubes-os.org/trac/wiki/GUIdocs
+ */
+
+/* VM -> Dom0 */
 struct shm_cmd {
-uint32_t shmid;
-uint32_t width;
-uint32_t height;
-uint32_t bpp;
-uint32_t off;
-uint32_t num_mfn;
-uint32_t domid;
-uint32_t mfns[0];
+	uint32_t shmid;
+	uint32_t width;
+	uint32_t height;
+	uint32_t bpp;
+	uint32_t off;
+	uint32_t num_mfn;
+	uint32_t domid;
+	uint32_t mfns[0];
 };
 #endif

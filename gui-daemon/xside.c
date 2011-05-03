@@ -20,6 +20,10 @@
  *
  */
 
+/* high level documentation is here:
+ * http://wiki.qubes-os.org/trac/wiki/GUIdocs
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -47,63 +51,97 @@
 #include "qlimits.h"
 #include "tray.h"
 
+/* global variables
+ * keep them in this struct to not confuse with local variables
+ */
 struct _global_handles {
 	Display *display;
 	int screen;		/* shortcut to the default screen */
 	Window root_win;	/* root attributes */
-	int root_width;
+	int root_width;		/* size of root window */
 	int root_height;
-	GC context;
-	Atom wmDeleteMessage;
+	GC context;			/* context for pixmap operations */
+	/* atoms for comunitating with xserver */
+	Atom wmDeleteMessage;	/* Atom: WM_DELETE_WINDOW */
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
 	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
 	Atom xembed_message;	/* Atom: _XEMBED */
-	char vmname[16];
-	struct shm_cmd *shmcmd;
-	int cmd_shmid;
-	int domid;
-	int execute_cmd_in_vm;
-	char cmd_for_vm[256];
-	int clipboard_requested;
-	GC frame_gc;
-	GC tray_gc;
-	char *cmdline_color;
-	char *cmdline_icon;
-	int label_index;
+	char vmname[16];		/* name of VM */
+	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
+	int cmd_shmid;			/* shared memory id - received from shmoverride.so through shm.id file */
+	int domid;				/* Xen domain id */
+	int execute_cmd_in_vm;	/* should command be executed in VM just after Xorg start? */
+	char cmd_for_vm[256];	/* command to be executed */
+	int clipboard_requested;/* if clippoard content was requested by dom0 */
+	GC frame_gc;			/* graphic context to paint window frame */
+	GC tray_gc;				/* graphic context to paint tray background */
+	char *cmdline_color;	/* color of frame */
+	char *cmdline_icon;		/* icon hint for WM */
+	int label_index;		/* label (frame color) hint for WM */
+	int windows_count;		/* created window count */
 };
 
 typedef struct _global_handles Ghandles;
 Ghandles ghandles;
+
+/* per-window data */
 struct conndata {
 	int width;
 	int height;
 	int x;
 	int y;
 	int is_mapped;
-	int is_docked;
-	XID remote_winid;
-	Window local_winid;
-	struct conndata *parent;
-	struct conndata *transient_for;
-	int override_redirect;
-	XShmSegmentInfo shminfo;
-	XImage *image;
-	int image_height;
+	int is_docked;			/* is it docked tray icon */
+	XID remote_winid;		/* window id on VM side */
+	Window local_winid;		/* window id on X side */
+	struct conndata *parent;/* parent window */
+	struct conndata *transient_for; /* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
+	int override_redirect;	/* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
+	XShmSegmentInfo shminfo;	/* temporary shmid; see shmoverride/README */
+	XImage *image;				/* image with window content */
+	int image_height;			/* size of window content, not always the same as window in dom0! */
 	int image_width;
-	int have_queued_configure;
+	int have_queued_configure;	/* have configure request been sent to VM - waiting for confirmation */
 };
 struct conndata *last_input_window;
+
+/* lists of windows: */
+/*   indexed by remote window id */
 struct genlist *remote2local;
+/*   indexed by local window id */
 struct genlist *wid2conndata;
 
+/* limit of created windows - after exceed, warning the user */
+int windows_count_limit = 100;
+
+/* signal was caught */
+static int volatile signal_caught;
+
+/* default width of forced colorful border */
 #define BORDER_WIDTH 2
 
+/* macro used to verify data from VM */
 #define VERIFY(x) if (!(x)) { \
 		fprintf(stderr, \
 			"%s:%d: Received values doesn't pass verification: %s\nAborting\n", \
 				__FILE__, __LINE__, __STRING(x)); \
 		exit(1); \
 	}
+
+/* calculate virtual width */
+#define XORG_DEFAULT_XINC 8
+#define _VIRTUALX(x) ( (((x)+XORG_DEFAULT_XINC-1)/XORG_DEFAULT_XINC)*XORG_DEFAULT_XINC )
+
+
+/* short macro for beginning of each xevent handling function
+ * checks if this window is managed by guid and declares conndata struct
+ * pointer */
+#define CHECK_NONMANAGED_WINDOW(id) struct conndata *conn; \
+	if (!(conn=check_nonmanged_window(id))) return
+
+#define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes_clipboard.bin"
+
+
 #ifndef min
 #define min(x,y) ((x)>(y)?(y):(x))
 #endif
@@ -111,6 +149,14 @@ struct genlist *wid2conndata;
 #define max(x,y) ((x)<(y)?(y):(x))
 #endif
 
+/* function declarations (only that needed before actual function code) */
+void inter_appviewer_lock(int mode);
+void release_mapped_mfns(Ghandles * g, struct conndata *item);
+
+
+/* create local window - on VM request.
+ * parameters are sanitized already
+ */
 Window mkwindow(Ghandles * g, struct conndata *item)
 {
 	char *gargv[1] = { 0 };
@@ -194,9 +240,8 @@ Window mkwindow(Ghandles * g, struct conndata *item)
 	return child_win;
 }
 
-
-#define XORG_DEFAULT_XINC 8
-#define _VIRTUALX(x) ( (((x)+XORG_DEFAULT_XINC-1)/XORG_DEFAULT_XINC)*XORG_DEFAULT_XINC )
+/* prepare global variables content:
+ * most of them are handles to Xserver structures */
 void mkghandles(Ghandles * g)
 {
 	char tray_sel_atom_name[64];
@@ -224,6 +269,7 @@ void mkghandles(Ghandles * g)
 	g->xembed_message = XInternAtom(g->display, "_XEMBED", False);
 }
 
+/* find if window (given by id) is managed by this guid */
 struct conndata *check_nonmanged_window(XID id)
 {
 	struct genlist *item = list_lookup(wid2conndata, id);
@@ -235,12 +281,7 @@ struct conndata *check_nonmanged_window(XID id)
 	return item->data;
 }
 
-void inter_appviewer_lock(int mode);
-
-#define CHECK_NONMANAGED_WINDOW(id) struct conndata *conn; \
-	if (!(conn=check_nonmanged_window(id))) return
-
-#define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes_clipboard.bin"
+/* fetch clippboard content from file */
 void get_qubes_clipboard(char **data, int *len)
 {
 	FILE *file;
@@ -266,6 +307,10 @@ out:
 	inter_appviewer_lock(0);
 }
 
+/* handle VM message: MSG_CLIPBOARD_DATA
+ *  - checks if clipboard data was requested
+ *  - store it in file
+ */
 void handle_clipboard_data(unsigned int untrusted_len)
 {
 	FILE *file;
@@ -309,6 +354,9 @@ void handle_clipboard_data(unsigned int untrusted_len)
 	free(untrusted_data);
 }
 
+/* check and handle guid-special keys
+ * currently only for inter-vm clipboard copy
+ */
 int is_special_keypress(XKeyEvent * ev, XID remote_winid)
 {
 	struct msghdr hdr;
@@ -345,6 +393,9 @@ int is_special_keypress(XKeyEvent * ev, XID remote_winid)
 	return 0;
 }
 
+/* handle Xserver event: XKeyEvent
+ * send it to relevant window in VM
+ */
 void process_xevent_keypress(XKeyEvent * ev)
 {
 	struct msghdr hdr;
@@ -381,6 +432,8 @@ void dump_mapped()
 	}
 }
 
+/* handle Xserver event: XButtonEvent
+ * same as XKeyEvent - send to relevant window in VM */
 void process_xevent_button(XButtonEvent * ev)
 {
 	struct msghdr hdr;
@@ -407,6 +460,8 @@ void process_xevent_button(XButtonEvent * ev)
 		(int) ev->window, hdr.window, k.type, k.button);
 }
 
+/* handle Xserver event: XCloseEvent
+ * send to relevant window in VM */
 void process_xevent_close(XID window)
 {
 	struct msghdr hdr;
@@ -416,6 +471,7 @@ void process_xevent_close(XID window)
 	write_struct(hdr);
 }
 
+/* send configure request for specified VM window */
 void send_configure(struct conndata *conn, int x, int y, int w, int h)
 {
 	struct msghdr hdr;
@@ -429,6 +485,9 @@ void send_configure(struct conndata *conn, int x, int y, int w, int h)
 	write_message(hdr, msg);
 }
 
+/* fix position of docked tray icon;
+ * icon position is relative to embedder 0,0 so we must translate it to
+ * absolute position */
 int fix_docked_xy(struct conndata *conn)
 {
 
@@ -448,6 +507,9 @@ int fix_docked_xy(struct conndata *conn)
 	return ret;
 }
 
+/* force window to not hide it's frame
+ * checks if at least border_width is from every screen edge (and fix if no)
+ * Exception: allow window to be entriely off the screen */
 int force_on_screen(struct conndata *item, int border_width) {
 	int do_move;
 
@@ -472,6 +534,8 @@ int force_on_screen(struct conndata *item, int border_width) {
 	return do_move;
 }
 
+/* handle Xserver event: XConfigureEvent
+ * after some checks/fixes send to relevant window in VM */
 void process_xevent_configure(XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(ev->window);
@@ -496,6 +560,8 @@ void process_xevent_configure(XConfigureEvent * ev)
 	send_configure(conn, conn->x, conn->y, conn->width, conn->height);
 }
 
+/* handle VM message: MSG_CONFIGURE
+ * check if we like new dimensions/position and move relevant window */
 void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 {
 	struct msg_configure untrusted_conf;
@@ -564,6 +630,8 @@ void handle_configure_from_vm(Ghandles * g, struct conndata *item)
 			  item->width, item->height);
 }
 
+/* handle Xserver event: XMotionEvent
+ * send to relevant window in VM */
 void process_xevent_motion(XMotionEvent * ev)
 {
 	struct msghdr hdr;
@@ -585,6 +653,8 @@ void process_xevent_motion(XMotionEvent * ev)
 //      fprintf(stderr, "motion in 0x%x", ev->window);
 }
 
+/* handle Xserver event: EnterNotify, LeaveNotify
+ * send to relevant window in VM */
 void process_xevent_crossing(XCrossingEvent * ev)
 {
 	struct msghdr hdr;
@@ -603,6 +673,8 @@ void process_xevent_crossing(XCrossingEvent * ev)
 	write_message(hdr, k);
 }
 
+/* handle Xserver event: FocusIn, FocusOut
+ * send to relevant window in VM */
 void process_xevent_focus(XFocusChangeEvent * ev)
 {
 	struct msghdr hdr;
@@ -623,6 +695,11 @@ void process_xevent_focus(XFocusChangeEvent * ev)
 	}
 }
 
+/* update given fragment of window image
+ * can be requested by VM (MSG_SHMIMAGE) and Xserver (XExposeEvent)
+ * parameters are not sanitized earlier - we must check it carefully
+ * also do not let to cover forced colorful frame (for undecoraded windows)
+ */
 void do_shm_update(struct conndata *conn, int untrusted_x, int untrusted_y, int untrusted_w, int untrusted_h)
 {
 	int border_width = BORDER_WIDTH;
@@ -776,12 +853,17 @@ void do_shm_update(struct conndata *conn, int untrusted_x, int untrusted_y, int 
 
 }
 
+/* handle Xserver event: XExposeEvent
+ * update relevant part of window using stored image
+ */
 void process_xevent_expose(XExposeEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(ev->window);
 	do_shm_update(conn, ev->x, ev->y, ev->width, ev->height);
 }
 
+/* handle Xserver event: XMapEvent
+ * after some checks, send to relevant window in VM */
 void process_xevent_mapnotify(XMapEvent * ev)
 {
 	XWindowAttributes attr;
@@ -809,6 +891,8 @@ void process_xevent_mapnotify(XMapEvent * ev)
 	}
 }
 
+/* handle Xserver event: _XEMBED
+ * if window isn't mapped already - map it now */
 void process_xevent_xembed(XClientMessageEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(ev->window);
@@ -822,6 +906,7 @@ void process_xevent_xembed(XClientMessageEvent * ev)
 	}
 }
 
+/* dispath Xserver event */
 void process_xevent()
 {
 	XEvent event_buffer;
@@ -876,7 +961,8 @@ void process_xevent()
 }
 
 
-
+/* handle VM message: MSG_SHMIMAGE
+ * pass message data to do_shm_update - there input validation will be done */
 void handle_shmimage(Ghandles * g, struct conndata *item)
 {
 	struct msg_shmimage untrusted_mx;
@@ -890,8 +976,7 @@ void handle_shmimage(Ghandles * g, struct conndata *item)
 			untrusted_mx.height);
 }
 
-int windows_count;
-int windows_count_limit = 100;
+/* ask user when VM creates to many windows */
 void ask_whether_flooding()
 {
 	char text[1024];
@@ -901,7 +986,7 @@ void ask_whether_flooding()
 		 "'VMapp \"%s\" has created %d windows; it looks numerous, "
 		 "so it may be "
 		 "a beginning of a DoS attack. Do you want to continue:'",
-		 ghandles.vmname, windows_count);
+		 ghandles.vmname, ghandles.windows_count);
 	do {
 		ret = system(text);
 		ret = WEXITSTATUS(ret);
@@ -921,7 +1006,9 @@ void ask_whether_flooding()
 	} while (ret == 2);
 }
 
-
+/* handle VM message: MSG_CREATE
+ * checks given attributes and create appropriate window in local Xserver
+ * (using mkwindow) */
 void handle_create(Ghandles * g, XID window)
 {
 	struct conndata *item;
@@ -929,7 +1016,7 @@ void handle_create(Ghandles * g, XID window)
 	struct msg_create untrusted_crt;
 	XID parent;
 
-	if (windows_count++ > windows_count_limit)
+	if (g->windows_count++ > windows_count_limit)
 		ask_whether_flooding();
 	item = (struct conndata *) calloc(1, sizeof(struct conndata));
 	if (!item) {
@@ -978,13 +1065,13 @@ void handle_create(Ghandles * g, XID window)
 			    item->y, item->width, item->height);
 }
 
-void release_mapped_mfns(Ghandles * g, struct conndata *item);
-
+/* handle VM message: MSG_DESTROY
+ * destroy window locally, as requested */
 void handle_destroy(Ghandles * g, struct genlist *l)
 {
 	struct genlist *l2;
 	struct conndata *item = l->data;
-	windows_count--;
+	g->windows_count--;
 	if (item == last_input_window)
 		last_input_window = NULL;
 	XDestroyWindow(g->display, item->local_winid);
@@ -996,6 +1083,8 @@ void handle_destroy(Ghandles * g, struct genlist *l)
 	list_remove(l2);
 }
 
+/* replace non-printable charactes with '_'
+ * given string must be NULL terminated already */
 void sanitize_string_from_vm(unsigned char *untrusted_s)
 {
 	static unsigned char allowed_chars[] = { '-', '_', ' ', '.' };
@@ -1016,6 +1105,8 @@ void sanitize_string_from_vm(unsigned char *untrusted_s)
 	}
 }
 
+/* fix menu window parameters: override_redirect and force to not hide its
+ * frame */
 void fix_menu(struct conndata *item)
 {
 	XSetWindowAttributes attr;
@@ -1032,6 +1123,8 @@ void fix_menu(struct conndata *item)
 			    item->y, item->width, item->height);
 }
 
+/* handle VM message: MSG_VMNAME
+ * remove non-printable characters and pass to X server */
 void handle_wmname(Ghandles * g, struct conndata *item)
 {
 	XTextProperty text_prop;
@@ -1054,6 +1147,8 @@ void handle_wmname(Ghandles * g, struct conndata *item)
 	XFree(text_prop.value);
 }
 
+/* handle VM message: MSG_MAP
+ * Map a window with given parameters */
 void handle_map(struct conndata *item)
 {
 	struct genlist *trans;
@@ -1075,6 +1170,9 @@ void handle_map(struct conndata *item)
 	(void) XMapWindow(ghandles.display, item->local_winid);
 }
 
+/* handle VM message: MSG_DOCK
+ * Try to dock window in the tray
+ * Rest of XEMBED protocol is catched in VM */
 void handle_dock(Ghandles * g, struct conndata *item)
 {
 	Window tray;
@@ -1097,6 +1195,8 @@ void handle_dock(Ghandles * g, struct conndata *item)
 	item->is_docked = 1;
 }
 
+/* Obtain/release inter-vm lock
+ * Used for handling shared Xserver memory and clipboard file */
 void inter_appviewer_lock(int mode)
 {
 	int cmd;
@@ -1119,6 +1219,7 @@ void inter_appviewer_lock(int mode)
 	}
 }
 
+/* release shared memory connected with given window */
 void release_mapped_mfns(Ghandles * g, struct conndata *item)
 {
 	inter_appviewer_lock(1);
@@ -1131,6 +1232,9 @@ void release_mapped_mfns(Ghandles * g, struct conndata *item)
 }
 
 char dummybuf[100];
+/* handle VM message: MSG_MFNDUMP
+ * Retrieve memory addresses connected with composition buffer of remote window
+ */
 void handle_mfndump(Ghandles * g, struct conndata *item)
 {
 	char untrusted_shmcmd_data_from_remote[4096 * SHM_CMD_NUM_PAGES];
@@ -1198,6 +1302,7 @@ void handle_mfndump(Ghandles * g, struct conndata *item)
 	shmctl(item->shminfo.shmid, IPC_RMID, 0);
 }
 
+/* VM message dispatcher */
 void handle_message()
 {
 	struct msghdr untrusted_hdr;
@@ -1272,6 +1377,7 @@ void handle_message()
 	}
 }
 
+/* send MSG_EXECUTE to VM */
 void send_cmd_to_vm(char *cmd)
 {
 	struct msghdr hdr;
@@ -1284,7 +1390,7 @@ void send_cmd_to_vm(char *cmd)
 	write_message(hdr, exec_data);
 }
 
-static int volatile signal_caught;
+/* signal handler - connected to SIGTERM */
 void dummy_signal_handler(int x)
 {
 	signal_caught = 1;
@@ -1308,6 +1414,7 @@ void print_backtrace(void)
 	free(strings);
 }
 
+/* release all windows mapped memory */
 void release_all_mapped_mfns()
 {
 	struct genlist *curr;
@@ -1321,6 +1428,7 @@ void release_all_mapped_mfns()
 	}
 }
 
+/* start pulseaudio Dom0 proxy */
 void exec_pacat(int domid)
 {
 	int i, fd;
@@ -1350,6 +1458,7 @@ void exec_pacat(int domid)
 	}
 }
 
+/* send configuration parameters of X server to VM */
 void send_xconf(Ghandles * g)
 {
 	struct msg_xconf xconf;
@@ -1362,6 +1471,8 @@ void send_xconf(Ghandles * g)
 	write_struct(xconf);
 }
 
+/* receive from VM and compare protocol version
+ * abort if mismatch */
 void get_protocol_version()
 {
 	uint32_t untrusted_version;
@@ -1379,6 +1490,7 @@ void get_protocol_version()
 	exit(1);
 }
 
+/* prepare graphic context for painting colorful frame */
 void get_frame_gc(Ghandles * g, char *name)
 {
 	XGCValues values;
@@ -1402,6 +1514,7 @@ void get_frame_gc(Ghandles * g, char *name)
 	    XCreateGC(g->display, g->root_win, GCForeground, &values);
 }
 
+/* prepare graphic context for tray background */
 void get_tray_gc(Ghandles * g)
 {
 	XGCValues values;
@@ -1410,6 +1523,7 @@ void get_tray_gc(Ghandles * g)
 	    XCreateGC(g->display, g->root_win, GCForeground, &values);
 }
 
+/* wait until child process connects to VM */
 void wait_for_connection_in_parent(int *pipe_notify)
 {
 	// inside the parent process
@@ -1510,6 +1624,7 @@ void parse_cmdline(int argc, char **argv)
 	}
 }
 
+/* create guid_running file when connected to VM */
 void set_alive_flag(int domid)
 {
 	char buf[256];
@@ -1591,6 +1706,7 @@ int main(int argc, char **argv)
 	XSetErrorHandler(dummy_handler);
 	vmname = peer_client_init(ghandles.domid, 6000);
 	exec_pacat(ghandles.domid);
+	/* drop root privileges */
 	setuid(getuid());
 	set_alive_flag(ghandles.domid);
 	write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully
