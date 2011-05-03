@@ -1178,7 +1178,6 @@ void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 	vm_window->image = NULL;
 }
 
-char dummybuf[100];
 /* handle VM message: MSG_MFNDUMP
  * Retrieve memory addresses connected with composition buffer of remote window
  */
@@ -1188,6 +1187,7 @@ void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	struct shm_cmd *untrusted_shmcmd =
 	    (struct shm_cmd *) untrusted_shmcmd_data_from_remote;
 	unsigned num_mfn, off;
+	static char dummybuf[100];
 
 
 	if (vm_window->image)
