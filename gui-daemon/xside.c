@@ -1626,13 +1626,6 @@ int main(int argc, char **argv)
 	get_protocol_version();
 	send_xconf(&ghandles);
 
-	if (ghandles.execute_cmd_in_vm) {
-		fprintf(stderr,
-			"Sending cmd to execute: %s\n",
-			ghandles.cmd_for_vm);
-		send_cmd_to_vm(ghandles.cmd_for_vm);
-	}
-
 	for (;;) {
 		int select_fds[2] = { xfd };
 		fd_set retset;
