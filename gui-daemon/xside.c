@@ -285,7 +285,7 @@ out:
  *  - checks if clipboard data was requested
  *  - store it in file
  */
-void handle_clipboard_data(unsigned int untrusted_len)
+void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 {
 	FILE *file;
 	char *untrusted_data;
@@ -303,7 +303,7 @@ void handle_clipboard_data(unsigned int untrusted_len)
 		exit(1);
 	}
 	read_data(untrusted_data, untrusted_data_sz);
-	if (!ghandles.clipboard_requested) {
+	if (!g->clipboard_requested) {
 		free(untrusted_data);
 		fprintf(stderr, "received clipboard data when not requested\n");
 		return;
@@ -321,17 +321,17 @@ void handle_clipboard_data(unsigned int untrusted_len)
 		perror("open " QUBES_CLIPBOARD_FILENAME ".source");
 		exit(1);
 	}
-	fwrite(ghandles.vmname, strlen(ghandles.vmname), 1, file);
+	fwrite(g->vmname, strlen(g->vmname), 1, file);
 	fclose(file);
 	inter_appviewer_lock(0);
-	ghandles.clipboard_requested = 0;
+	g->clipboard_requested = 0;
 	free(untrusted_data);
 }
 
 /* check and handle guid-special keys
  * currently only for inter-vm clipboard copy
  */
-int is_special_keypress(XKeyEvent * ev, XID remote_winid)
+int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 {
 	struct msghdr hdr;
 	char *data;
@@ -339,17 +339,17 @@ int is_special_keypress(XKeyEvent * ev, XID remote_winid)
 	if ((ev->state & (ShiftMask | ControlMask)) !=
 	    (ShiftMask | ControlMask))
 		return 0;
-	if (ev->keycode == XKeysymToKeycode(ghandles.display, XK_c)) {
+	if (ev->keycode == XKeysymToKeycode(g->display, XK_c)) {
 		if (ev->type != KeyPress)
 			return 1;
-		ghandles.clipboard_requested = 1;
+		g->clipboard_requested = 1;
 		hdr.type = MSG_CLIPBOARD_REQ;
 		hdr.window = remote_winid;
 		fprintf(stderr, "Ctrl-Shift-c\n");
 		write_struct(hdr);
 		return 1;
 	}
-	if (ev->keycode == XKeysymToKeycode(ghandles.display, XK_v)) {
+	if (ev->keycode == XKeysymToKeycode(g->display, XK_v)) {
 		if (ev->type != KeyPress)
 			return 1;
 		hdr.type = MSG_CLIPBOARD_DATA;
@@ -370,13 +370,13 @@ int is_special_keypress(XKeyEvent * ev, XID remote_winid)
 /* handle local Xserver event: XKeyEvent
  * send it to relevant window in VM
  */
-void process_xevent_keypress(XKeyEvent * ev)
+void process_xevent_keypress(Ghandles * g, XKeyEvent * ev)
 {
 	struct msghdr hdr;
 	struct msg_keypress k;
 	CHECK_NONMANAGED_WINDOW(ev->window);
 	last_input_window = vm_window;
-	if (is_special_keypress(ev, vm_window->remote_winid))
+	if (is_special_keypress(g, ev, vm_window->remote_winid))
 		return;
 	k.type = ev->type;
 	k.x = ev->x;
@@ -391,7 +391,7 @@ void process_xevent_keypress(XKeyEvent * ev)
 }
 
 // debug routine
-void dump_mapped()
+void dump_mapped(Ghandles * g)
 {
 	struct genlist *item = wid2windowdata->next;
 	for (; item != wid2windowdata; item = item->next) {
@@ -408,7 +408,7 @@ void dump_mapped()
 
 /* handle local Xserver event: XButtonEvent
  * same as XKeyEvent - send to relevant window in VM */
-void process_xevent_button(XButtonEvent * ev)
+void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 {
 	struct msghdr hdr;
 	struct msg_button k;
@@ -416,7 +416,7 @@ void process_xevent_button(XButtonEvent * ev)
 
 // for debugging only, inactive
 	if (0 && ev->button == 4) {
-		dump_mapped();
+		dump_mapped(g);
 		return;
 	}
 
@@ -462,16 +462,16 @@ void send_configure(struct windowdata *vm_window, int x, int y, int w, int h)
 /* fix position of docked tray icon;
  * icon position is relative to embedder 0,0 so we must translate it to
  * absolute position */
-int fix_docked_xy(struct windowdata *vm_window)
+int fix_docked_xy(Ghandles * g, struct windowdata *vm_window)
 {
 
 	/* docked window is reparented to root_win on vmside */
 	XWindowAttributes attr;
 	Window win;
 	int x, y, ret = 0;
-	XGetWindowAttributes(ghandles.display, vm_window->local_winid, &attr);
+	XGetWindowAttributes(g->display, vm_window->local_winid, &attr);
 	if (XTranslateCoordinates
-	    (ghandles.display, vm_window->local_winid, ghandles.root_win,
+	    (g->display, vm_window->local_winid, g->root_win,
 	     0, 0, &x, &y, &win) == True) {
 		if (vm_window->x != x || vm_window->y != y)
 			ret = 1;
@@ -484,7 +484,7 @@ int fix_docked_xy(struct windowdata *vm_window)
 /* force window to not hide it's frame
  * checks if at least border_width is from every screen edge (and fix if no)
  * Exception: allow window to be entriely off the screen */
-int force_on_screen(struct windowdata *vm_window, int border_width) {
+int force_on_screen(Ghandles * g, struct windowdata *vm_window, int border_width) {
 	int do_move;
 
 	if (vm_window->x < border_width && vm_window->x + vm_window->width > 0) {
@@ -495,14 +495,14 @@ int force_on_screen(struct windowdata *vm_window, int border_width) {
 		vm_window->y = border_width;
 		do_move = 1;
 	}
-	if (vm_window->x < ghandles.root_width && 
-			vm_window->x + vm_window->width > ghandles.root_width - border_width) {
-		vm_window->width = ghandles.root_width - vm_window->x - border_width;
+	if (vm_window->x < g->root_width && 
+			vm_window->x + vm_window->width > g->root_width - border_width) {
+		vm_window->width = g->root_width - vm_window->x - border_width;
 		do_move = 1;
 	}
-	if (vm_window->y < ghandles.root_height && 
-			vm_window->y + vm_window->height > ghandles.root_height - border_width) {
-		vm_window->height = ghandles.root_height - vm_window->y - border_width;
+	if (vm_window->y < g->root_height && 
+			vm_window->y + vm_window->height > g->root_height - border_width) {
+		vm_window->height = g->root_height - vm_window->y - border_width;
 		do_move = 1;
 	}
 	return do_move;
@@ -510,7 +510,7 @@ int force_on_screen(struct windowdata *vm_window, int border_width) {
 
 /* handle local Xserver event: XConfigureEvent
  * after some checks/fixes send to relevant window in VM */
-void process_xevent_configure(XConfigureEvent * ev)
+void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(ev->window);
 //      fprintf(stderr, "process_xevent_configure, %d/%d, was"
@@ -525,7 +525,7 @@ void process_xevent_configure(XConfigureEvent * ev)
 		vm_window->x = ev->x;
 		vm_window->y = ev->y;
 	} else
-		fix_docked_xy(vm_window);
+		fix_docked_xy(g, vm_window);
 
 // if AppVM has not unacknowledged previous resize msg, do not send another one
 	if (vm_window->have_queued_configure)
@@ -599,20 +599,20 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	if (vm_window->override_redirect)
 		// do not let menu window hide its color frame by moving outside of the screen
 		// if it is located offscreen, then allow negative x/y
-		force_on_screen(vm_window, 0);
+		force_on_screen(g, vm_window, 0);
 	XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x, vm_window->y,
 			  vm_window->width, vm_window->height);
 }
 
 /* handle local Xserver event: XMotionEvent
  * send to relevant window in VM */
-void process_xevent_motion(XMotionEvent * ev)
+void process_xevent_motion(Ghandles * g, XMotionEvent * ev)
 {
 	struct msghdr hdr;
 	struct msg_motion k;
 	CHECK_NONMANAGED_WINDOW(ev->window);
 
-	if (vm_window->is_docked && fix_docked_xy(vm_window))
+	if (vm_window->is_docked && fix_docked_xy(g, vm_window))
 		send_configure(vm_window, vm_window->x, vm_window->y, vm_window->width,
 			       vm_window->height);
 
@@ -629,7 +629,7 @@ void process_xevent_motion(XMotionEvent * ev)
 
 /* handle local Xserver event: FocusIn, FocusOut
  * send to relevant window in VM */
-void process_xevent_focus(XFocusChangeEvent * ev)
+void process_xevent_focus(Ghandles * g, XFocusChangeEvent * ev)
 {
 	struct msghdr hdr;
 	struct msg_focus k;
@@ -642,7 +642,7 @@ void process_xevent_focus(XFocusChangeEvent * ev)
 	write_message(hdr, k);
 	if (ev->type == FocusIn) {
 		char keys[32];
-		XQueryKeymap(ghandles.display, keys);
+		XQueryKeymap(g->display, keys);
 		hdr.type = MSG_KEYMAP_NOTIFY;
 		hdr.window = 0;
 		write_message(hdr, keys);
@@ -654,7 +654,8 @@ void process_xevent_focus(XFocusChangeEvent * ev)
  * parameters are not sanitized earlier - we must check it carefully
  * also do not let to cover forced colorful frame (for undecoraded windows)
  */
-void do_shm_update(struct windowdata *vm_window, int untrusted_x, int untrusted_y, int untrusted_w, int untrusted_h)
+void do_shm_update(Ghandles * g, struct windowdata *vm_window, int untrusted_x,
+		int untrusted_y, int untrusted_w, int untrusted_h)
 {
 	int border_width = BORDER_WIDTH;
 	int x,y,w,h;
@@ -742,14 +743,14 @@ void do_shm_update(struct windowdata *vm_window, int untrusted_x, int untrusted_
 		 * This is needed because XGetPixel does not seem to work
 		 * with XShmImage data. */
 		Pixmap pixmap =
-		    XCreatePixmap(ghandles.display, vm_window->local_winid,
+		    XCreatePixmap(g->display, vm_window->local_winid,
 				  vm_window->image_width, vm_window->image_height,
 				  24);
-		XShmPutImage(ghandles.display, pixmap, ghandles.context,
+		XShmPutImage(g->display, pixmap, g->context,
 			     vm_window->image, 0, 0, 0, 0, vm_window->image_width,
 			     vm_window->image_height, 0);
 		XImage *image =
-		    XGetImage(ghandles.display, pixmap, x, y, w, h,
+		    XGetImage(g->display, pixmap, x, y, w, h,
 			      0xFFFFFFFF, ZPixmap);
 		/* Use top-left corner pixel color as transparency color */
 		unsigned long back = XGetPixel(image, 0, 0);
@@ -768,40 +769,40 @@ void do_shm_update(struct windowdata *vm_window, int untrusted_x, int untrusted_
 			if ((step - 1) % 8 != 7)
 				datap++;
 		}
-		Pixmap mask = XCreateBitmapFromData(ghandles.display,
+		Pixmap mask = XCreateBitmapFromData(g->display,
 						    vm_window->local_winid,
 						    data, w, h);
 		/* set trayicon background to white color */
-		XFillRectangle(ghandles.display, vm_window->local_winid,
-			       ghandles.tray_gc, 0, 0, vm_window->width,
+		XFillRectangle(g->display, vm_window->local_winid,
+			       g->tray_gc, 0, 0, vm_window->width,
 			       vm_window->height);
 		/* Paint clipped Image */
-		XSetClipMask(ghandles.display, ghandles.context, mask);
-		XPutImage(ghandles.display, vm_window->local_winid,
-			  ghandles.context, image, x + woff, y + hoff, x,
+		XSetClipMask(g->display, g->context, mask);
+		XPutImage(g->display, vm_window->local_winid,
+			  g->context, image, x + woff, y + hoff, x,
 			  y, w, h);
 		/* Remove clipping */
-		XSetClipMask(ghandles.display, ghandles.context, None);
+		XSetClipMask(g->display, g->context, None);
 		/* Draw VM color frame in case VM tries to cheat
 		 * and puts its own background color */
-		XDrawRectangle(ghandles.display, vm_window->local_winid,
-			       ghandles.frame_gc, 0, 0,
+		XDrawRectangle(g->display, vm_window->local_winid,
+			       g->frame_gc, 0, 0,
 			       vm_window->width - 1, vm_window->height - 1);
 
-		XFreePixmap(ghandles.display, mask);
+		XFreePixmap(g->display, mask);
 		XDestroyImage(image);
-		XFreePixmap(ghandles.display, pixmap);
+		XFreePixmap(g->display, pixmap);
 		free(data);
 		return;
 	} else
-		XShmPutImage(ghandles.display, vm_window->local_winid,
-			     ghandles.context, vm_window->image, x + woff,
+		XShmPutImage(g->display, vm_window->local_winid,
+			     g->context, vm_window->image, x + woff,
 			     y + hoff, x, y, w, h, 0);
 	if (!do_border)
 		return;
 	for (i = 0; i < border_width; i++)
-		XDrawRectangle(ghandles.display, vm_window->local_winid,
-			       ghandles.frame_gc, i, i,
+		XDrawRectangle(g->display, vm_window->local_winid,
+			       g->frame_gc, i, i,
 			       vm_window->width - 1 - 2 * i,
 			       vm_window->height - 1 - 2 * i);
 
@@ -810,27 +811,27 @@ void do_shm_update(struct windowdata *vm_window, int untrusted_x, int untrusted_
 /* handle local Xserver event: XExposeEvent
  * update relevant part of window using stored image
  */
-void process_xevent_expose(XExposeEvent * ev)
+void process_xevent_expose(Ghandles * g, XExposeEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(ev->window);
-	do_shm_update(vm_window, ev->x, ev->y, ev->width, ev->height);
+	do_shm_update(g, vm_window, ev->x, ev->y, ev->width, ev->height);
 }
 
 /* handle local Xserver event: XMapEvent
  * after some checks, send to relevant window in VM */
-void process_xevent_mapnotify(XMapEvent * ev)
+void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 {
 	XWindowAttributes attr;
 	CHECK_NONMANAGED_WINDOW(ev->window);
 	if (vm_window->is_mapped)
 		return;
-	XGetWindowAttributes(ghandles.display, vm_window->local_winid, &attr);
+	XGetWindowAttributes(g->display, vm_window->local_winid, &attr);
 	if (attr.map_state != IsViewable && !vm_window->is_docked) {
 		/* Unmap windows that are not visible on vmside.
 		 * WM may try to map non-viewable windows ie. when
 		 * switching desktops.
 		 */
-		(void) XUnmapWindow(ghandles.display, vm_window->local_winid);
+		(void) XUnmapWindow(g->display, vm_window->local_winid);
 		fprintf(stderr, "WM tried to map 0x%x, revert\n",
 			(int) vm_window->local_winid);
 	} else {
@@ -847,7 +848,7 @@ void process_xevent_mapnotify(XMapEvent * ev)
 
 /* handle local Xserver event: _XEMBED
  * if window isn't mapped already - map it now */
-void process_xevent_xembed(XClientMessageEvent * ev)
+void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(ev->window);
 	fprintf(stderr, "_XEMBED message %ld\n", ev->data.l[1]);
@@ -855,52 +856,52 @@ void process_xevent_xembed(XClientMessageEvent * ev)
 		if (vm_window->is_docked < 2) {
 			vm_window->is_docked = 2;
 			if (!vm_window->is_mapped)
-				XMapWindow(ghandles.display, ev->window);
+				XMapWindow(g->display, ev->window);
 		}
 	}
 }
 
 /* dispath local Xserver event */
-void process_xevent()
+void process_xevent(Ghandles * g)
 {
 	XEvent event_buffer;
-	XNextEvent(ghandles.display, &event_buffer);
+	XNextEvent(g->display, &event_buffer);
 	switch (event_buffer.type) {
 	case KeyPress:
 	case KeyRelease:
-		process_xevent_keypress((XKeyEvent *) & event_buffer);
+		process_xevent_keypress(g, (XKeyEvent *) & event_buffer);
 		break;
 	case ConfigureNotify:
-		process_xevent_configure((XConfigureEvent *) &
+		process_xevent_configure(g, (XConfigureEvent *) &
 					 event_buffer);
 		break;
 	case ButtonPress:
 	case ButtonRelease:
-		process_xevent_button((XButtonEvent *) & event_buffer);
+		process_xevent_button(g, (XButtonEvent *) & event_buffer);
 		break;
 	case MotionNotify:
-		process_xevent_motion((XMotionEvent *) & event_buffer);
+		process_xevent_motion(g, (XMotionEvent *) & event_buffer);
 		break;
 	case FocusIn:
 	case FocusOut:
-		process_xevent_focus((XFocusChangeEvent *) & event_buffer);
+		process_xevent_focus(g, (XFocusChangeEvent *) & event_buffer);
 		break;
 	case Expose:
-		process_xevent_expose((XExposeEvent *) & event_buffer);
+		process_xevent_expose(g, (XExposeEvent *) & event_buffer);
 		break;
 	case MapNotify:
-		process_xevent_mapnotify((XMapEvent *) & event_buffer);
+		process_xevent_mapnotify(g, (XMapEvent *) & event_buffer);
 		break;
 	case ClientMessage:
 //              fprintf(stderr, "xclient, atom=%s\n",
-//                      XGetAtomName(ghandles.display,
+//                      XGetAtomName(g->display,
 //                                   event_buffer.xclient.message_type));
 		if (event_buffer.xclient.message_type ==
-		    ghandles.xembed_message) {
-			process_xevent_xembed((XClientMessageEvent *) &
+		    g->xembed_message) {
+			process_xevent_xembed(g, (XClientMessageEvent *) &
 					      event_buffer);
 		} else if (event_buffer.xclient.data.l[0] ==
-			   ghandles.wmDeleteMessage) {
+			   g->wmDeleteMessage) {
 			fprintf(stderr, "close for 0x%x\n",
 				(int) event_buffer.xclient.window);
 			process_xevent_close(event_buffer.xclient.window);
@@ -922,12 +923,12 @@ void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
 		return;
 	/* WARNING: passing raw values, input validation is done inside of
 	 * do_shm_update */
-	do_shm_update(vm_window, untrusted_mx.x, untrusted_mx.y, untrusted_mx.width,
+	do_shm_update(g, vm_window, untrusted_mx.x, untrusted_mx.y, untrusted_mx.width,
 			untrusted_mx.height);
 }
 
 /* ask user when VM creates to many windows */
-void ask_whether_flooding()
+void ask_whether_flooding(Ghandles * g)
 {
 	char text[1024];
 	int ret;
@@ -936,7 +937,7 @@ void ask_whether_flooding()
 		 "'VMapp \"%s\" has created %d windows; it looks numerous, "
 		 "so it may be "
 		 "a beginning of a DoS attack. Do you want to continue:'",
-		 ghandles.vmname, ghandles.windows_count);
+		 g->vmname, g->windows_count);
 	do {
 		ret = system(text);
 		ret = WEXITSTATUS(ret);
@@ -947,7 +948,7 @@ void ask_whether_flooding()
 		case 1:	/* NO */
 			exit(1);
 		case 0:	/*YES */
-			ghandles.windows_count_limit += WINDOWS_COUNT_LIMIT;
+			g->windows_count_limit += WINDOWS_COUNT_LIMIT;
 			break;
 		default:
 			fprintf(stderr, "Problems executing kdialog ?\n");
@@ -967,7 +968,7 @@ void handle_create(Ghandles * g, XID window)
 	XID parent;
 
 	if (g->windows_count++ > g->windows_count_limit)
-		ask_whether_flooding();
+		ask_whether_flooding(g);
 	vm_window = (struct windowdata *) calloc(1, sizeof(struct windowdata));
 	if (!vm_window) {
 		perror("malloc(vm_window in handle_create)");
@@ -1010,8 +1011,8 @@ void handle_create(Ghandles * g, XID window)
 		(unsigned)parent, vm_window->override_redirect);
 	list_insert(wid2windowdata, vm_window->local_winid, vm_window);
 	/* do not allow to hide color frame off the screen */
-    if (vm_window->override_redirect && force_on_screen(vm_window, 0))
-		XMoveResizeWindow(ghandles.display, vm_window->local_winid, vm_window->x,
+    if (vm_window->override_redirect && force_on_screen(g, vm_window, 0))
+		XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x,
 			    vm_window->y, vm_window->width, vm_window->height);
 }
 
@@ -1057,19 +1058,19 @@ void sanitize_string_from_vm(unsigned char *untrusted_s)
 
 /* fix menu window parameters: override_redirect and force to not hide its
  * frame */
-void fix_menu(struct windowdata *vm_window)
+void fix_menu(Ghandles * g, struct windowdata *vm_window)
 {
 	XSetWindowAttributes attr;
 
 	attr.override_redirect = 1;
-	XChangeWindowAttributes(ghandles.display, vm_window->local_winid,
+	XChangeWindowAttributes(g->display, vm_window->local_winid,
 				CWOverrideRedirect, &attr);
 	vm_window->override_redirect = 1;
 
 	// do not let menu window hide its color frame by moving outside of the screen
 	// if it is located offscreen, then allow negative x/y
-	if (force_on_screen(vm_window, 0))
-		XMoveResizeWindow(ghandles.display, vm_window->local_winid, vm_window->x,
+	if (force_on_screen(g, vm_window, 0))
+		XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x,
 			    vm_window->y, vm_window->width, vm_window->height);
 }
 
@@ -1099,7 +1100,7 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 
 /* handle VM message: MSG_MAP
  * Map a window with given parameters */
-void handle_map(struct windowdata *vm_window)
+void handle_map(Ghandles * g, struct windowdata *vm_window)
 {
 	struct genlist *trans;
 	struct msg_map_info untrusted_txt;
@@ -1110,14 +1111,14 @@ void handle_map(struct windowdata *vm_window)
 	    && (trans = list_lookup(remote2local, untrusted_txt.transient_for))) {
 		struct windowdata *transdata = trans->data;
 		vm_window->transient_for = transdata;
-		XSetTransientForHint(ghandles.display, vm_window->local_winid,
+		XSetTransientForHint(g->display, vm_window->local_winid,
 				     transdata->local_winid);
 	} else
 		vm_window->transient_for = 0;
 	vm_window->override_redirect = 0;
 	if (untrusted_txt.override_redirect || vm_window->is_docked)
-		fix_menu(vm_window);
-	(void) XMapWindow(ghandles.display, vm_window->local_winid);
+		fix_menu(g, vm_window);
+	(void) XMapWindow(g->display, vm_window->local_winid);
 }
 
 /* handle VM message: MSG_DOCK
@@ -1253,7 +1254,7 @@ void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 }
 
 /* VM message dispatcher */
-void handle_message()
+void handle_message(Ghandles * g)
 {
 	struct msghdr untrusted_hdr;
 	uint32_t type;
@@ -1267,7 +1268,7 @@ void handle_message()
 	type = untrusted_hdr.type;
 	if (type == MSG_CLIPBOARD_DATA) {
 		/* window field has special meaning here */
-		handle_clipboard_data(untrusted_hdr.window);
+		handle_clipboard_data(g, untrusted_hdr.window);
 		return;
 	}
 	l = list_lookup(remote2local, untrusted_hdr.window);
@@ -1294,50 +1295,37 @@ void handle_message()
 
 	switch (type) {
 	case MSG_CREATE:
-		handle_create(&ghandles, window);
+		handle_create(g, window);
 		break;
 	case MSG_DESTROY:
-		handle_destroy(&ghandles, l);
+		handle_destroy(g, l);
 		break;
 	case MSG_MAP:
-		handle_map(vm_window);
+		handle_map(g, vm_window);
 		break;
 	case MSG_UNMAP:
 		vm_window->is_mapped = 0;
-		(void) XUnmapWindow(ghandles.display, vm_window->local_winid);
+		(void) XUnmapWindow(g->display, vm_window->local_winid);
 		break;
 	case MSG_CONFIGURE:
-		handle_configure_from_vm(&ghandles, vm_window);
+		handle_configure_from_vm(g, vm_window);
 		break;
 	case MSG_MFNDUMP:
-		handle_mfndump(&ghandles, vm_window);
+		handle_mfndump(g, vm_window);
 		break;
 	case MSG_SHMIMAGE:
-		handle_shmimage(&ghandles, vm_window);
+		handle_shmimage(g, vm_window);
 		break;
 	case MSG_WMNAME:
-		handle_wmname(&ghandles, vm_window);
+		handle_wmname(g, vm_window);
 		break;
 	case MSG_DOCK:
-		handle_dock(&ghandles, vm_window);
+		handle_dock(g, vm_window);
 		break;
 	default:
 		fprintf(stderr, "got msg type %d\n", type);
 		exit(1);
 	}
-}
-
-/* send MSG_EXECUTE to VM */
-void send_cmd_to_vm(char *cmd)
-{
-	struct msghdr hdr;
-	struct msg_execute exec_data;
-
-	hdr.type = MSG_EXECUTE;
-	hdr.window = 0;
-	strncpy(exec_data.cmd, cmd, sizeof(exec_data.cmd));
-	exec_data.cmd[sizeof(exec_data.cmd) - 1] = 0;
-	write_message(hdr, exec_data);
 }
 
 /* signal handler - connected to SIGTERM */
@@ -1374,6 +1362,8 @@ void release_all_mapped_mfns()
 	     curr = curr->next) {
 		struct windowdata *vm_window = curr->data;
 		if (vm_window->image)
+			/* use og ghandles directly, as no other way get it (atexec cannot
+			 * pass argument) */
 			release_mapped_mfns(&ghandles, vm_window);
 	}
 }
@@ -1518,29 +1508,29 @@ void usage()
 		"usage: qubes_quid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix]\n");
 }
 
-void parse_cmdline(int argc, char **argv)
+void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
 	int opt;
 	while ((opt = getopt(argc, argv, "d:e:c:l:i:")) != -1) {
 		switch (opt) {
 		case 'd':
-			ghandles.domid = atoi(optarg);
+			g->domid = atoi(optarg);
 			break;
 		case 'c':
-			ghandles.cmdline_color = optarg;
+			g->cmdline_color = optarg;
 			break;
 		case 'l':
-			ghandles.label_index = strtoul(optarg, 0, 0);
+			g->label_index = strtoul(optarg, 0, 0);
 			break;
 		case 'i':
-			ghandles.cmdline_icon = optarg;
+			g->cmdline_icon = optarg;
 			break;
 		default:
 			usage();
 			exit(1);
 		}
 	}
-	if (!ghandles.domid) {
+	if (!g->domid) {
 		fprintf(stderr, "domid=0?");
 		exit(1);
 	}
@@ -1566,7 +1556,7 @@ int main(int argc, char **argv)
 	int pipe_notify[2];
 	char dbg_log[256];
 	int logfd;
-	parse_cmdline(argc, argv);
+	parse_cmdline(&ghandles, argc, argv);
 
 
 	// daemonize...
@@ -1654,11 +1644,11 @@ int main(int argc, char **argv)
 		do {
 			busy = 0;
 			if (XPending(ghandles.display)) {
-				process_xevent();
+				process_xevent(&ghandles);
 				busy = 1;
 			}
 			if (read_ready()) {
-				handle_message();
+				handle_message(&ghandles);
 				busy = 1;
 			}
 		} while (busy);
