@@ -36,7 +36,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include <execinfo.h>
-#include <assert.h>
 #include <X11/Xlib.h>
 #include <X11/Intrinsic.h>
 #include <X11/Xutil.h>
@@ -799,9 +798,12 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window, int untrusted_x,
 		unsigned long back = XGetPixel(image, 0, 0);
 		/* Generate data for transparency mask Bitmap */
 		for (yp = 0; yp < h; yp++) {
-			assert(datap - data < data_sz);
 			int step = 0;
 			for (xp = 0; xp < w; xp++) {
+				if (datap - data >= data_sz) {
+					fprintf(stderr, "Impossible internal error\n");
+					exit(1);
+				}  
 				if (XGetPixel(image, xp, yp) != back)
 					*datap |= 1 << (step % 8);
 				if (step % 8 == 7)
