@@ -47,7 +47,6 @@
 #include "list.h"
 #include "error.h"
 #include "shm_cmd.h"
-#include "cmd_socket.h"
 #include "qlimits.h"
 #include "tray.h"
 
