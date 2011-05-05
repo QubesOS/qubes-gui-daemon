@@ -20,14 +20,13 @@
 #
 
 CC=gcc
-CFLAGS+=-I../vchan/vchan/ -I../include/ -g -Wall
-LDFLAGS+=-L../vchan/vchan/
+CFLAGS+=-I../include/ -g -Wall
 OBJS=xside.o ../gui-common/double_buffer.o ../gui-common/txrx-vchan.o \
 	../gui-common/error.o ../common/list.o 
 
 all: qubes_guid
 qubes_guid: $(OBJS)
-	$(CC) $(LDFLAGS) -g -o qubes_guid $(OBJS) \
+	$(CC) -g -o qubes_guid $(OBJS) \
 		-lX11 -lXext -lvchan -lxenstore -lxenctrl -Wall
 clean:
 	rm -f qubes_guid *.o *~
