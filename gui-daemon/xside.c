@@ -643,6 +643,21 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 			  vm_window->width, vm_window->height);
 }
 
+/* handle local Xserver event: EnterNotify, LeaveNotify
+ * gui-agent currently not process this event, but we use it to fix docked
+ * window position */
+void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
+{
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
+
+	/* move tray to correct position in VM */
+	if (fix_docked_xy(g, vm_window)) {
+		send_configure(vm_window, vm_window->x, vm_window->y, vm_window->width,
+				vm_window->height);
+	}
+
+}
+
 /* handle local Xserver event: XMotionEvent
  * send to relevant window in VM */
 void process_xevent_motion(Ghandles * g, XMotionEvent * ev)
@@ -933,6 +948,10 @@ void process_xevent(Ghandles * g)
 		break;
 	case MotionNotify:
 		process_xevent_motion(g, (XMotionEvent *) & event_buffer);
+		break;
+	case EnterNotify:
+	case LeaveNotify:
+		process_xevent_crossing(g, (XCrossingEvent *) & event_buffer);
 		break;
 	case FocusIn:
 	case FocusOut:
