@@ -147,6 +147,7 @@ struct msg_wmname {
 struct msg_keymap_notify {
 	char keys[32];
 };
+/* VM -> Dom0 */
 struct msg_window_hints {
 	uint32_t flags;
 	uint32_t min_width;
