@@ -148,13 +148,13 @@ struct msg_keymap_notify {
 	char keys[32];
 };
 struct msg_window_hints {
-    uint32_t flags;
-    uint32_t min_width;
-    uint32_t min_height;
-    uint32_t max_width;
-    uint32_t max_height;
-    uint32_t width_inc;
-    uint32_t height_inc;
-    uint32_t base_width;
-    uint32_t base_height;
+	uint32_t flags;
+	uint32_t min_width;
+	uint32_t min_height;
+	uint32_t max_width;
+	uint32_t max_height;
+	uint32_t width_inc;
+	uint32_t height_inc;
+	uint32_t base_width;
+	uint32_t base_height;
 };
