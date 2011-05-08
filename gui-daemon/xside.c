@@ -1286,7 +1286,7 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 		size_hints.min_height  = untrusted_msg.min_height;
 	} else
 		fprintf(stderr, "invalid PMinSize for 0x%x (%d/%d)\n",
-				(int) item->local_winid, untrusted_msg.min_width, untrusted_msg.min_height);
+				(int) vm_window->local_winid, untrusted_msg.min_width, untrusted_msg.min_height);
 	if ((untrusted_msg.flags & PMaxSize) &&
 			untrusted_msg.max_width > 0 && untrusted_msg.max_width <= MAX_WINDOW_WIDTH &&
 			untrusted_msg.max_height > 0 && untrusted_msg.max_height <= MAX_WINDOW_HEIGHT) {
@@ -1295,7 +1295,7 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 		size_hints.max_height  = untrusted_msg.max_height;
 	} else
 		fprintf(stderr, "invalid PMaxSize for 0x%x (%d/%d)\n",
-				(int) item->local_winid, untrusted_msg.max_width, untrusted_msg.max_height);
+				(int) vm_window->local_winid, untrusted_msg.max_width, untrusted_msg.max_height);
 	if ((untrusted_msg.flags & PResizeInc) &&
 			size_hints.width_inc >= 0 && size_hints.width_inc < MAX_WINDOW_WIDTH &&
 			size_hints.height_inc >= 0 && size_hints.height_inc < MAX_WINDOW_HEIGHT) {
@@ -1304,7 +1304,7 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 		size_hints.height_inc  = untrusted_msg.height_inc;
 	} else
 		fprintf(stderr, "invalid PResizeInc for 0x%x (%d/%d)\n",
-				(int) item->local_winid, untrusted_msg.width_inc, untrusted_msg.height_inc);
+				(int) vm_window->local_winid, untrusted_msg.width_inc, untrusted_msg.height_inc);
 	if ((untrusted_msg.flags & PBaseSize) &&
 			size_hints.base_width >= 0 && size_hints.base_width <= MAX_WINDOW_WIDTH &&
 			size_hints.base_height >= 0 && size_hints.base_height <= MAX_WINDOW_HEIGHT) {
@@ -1313,7 +1313,7 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 		size_hints.base_height = untrusted_msg.base_height;
 	} else
 		fprintf(stderr, "invalid PBaseSize for 0x%x (%d/%d)\n",
-				(int) item->local_winid, untrusted_msg.base_width, untrusted_msg.base_height);
+				(int) vm_window->local_winid, untrusted_msg.base_width, untrusted_msg.base_height);
 	/* sanitize end */
 
 	/* if no valid values self - do not send it to X server */
@@ -1580,7 +1580,7 @@ void handle_message(Ghandles * g)
 		handle_dock(g, vm_window);
 		break;
 	case MSG_WINDOW_HINTS:
-		handle_wmhints(&ghandles, item);
+		handle_wmhints(g, vm_window);
 		break;
 	default:
 		fprintf(stderr, "got msg type %d\n", type);
