@@ -1264,6 +1264,35 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 	XFree(text_prop.value);
 }
 
+/* handle VM message: MSG_WMHINTS
+ * Pass hints for window manager to local X server */
+void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
+{
+	struct msg_window_hints msg;
+    XSizeHints size_hints;
+
+	read_struct(msg);
+
+    size_hints.flags       = msg.flags & (PMinSize|PMaxSize|PResizeInc|PBaseSize);
+    size_hints.min_width   = msg.min_width;
+    size_hints.min_height  = msg.min_height;
+    size_hints.max_width   = msg.max_width;
+    size_hints.max_height  = msg.max_height;
+    size_hints.width_inc   = msg.width_inc;
+    size_hints.height_inc  = msg.height_inc;
+    size_hints.base_width  = msg.base_width;
+    size_hints.base_height = msg.base_height;
+
+	fprintf(stderr, "set WM_NORMAL_HINTS for window 0x%x to min=%d/%d, max=%d/%d, base=%d/%d, inc=%d/%d (flags 0x%x)\n",
+		(int) vm_window->local_winid, 
+        size_hints.min_width, size_hints.min_height,
+        size_hints.max_width, size_hints.max_height,
+        size_hints.base_width, size_hints.base_height,
+        size_hints.width_inc, size_hints.height_inc,
+        (int) size_hints.flags);
+    XSetWMNormalHints(g->display, vm_window->local_winid, &size_hints);
+}
+
 /* handle VM message: MSG_MAP
  * Map a window with given parameters */
 void handle_map(Ghandles * g, struct windowdata *vm_window)
@@ -1512,6 +1541,9 @@ void handle_message(Ghandles * g)
 		break;
 	case MSG_DOCK:
 		handle_dock(g, vm_window);
+		break;
+	case MSG_WINDOW_HINTS:
+		handle_wmhints(&ghandles, item);
 		break;
 	default:
 		fprintf(stderr, "got msg type %d\n", type);

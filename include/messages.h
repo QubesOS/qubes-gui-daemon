@@ -51,6 +51,7 @@ enum {
 	MSG_WMNAME,
 	MSG_KEYMAP_NOTIFY,
 	MSG_DOCK,
+	MSG_WINDOW_HINTS,
 	MSG_MAX
 };
 /* VM -> Dom0, Dom0 -> VM */
@@ -145,4 +146,15 @@ struct msg_wmname {
 /* Dom0 -> VM */
 struct msg_keymap_notify {
 	char keys[32];
+};
+struct msg_window_hints {
+    uint32_t flags;
+    uint32_t min_width;
+    uint32_t min_height;
+    uint32_t max_width;
+    uint32_t max_height;
+    uint32_t width_inc;
+    uint32_t height_inc;
+    uint32_t base_width;
+    uint32_t base_height;
 };

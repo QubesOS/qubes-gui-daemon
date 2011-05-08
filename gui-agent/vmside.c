@@ -244,6 +244,32 @@ void send_wmname(Ghandles * g, XID window)
 	write_message(hdr, msg);
 }
 
+void send_wmhints(Ghandles * g, XID window)
+{
+	struct msghdr hdr;
+	struct msg_window_hints msg;
+    XSizeHints size_hints;
+    long supplied_hints;
+
+    if (!XGetWMNormalHints(g->display, window, &size_hints, &supplied_hints)) {
+        fprintf(stderr, "error reading WM_NORMAL_HINTS\n");
+        return;
+    }
+    // pass only some hints
+    msg.flags       = size_hints.flags & (PMinSize|PMaxSize|PResizeInc|PBaseSize);
+    msg.min_width   = size_hints.min_width;
+    msg.min_height  = size_hints.min_height;
+    msg.max_width   = size_hints.max_width;
+    msg.max_height  = size_hints.max_height;
+    msg.width_inc   = size_hints.width_inc;
+    msg.height_inc  = size_hints.height_inc;
+    msg.base_width  = size_hints.base_width;
+    msg.base_height = size_hints.base_height;
+	hdr.window = window;
+	hdr.type = MSG_WINDOW_HINTS;
+	write_message(hdr, msg);
+}
+
 void process_xevent_map(Ghandles * g, XID window)
 {
 	XWindowAttributes attr;
@@ -406,9 +432,10 @@ void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 	SKIP_NONMANAGED_WINDOW;
 	fprintf(stderr, "handle property %s for window 0x%x\n",
 		XGetAtomName(g->display, ev->atom), (int) ev->window);
-	if (ev->atom != XInternAtom(g->display, "WM_NAME", False))
-		return;
-	send_wmname(g, window);
+	if (ev->atom == XInternAtom(g->display, "WM_NAME", False))
+        send_wmname(g, window);
+    else if (ev->atom == XInternAtom(g->display, "WM_NORMAL_HINTS", False))
+        send_wmhints(g, window);
 }
 
 void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
