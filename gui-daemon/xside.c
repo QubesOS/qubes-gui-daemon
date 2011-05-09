@@ -1291,17 +1291,10 @@ void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	VERIFY((int)untrusted_shmcmd->width < MAX_WINDOW_WIDTH && (int)untrusted_shmcmd->height < MAX_WINDOW_HEIGHT);
 	VERIFY(untrusted_shmcmd->off < 4096);
 	off = untrusted_shmcmd->off;
-	if (num_mfn * 4096 <
-	    vm_window->image->bytes_per_line * vm_window->image->height + off) {
-		fprintf(stderr,
-			"handle_mfndump for window 0x%x(remote 0x%x)"
-			" got too small num_mfn= 0x%x\n",
-			(int) vm_window->local_winid, (int) vm_window->remote_winid,
-			num_mfn);
-		exit(1);
-	}
 	/* unused for now: VERIFY(untrusted_shmcmd->bpp == 24); */
 	/* sanitize end */
+	vm_window->image_width = untrusted_shmcmd->width;
+	vm_window->image_height = untrusted_shmcmd->height; /* sanitized above */
 	read_data((char *) untrusted_shmcmd->mfns,
 		  SIZEOF_SHARED_MFN * num_mfn);
 	vm_window->image =
@@ -1311,6 +1304,16 @@ void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 			    vm_window->image_width, vm_window->image_height);
 	if (!vm_window->image) {
 		perror("XShmCreateImage");
+		exit(1);
+	}
+	/* the below sanity check must be AFTER XShmCreateImage, it uses vm_window->image */
+	if (num_mfn * 4096 <
+	    vm_window->image->bytes_per_line * vm_window->image->height + off) {
+		fprintf(stderr,
+			"handle_mfndump for window 0x%x(remote 0x%x)"
+			" got too small num_mfn= 0x%x\n",
+			(int) vm_window->local_winid, (int) vm_window->remote_winid,
+			num_mfn);
 		exit(1);
 	}
 	// temporary shmid; see shmoverride/README
