@@ -1067,7 +1067,10 @@ void handle_create(Ghandles * g, XID window)
 	parent = untrusted_crt.parent;
 	/* sanitize end */
 	vm_window->remote_winid = window;
-	list_insert(g->remote2local, window, vm_window);
+	if (!list_insert(g->remote2local, window, vm_window)) {
+		fprintf(stderr, "list_insert(g->remote2local failed\n");
+		exit(1);
+	}
 	l = list_lookup(g->remote2local, parent);
 	if (l)
 		vm_window->parent = l->data;
@@ -1080,7 +1083,11 @@ void handle_create(Ghandles * g, XID window)
 		(int) vm_window->local_winid, (int) window,
 		(int) (vm_window->parent ? vm_window->parent->local_winid : 0),
 		(unsigned)parent, vm_window->override_redirect);
-	list_insert(g->wid2windowdata, vm_window->local_winid, vm_window);
+	if (!list_insert(g->wid2windowdata, vm_window->local_winid, vm_window)) {
+		fprintf(stderr, "list_insert(g->wid2windowdata failed\n");
+		exit(1);
+	}
+	
 	/* do not allow to hide color frame off the screen */
     if (vm_window->override_redirect && force_on_screen(g, vm_window, 0))
 		XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x,
