@@ -32,6 +32,7 @@ help:
 	    echo; \
 	    echo "make clean                <--- clean all the binary files";\
 	    echo "make update-repo-current  <-- copy newly generated rpms to qubes yum repo";\
+	    echo "make update-repo-current-testing <-- same, but for -current-testing repo";\
 	    echo "make update-repo-unstable <-- same, but to -testing repo";\
 	    echo "make update-repo-installer -- copy dom0 rpms to installer repo"
 	    exit 0;
@@ -106,6 +107,14 @@ update-repo-current:
 	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc14*.rpm ../yum/current-release/current/vm/f14/rpm/
 	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/current/vm/f13/rpm/
 	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/current/vm/f14/rpm/
+	cd ../yum && ./update_repo.sh
+
+update-repo-current-testing:
+	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../yum/current-release/current-testing/dom0/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc13*.rpm ../yum/current-release/current-testing/vm/f13/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc14*.rpm ../yum/current-release/current-testing/vm/f14/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/current-testing/vm/f13/rpm/
+	ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm ../yum/current-release/current-testing/vm/f14/rpm/
 	cd ../yum && ./update_repo.sh
 
 update-repo-unstable:
