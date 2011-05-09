@@ -100,7 +100,7 @@ struct _global_handles {
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
 	int cmd_shmid;			/* shared memory id - received from shmoverride.so through shm.id file */
 	/* Client VM parameters */
-	char vmname[16];		/* name of VM */
+	char vmname[32];		/* name of VM */
 	int domid;				/* Xen domain id */
 	char *cmdline_color;	/* color of frame */
 	char *cmdline_icon;		/* icon hint for WM */
@@ -1675,6 +1675,7 @@ int main(int argc, char **argv)
 	atexit(release_all_mapped_mfns);
 
 	strncpy(ghandles.vmname, vmname, sizeof(ghandles.vmname));
+	ghandles.vmname[sizeof(ghandles.vmname) - 1] = 0;
 	xfd = ConnectionNumber(ghandles.display);
 
 	get_protocol_version();
