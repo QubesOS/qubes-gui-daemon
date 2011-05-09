@@ -64,15 +64,15 @@ struct windowdata {
 	int x;
 	int y;
 	int is_mapped;
-	int is_docked;				/* is it docked tray icon */
-	XID remote_winid;			/* window id on VM side */
-	Window local_winid;			/* window id on X side */
+	int is_docked;		/* is it docked tray icon */
+	XID remote_winid;	/* window id on VM side */
+	Window local_winid;	/* window id on X side */
 	struct windowdata *parent;	/* parent window */
-	struct windowdata *transient_for; /* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
-	int override_redirect;		/* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
+	struct windowdata *transient_for;	/* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
+	int override_redirect;	/* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
 	XShmSegmentInfo shminfo;	/* temporary shmid; see shmoverride/README */
-	XImage *image;				/* image with window content */
-	int image_height;			/* size of window content, not always the same as window in dom0! */
+	XImage *image;		/* image with window content */
+	int image_height;	/* size of window content, not always the same as window in dom0! */
 	int image_width;
 	int have_queued_configure;	/* have configure request been sent to VM - waiting for confirmation */
 };
@@ -83,37 +83,37 @@ struct windowdata {
 struct _global_handles {
 	/* local X server handles and attributes */
 	Display *display;
-	int screen;				/* shortcut to the default screen */
-	Window root_win;		/* root attributes */
-	int root_width;			/* size of root window */
+	int screen;		/* shortcut to the default screen */
+	Window root_win;	/* root attributes */
+	int root_width;		/* size of root window */
 	int root_height;
-	GC context;				/* context for pixmap operations */
-	GC frame_gc;			/* graphic context to paint window frame */
-	GC tray_gc;				/* graphic context to paint tray background */
+	GC context;		/* context for pixmap operations */
+	GC frame_gc;		/* graphic context to paint window frame */
+	GC tray_gc;		/* graphic context to paint tray background */
 	/* atoms for comunitating with xserver */
 	Atom wmDeleteMessage;	/* Atom: WM_DELETE_WINDOW */
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
-	Atom tray_opcode;		/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
+	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
 	Atom xembed_message;	/* Atom: _XEMBED */
 	Atom xembed_info;	/* Atom: _XEMBED_INFO */
 	/* shared memory handling */
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
-	int cmd_shmid;			/* shared memory id - received from shmoverride.so through shm.id file */
+	int cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
 	/* Client VM parameters */
-	char vmname[32];		/* name of VM */
-	int domid;				/* Xen domain id */
+	char vmname[32];	/* name of VM */
+	int domid;		/* Xen domain id */
 	char *cmdline_color;	/* color of frame */
-	char *cmdline_icon;		/* icon hint for WM */
-	int label_index;		/* label (frame color) hint for WM */
+	char *cmdline_icon;	/* icon hint for WM */
+	int label_index;	/* label (frame color) hint for WM */
 	/* lists of windows: */
 	/*   indexed by remote window id */
 	struct genlist *remote2local;
 	/*   indexed by local window id */
 	struct genlist *wid2windowdata;
 	/* counters and other state */
-	int clipboard_requested;/* if clippoard content was requested by dom0 */
-	int windows_count;		/* created window count */
-	int windows_count_limit;/* current window limit; ask user what to do when exceeded */
+	int clipboard_requested;	/* if clippoard content was requested by dom0 */
+	int windows_count;	/* created window count */
+	int windows_count_limit;	/* current window limit; ask user what to do when exceeded */
 	struct windowdata *last_input_window;
 	/* signal was caught */
 	int volatile signal_caught;
@@ -205,7 +205,8 @@ Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 		parent = g->root_win;
 	// we will set override_redirect later, if needed
 	child_win = XCreateSimpleWindow(g->display, parent,
-					vm_window->x, vm_window->y, vm_window->width,
+					vm_window->x, vm_window->y,
+					vm_window->width,
 					vm_window->height, 0,
 					BlackPixel(g->display, g->screen),
 					WhitePixel(g->display, g->screen));
@@ -314,7 +315,7 @@ void get_qubes_clipboard(char **data, int *len)
 	truncate(QUBES_CLIPBOARD_FILENAME, 0);
 	file = fopen(QUBES_CLIPBOARD_FILENAME ".source", "w+");
 	fclose(file);
-out:
+      out:
 	inter_appviewer_lock(0);
 }
 
@@ -327,9 +328,11 @@ void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	FILE *file;
 	char *untrusted_data;
 	size_t untrusted_data_sz;
-	fprintf(stderr, "handle_clipboard_data, len=0x%x\n", untrusted_len);
+	fprintf(stderr, "handle_clipboard_data, len=0x%x\n",
+		untrusted_len);
 	if (untrusted_len > MAX_CLIPBOARD_SIZE) {
-		fprintf(stderr, "clipboard data len 0x%x?\n", untrusted_len);
+		fprintf(stderr, "clipboard data len 0x%x?\n",
+			untrusted_len);
 		exit(1);
 	}
 	/* now sanitized */
@@ -342,7 +345,8 @@ void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	read_data(untrusted_data, untrusted_data_sz);
 	if (!g->clipboard_requested) {
 		free(untrusted_data);
-		fprintf(stderr, "received clipboard data when not requested\n");
+		fprintf(stderr,
+			"received clipboard data when not requested\n");
 		return;
 	}
 	inter_appviewer_lock(1);
@@ -467,7 +471,8 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 	hdr.type = MSG_BUTTON;
 	hdr.window = vm_window->remote_winid;
 	write_message(hdr, k);
-	fprintf(stderr, "xside: win 0x%x(0x%x) type=%d button=%d x=%d, y=%d\n",
+	fprintf(stderr,
+		"xside: win 0x%x(0x%x) type=%d button=%d x=%d, y=%d\n",
 		(int) ev->window, hdr.window, k.type, k.button, k.x, k.y);
 }
 
@@ -483,7 +488,8 @@ void process_xevent_close(Ghandles * g, XID window)
 }
 
 /* send configure request for specified VM window */
-void send_configure(struct windowdata *vm_window, int x, int y, int w, int h)
+void send_configure(struct windowdata *vm_window, int x, int y, int w,
+		    int h)
 {
 	struct msghdr hdr;
 	struct msg_configure msg;
@@ -522,25 +528,33 @@ int fix_docked_xy(Ghandles * g, struct windowdata *vm_window)
 /* force window to not hide it's frame
  * checks if at least border_width is from every screen edge (and fix if no)
  * Exception: allow window to be entriely off the screen */
-int force_on_screen(Ghandles * g, struct windowdata *vm_window, int border_width) {
+int force_on_screen(Ghandles * g, struct windowdata *vm_window,
+		    int border_width)
+{
 	int do_move;
 
-	if (vm_window->x < border_width && vm_window->x + vm_window->width > 0) {
+	if (vm_window->x < border_width
+	    && vm_window->x + vm_window->width > 0) {
 		vm_window->x = border_width;
 		do_move = 1;
 	}
-	if (vm_window->y < border_width && vm_window->y + vm_window->height > 0) {
+	if (vm_window->y < border_width
+	    && vm_window->y + vm_window->height > 0) {
 		vm_window->y = border_width;
 		do_move = 1;
 	}
-	if (vm_window->x < g->root_width && 
-			vm_window->x + vm_window->width > g->root_width - border_width) {
-		vm_window->width = g->root_width - vm_window->x - border_width;
+	if (vm_window->x < g->root_width &&
+	    vm_window->x + vm_window->width >
+	    g->root_width - border_width) {
+		vm_window->width =
+		    g->root_width - vm_window->x - border_width;
 		do_move = 1;
 	}
-	if (vm_window->y < g->root_height && 
-			vm_window->y + vm_window->height > g->root_height - border_width) {
-		vm_window->height = g->root_height - vm_window->y - border_width;
+	if (vm_window->y < g->root_height &&
+	    vm_window->y + vm_window->height >
+	    g->root_height - border_width) {
+		vm_window->height =
+		    g->root_height - vm_window->y - border_width;
 		do_move = 1;
 	}
 	return do_move;
@@ -551,11 +565,12 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window, int border_width
 void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
-      fprintf(stderr, "process_xevent_configure, %d/%d, was"
-              "%d/%d\n", ev->width, ev->height,
-              vm_window->width, vm_window->height);
-	if (vm_window->width == ev->width && vm_window->height == ev->height
-	    && vm_window->x == ev->x && vm_window->y == ev->y)
+	fprintf(stderr, "process_xevent_configure, %d/%d, was"
+		"%d/%d\n", ev->width, ev->height,
+		vm_window->width, vm_window->height);
+	if (vm_window->width == ev->width
+	    && vm_window->height == ev->height && vm_window->x == ev->x
+	    && vm_window->y == ev->y)
 		return;
 	vm_window->width = ev->width;
 	vm_window->height = ev->height;
@@ -569,7 +584,8 @@ void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 	if (vm_window->have_queued_configure)
 		return;
 	vm_window->have_queued_configure = 1;
-	send_configure(vm_window, vm_window->x, vm_window->y, vm_window->width, vm_window->height);
+	send_configure(vm_window, vm_window->x, vm_window->y,
+		       vm_window->width, vm_window->height);
 }
 
 /* handle VM message: MSG_CONFIGURE
@@ -577,14 +593,16 @@ void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 {
 	struct msg_configure untrusted_conf;
-	unsigned int x,y,width,height,override_redirect;
+	unsigned int x, y, width, height, override_redirect;
 	int conf_changed;
 
 	read_struct(untrusted_conf);
 	fprintf(stderr, "handle_configure_from_vm, %d/%d, was"
-		" %d/%d, ovr=%d, xy %d/%d, was %d/%d\n", untrusted_conf.width, untrusted_conf.height,
-		vm_window->width, vm_window->height, untrusted_conf.override_redirect,
-		untrusted_conf.x, untrusted_conf.y, vm_window->x, vm_window->y);
+		" %d/%d, ovr=%d, xy %d/%d, was %d/%d\n",
+		untrusted_conf.width, untrusted_conf.height,
+		vm_window->width, vm_window->height,
+		untrusted_conf.override_redirect, untrusted_conf.x,
+		untrusted_conf.y, vm_window->x, vm_window->y);
 	/* sanitize start */
 	if (untrusted_conf.width > MAX_WINDOW_WIDTH)
 		untrusted_conf.width = MAX_WINDOW_WIDTH;
@@ -597,8 +615,10 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 		override_redirect = 1;
 	else
 		override_redirect = 0;
-	VERIFY((int)untrusted_conf.x >= -g->root_width && (int)untrusted_conf.x <= 2*g->root_width);
-	VERIFY((int)untrusted_conf.y >= -g->root_height && (int)untrusted_conf.y <= 2*g->root_height);
+	VERIFY((int) untrusted_conf.x >= -g->root_width
+	       && (int) untrusted_conf.x <= 2 * g->root_width);
+	VERIFY((int) untrusted_conf.y >= -g->root_height
+	       && (int) untrusted_conf.y <= 2 * g->root_height);
 	x = untrusted_conf.x;
 	y = untrusted_conf.y;
 	/* sanitize end */
@@ -612,7 +632,8 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	/* We do not allow a docked window to change its size, period. */
 	if (vm_window->is_docked) {
 		if (conf_changed)
-			send_configure(vm_window, vm_window->x, vm_window->y, vm_window->width,
+			send_configure(vm_window, vm_window->x,
+				       vm_window->y, vm_window->width,
 				       vm_window->height);
 		vm_window->have_queued_configure = 0;
 		return;
@@ -621,7 +642,8 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 
 	if (vm_window->have_queued_configure) {
 		if (conf_changed) {
-			send_configure(vm_window, vm_window->x, vm_window->y, vm_window->width,
+			send_configure(vm_window, vm_window->x,
+				       vm_window->y, vm_window->width,
 				       vm_window->height);
 			return;
 		} else {
@@ -639,8 +661,9 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 		// do not let menu window hide its color frame by moving outside of the screen
 		// if it is located offscreen, then allow negative x/y
 		force_on_screen(g, vm_window, 0);
-	XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x, vm_window->y,
-			  vm_window->width, vm_window->height);
+	XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x,
+			  vm_window->y, vm_window->width,
+			  vm_window->height);
 }
 
 /* handle local Xserver event: EnterNotify, LeaveNotify
@@ -652,8 +675,8 @@ void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
 
 	/* move tray to correct position in VM */
 	if (fix_docked_xy(g, vm_window)) {
-		send_configure(vm_window, vm_window->x, vm_window->y, vm_window->width,
-				vm_window->height);
+		send_configure(vm_window, vm_window->x, vm_window->y,
+			       vm_window->width, vm_window->height);
 	}
 
 }
@@ -703,18 +726,20 @@ void process_xevent_focus(Ghandles * g, XFocusChangeEvent * ev)
  * parameters are not sanitized earlier - we must check it carefully
  * also do not let to cover forced colorful frame (for undecoraded windows)
  */
-void do_shm_update(Ghandles * g, struct windowdata *vm_window, int untrusted_x,
-		int untrusted_y, int untrusted_w, int untrusted_h)
+void do_shm_update(Ghandles * g, struct windowdata *vm_window,
+		   int untrusted_x, int untrusted_y, int untrusted_w,
+		   int untrusted_h)
 {
 	int border_width = BORDER_WIDTH;
-	int x,y,w,h;
+	int x, y, w, h;
 
 	/* sanitize start */
 	if (untrusted_x < 0 || untrusted_y < 0) {
 		fprintf(stderr,
 			"do_shm_update for 0x%x(remote 0x%x), x=%d, y=%d, w=%d, h=%d ?\n",
-			(int) vm_window->local_winid, (int) vm_window->remote_winid,
-			untrusted_x, untrusted_y, untrusted_w, untrusted_h);
+			(int) vm_window->local_winid,
+			(int) vm_window->remote_winid, untrusted_x,
+			untrusted_y, untrusted_w, untrusted_h);
 		return;
 	}
 	x = min(untrusted_x, vm_window->image_width);
@@ -780,7 +805,9 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window, int untrusted_x,
 		int xp, yp;
 
 		/* allocate image_width _bits_ for each image line */
-		data_sz = (vm_window->image_width / 8 + 1) * vm_window->image_height;
+		data_sz =
+		    (vm_window->image_width / 8 +
+		     1) * vm_window->image_height;
 		data = datap = calloc(1, data_sz);
 		if (!data) {
 			perror("malloc");
@@ -801,14 +828,15 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window, int untrusted_x,
 			h = vm_window->image_height;
 		Pixmap pixmap =
 		    XCreatePixmap(g->display, vm_window->local_winid,
-				  vm_window->image_width, vm_window->image_height,
+				  vm_window->image_width,
+				  vm_window->image_height,
 				  24);
 		XShmPutImage(g->display, pixmap, g->context,
-			     vm_window->image, 0, 0, 0, 0, vm_window->image_width,
+			     vm_window->image, 0, 0, 0, 0,
+			     vm_window->image_width,
 			     vm_window->image_height, 0);
-		XImage *image =
-		    XGetImage(g->display, pixmap, 0, 0, w, h,
-			      0xFFFFFFFF, ZPixmap);
+		XImage *image = XGetImage(g->display, pixmap, 0, 0, w, h,
+					  0xFFFFFFFF, ZPixmap);
 		/* Use top-left corner pixel color as transparency color */
 		unsigned long back = XGetPixel(image, 0, 0);
 		/* Generate data for transparency mask Bitmap */
@@ -816,9 +844,10 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window, int untrusted_x,
 			int step = 0;
 			for (xp = 0; xp < w; xp++) {
 				if (datap - data >= data_sz) {
-					fprintf(stderr, "Impossible internal error\n");
+					fprintf(stderr,
+						"Impossible internal error\n");
 					exit(1);
-				}  
+				}
 				if (XGetPixel(image, xp, yp) != back)
 					*datap |= 1 << (step % 8);
 				if (step % 8 == 7)
@@ -846,7 +875,8 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window, int untrusted_x,
 		 * and puts its own background color */
 		XDrawRectangle(g->display, vm_window->local_winid,
 			       g->frame_gc, 0, 0,
-			       vm_window->width - 1, vm_window->height - 1);
+			       vm_window->width - 1,
+			       vm_window->height - 1);
 
 		XFreePixmap(g->display, mask);
 		XDestroyImage(image);
@@ -903,7 +933,8 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 		write_struct(hdr);
 		write_struct(map_info);
 		if (vm_window->is_docked && fix_docked_xy(g, vm_window))
-			send_configure(vm_window, vm_window->x, vm_window->y, vm_window->width,
+			send_configure(vm_window, vm_window->x,
+				       vm_window->y, vm_window->width,
 				       vm_window->height);
 	}
 }
@@ -921,8 +952,10 @@ void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
 				XMapWindow(g->display, ev->window);
 			/* move tray to correct position in VM */
 			if (fix_docked_xy(g, vm_window)) {
-				send_configure(vm_window, vm_window->x, vm_window->y, vm_window->width,
-						vm_window->height);
+				send_configure(vm_window, vm_window->x,
+					       vm_window->y,
+					       vm_window->width,
+					       vm_window->height);
 			}
 		}
 	}
@@ -951,11 +984,13 @@ void process_xevent(Ghandles * g)
 		break;
 	case EnterNotify:
 	case LeaveNotify:
-		process_xevent_crossing(g, (XCrossingEvent *) & event_buffer);
+		process_xevent_crossing(g,
+					(XCrossingEvent *) & event_buffer);
 		break;
 	case FocusIn:
 	case FocusOut:
-		process_xevent_focus(g, (XFocusChangeEvent *) & event_buffer);
+		process_xevent_focus(g,
+				     (XFocusChangeEvent *) & event_buffer);
 		break;
 	case Expose:
 		process_xevent_expose(g, (XExposeEvent *) & event_buffer);
@@ -967,15 +1002,15 @@ void process_xevent(Ghandles * g)
 //              fprintf(stderr, "xclient, atom=%s\n",
 //                      XGetAtomName(g->display,
 //                                   event_buffer.xclient.message_type));
-		if (event_buffer.xclient.message_type ==
-		    g->xembed_message) {
+		if (event_buffer.xclient.message_type == g->xembed_message) {
 			process_xevent_xembed(g, (XClientMessageEvent *) &
 					      event_buffer);
 		} else if (event_buffer.xclient.data.l[0] ==
 			   g->wmDeleteMessage) {
 			fprintf(stderr, "close for 0x%x\n",
 				(int) event_buffer.xclient.window);
-			process_xevent_close(g, event_buffer.xclient.window);
+			process_xevent_close(g,
+					     event_buffer.xclient.window);
 		}
 		break;
 	default:;
@@ -994,8 +1029,8 @@ void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
 		return;
 	/* WARNING: passing raw values, input validation is done inside of
 	 * do_shm_update */
-	do_shm_update(g, vm_window, untrusted_mx.x, untrusted_mx.y, untrusted_mx.width,
-			untrusted_mx.height);
+	do_shm_update(g, vm_window, untrusted_mx.x, untrusted_mx.y,
+		      untrusted_mx.width, untrusted_mx.height);
 }
 
 /* ask user when VM creates to many windows */
@@ -1040,24 +1075,30 @@ void handle_create(Ghandles * g, XID window)
 
 	if (g->windows_count++ > g->windows_count_limit)
 		ask_whether_flooding(g);
-	vm_window = (struct windowdata *) calloc(1, sizeof(struct windowdata));
+	vm_window =
+	    (struct windowdata *) calloc(1, sizeof(struct windowdata));
 	if (!vm_window) {
 		perror("malloc(vm_window in handle_create)");
 		exit(1);
 	}
-    /*
-	because of calloc vm_window->image = 0;
-	vm_window->is_mapped = 0;
-	vm_window->local_winid = 0;
-	vm_window->dest = vm_window->src = vm_window->pix = 0;
-    */
+	/*
+	   because of calloc vm_window->image = 0;
+	   vm_window->is_mapped = 0;
+	   vm_window->local_winid = 0;
+	   vm_window->dest = vm_window->src = vm_window->pix = 0;
+	 */
 	read_struct(untrusted_crt);
 	/* sanitize start */
-	VERIFY((int)untrusted_crt.width >= 0 && (int)untrusted_crt.height >= 0);
-	vm_window->width = min((int)untrusted_crt.width, MAX_WINDOW_WIDTH);
-	vm_window->height = min((int)untrusted_crt.height, MAX_WINDOW_HEIGHT);
-	VERIFY((int)untrusted_crt.x >= -g->root_width && (int)untrusted_crt.x <= 2*g->root_width);
-	VERIFY((int)untrusted_crt.y >= -g->root_height && (int)untrusted_crt.y <= 2*g->root_height);
+	VERIFY((int) untrusted_crt.width >= 0
+	       && (int) untrusted_crt.height >= 0);
+	vm_window->width =
+	    min((int) untrusted_crt.width, MAX_WINDOW_WIDTH);
+	vm_window->height =
+	    min((int) untrusted_crt.height, MAX_WINDOW_HEIGHT);
+	VERIFY((int) untrusted_crt.x >= -g->root_width
+	       && (int) untrusted_crt.x <= 2 * g->root_width);
+	VERIFY((int) untrusted_crt.y >= -g->root_height
+	       && (int) untrusted_crt.y <= 2 * g->root_height);
 	vm_window->x = untrusted_crt.x;
 	vm_window->y = untrusted_crt.y;
 	if (untrusted_crt.override_redirect)
@@ -1081,17 +1122,21 @@ void handle_create(Ghandles * g, XID window)
 	fprintf(stderr,
 		"Created 0x%x(0x%x) parent 0x%x(0x%x) ovr=%d\n",
 		(int) vm_window->local_winid, (int) window,
-		(int) (vm_window->parent ? vm_window->parent->local_winid : 0),
-		(unsigned)parent, vm_window->override_redirect);
-	if (!list_insert(g->wid2windowdata, vm_window->local_winid, vm_window)) {
+		(int) (vm_window->parent ? vm_window->parent->
+		       local_winid : 0), (unsigned) parent,
+		vm_window->override_redirect);
+	if (!list_insert
+	    (g->wid2windowdata, vm_window->local_winid, vm_window)) {
 		fprintf(stderr, "list_insert(g->wid2windowdata failed\n");
 		exit(1);
 	}
-	
+
 	/* do not allow to hide color frame off the screen */
-    if (vm_window->override_redirect && force_on_screen(g, vm_window, 0))
-		XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x,
-			    vm_window->y, vm_window->width, vm_window->height);
+	if (vm_window->override_redirect
+	    && force_on_screen(g, vm_window, 0))
+		XMoveResizeWindow(g->display, vm_window->local_winid,
+				  vm_window->x, vm_window->y,
+				  vm_window->width, vm_window->height);
 }
 
 /* handle VM message: MSG_DESTROY
@@ -1104,7 +1149,8 @@ void handle_destroy(Ghandles * g, struct genlist *l)
 	if (vm_window == g->last_input_window)
 		g->last_input_window = NULL;
 	XDestroyWindow(g->display, vm_window->local_winid);
-	fprintf(stderr, " XDestroyWindow 0x%x\n", (int) vm_window->local_winid);
+	fprintf(stderr, " XDestroyWindow 0x%x\n",
+		(int) vm_window->local_winid);
 	if (vm_window->image)
 		release_mapped_mfns(g, vm_window);
 	l2 = list_lookup(g->wid2windowdata, vm_window->local_winid);
@@ -1149,8 +1195,9 @@ void fix_menu(Ghandles * g, struct windowdata *vm_window)
 	// do not let menu window hide its color frame by moving outside of the screen
 	// if it is located offscreen, then allow negative x/y
 	if (force_on_screen(g, vm_window, 0))
-		XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x,
-			    vm_window->y, vm_window->width, vm_window->height);
+		XMoveResizeWindow(g->display, vm_window->local_winid,
+				  vm_window->x, vm_window->y,
+				  vm_window->width, vm_window->height);
 }
 
 /* handle VM message: MSG_VMNAME
@@ -1187,7 +1234,9 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 	read_struct(untrusted_txt);
 	vm_window->is_mapped = 1;
 	if (untrusted_txt.transient_for
-	    && (trans = list_lookup(g->remote2local, untrusted_txt.transient_for))) {
+	    && (trans =
+		list_lookup(g->remote2local,
+			    untrusted_txt.transient_for))) {
 		struct windowdata *transdata = trans->data;
 		vm_window->transient_for = transdata;
 		XSetTransientForHint(g->display, vm_window->local_winid,
@@ -1206,7 +1255,8 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 void handle_dock(Ghandles * g, struct windowdata *vm_window)
 {
 	Window tray;
-	fprintf(stderr, "docking window 0x%x\n", (int) vm_window->local_winid);
+	fprintf(stderr, "docking window 0x%x\n",
+		(int) vm_window->local_winid);
 	tray = XGetSelectionOwner(g->display, g->tray_selection);
 	if (tray != None) {
 		long data[2];
@@ -1214,9 +1264,10 @@ void handle_dock(Ghandles * g, struct windowdata *vm_window)
 
 		data[0] = 1;
 		data[1] = 1;
-		XChangeProperty(g->display, vm_window->local_winid, g->xembed_info, g->xembed_info,
-				32, PropModeReplace,
-				(unsigned char *) data, 2);
+		XChangeProperty(g->display, vm_window->local_winid,
+				g->xembed_info, g->xembed_info, 32,
+				PropModeReplace, (unsigned char *) data,
+				2);
 
 		memset(&msg, 0, sizeof(msg));
 		msg.type = ClientMessage;
@@ -1283,41 +1334,47 @@ void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 
 	if (vm_window->image)
 		release_mapped_mfns(g, vm_window);
-	read_data(untrusted_shmcmd_data_from_remote, sizeof(struct shm_cmd));
+	read_data(untrusted_shmcmd_data_from_remote,
+		  sizeof(struct shm_cmd));
 	/* sanitize start */
 	VERIFY(untrusted_shmcmd->num_mfn <= MAX_MFN_COUNT);
 	num_mfn = untrusted_shmcmd->num_mfn;
-	VERIFY((int)untrusted_shmcmd->width >= 0 && (int)untrusted_shmcmd->height >= 0);
-	VERIFY((int)untrusted_shmcmd->width < MAX_WINDOW_WIDTH && (int)untrusted_shmcmd->height < MAX_WINDOW_HEIGHT);
+	VERIFY((int) untrusted_shmcmd->width >= 0
+	       && (int) untrusted_shmcmd->height >= 0);
+	VERIFY((int) untrusted_shmcmd->width < MAX_WINDOW_WIDTH
+	       && (int) untrusted_shmcmd->height < MAX_WINDOW_HEIGHT);
 	VERIFY(untrusted_shmcmd->off < 4096);
 	off = untrusted_shmcmd->off;
 	/* unused for now: VERIFY(untrusted_shmcmd->bpp == 24); */
 	/* sanitize end */
 	vm_window->image_width = untrusted_shmcmd->width;
-	vm_window->image_height = untrusted_shmcmd->height; /* sanitized above */
+	vm_window->image_height = untrusted_shmcmd->height;	/* sanitized above */
 	read_data((char *) untrusted_shmcmd->mfns,
 		  SIZEOF_SHARED_MFN * num_mfn);
 	vm_window->image =
 	    XShmCreateImage(g->display,
 			    DefaultVisual(g->display, g->screen), 24,
 			    ZPixmap, NULL, &vm_window->shminfo,
-			    vm_window->image_width, vm_window->image_height);
+			    vm_window->image_width,
+			    vm_window->image_height);
 	if (!vm_window->image) {
 		perror("XShmCreateImage");
 		exit(1);
 	}
 	/* the below sanity check must be AFTER XShmCreateImage, it uses vm_window->image */
 	if (num_mfn * 4096 <
-	    vm_window->image->bytes_per_line * vm_window->image->height + off) {
+	    vm_window->image->bytes_per_line * vm_window->image->height +
+	    off) {
 		fprintf(stderr,
 			"handle_mfndump for window 0x%x(remote 0x%x)"
 			" got too small num_mfn= 0x%x\n",
-			(int) vm_window->local_winid, (int) vm_window->remote_winid,
-			num_mfn);
+			(int) vm_window->local_winid,
+			(int) vm_window->remote_winid, num_mfn);
 		exit(1);
 	}
 	// temporary shmid; see shmoverride/README
-	vm_window->shminfo.shmid = shmget(IPC_PRIVATE, 1, IPC_CREAT | 0700);
+	vm_window->shminfo.shmid =
+	    shmget(IPC_PRIVATE, 1, IPC_CREAT | 0700);
 	if (vm_window->shminfo.shmid < 0) {
 		perror("shmget");
 		exit(1);
@@ -1335,7 +1392,8 @@ void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	if (!XShmAttach(g->display, &vm_window->shminfo)) {
 		fprintf(stderr,
 			"XShmAttach failed for window 0x%x(remote 0x%x)\n",
-			(int) vm_window->local_winid, (int) vm_window->remote_winid);
+			(int) vm_window->local_winid,
+			(int) vm_window->remote_winid);
 	}
 	XSync(g->display, False);
 	g->shmcmd->shmid = g->cmd_shmid;
@@ -1353,7 +1411,8 @@ void handle_message(Ghandles * g)
 	struct windowdata *vm_window = NULL;
 
 	read_struct(untrusted_hdr);
-	VERIFY(untrusted_hdr.type > MSG_MIN && untrusted_hdr.type < MSG_MAX);
+	VERIFY(untrusted_hdr.type > MSG_MIN
+	       && untrusted_hdr.type < MSG_MAX);
 	/* sanitized msg type */
 	type = untrusted_hdr.type;
 	if (type == MSG_CLIPBOARD_DATA) {
@@ -1379,8 +1438,8 @@ void handle_message(Ghandles * g)
 		}
 		vm_window = l->data;
 		/* not needed as it is in vm_window struct
-		window = untrusted_hdr.window;
-		*/
+		   window = untrusted_hdr.window;
+		 */
 	}
 
 	switch (type) {
@@ -1448,8 +1507,8 @@ void release_all_mapped_mfns()
 	struct genlist *curr;
 	fprintf(stderr, "release_all_mapped_mfns running\n");
 	print_backtrace();
-	for (curr = ghandles.wid2windowdata->next; curr != ghandles.wid2windowdata;
-	     curr = curr->next) {
+	for (curr = ghandles.wid2windowdata->next;
+	     curr != ghandles.wid2windowdata; curr = curr->next) {
 		struct windowdata *vm_window = curr->data;
 		if (vm_window->image)
 			/* use og ghandles directly, as no other way get it (atexec cannot
