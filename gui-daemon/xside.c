@@ -189,7 +189,7 @@ void get_tray_gc(Ghandles * g)
  */
 Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 {
-	char *gargv[1] = { 0 };
+	char *gargv[1] = { NULL };
 	Window child_win;
 	Window parent;
 	XSizeHints my_size_hints;	/* hints for the window manager */
@@ -287,7 +287,7 @@ struct windowdata *check_nonmanged_window(Ghandles * g, XID id)
 	if (!item) {
 		fprintf(stderr, "cannot lookup 0x%x in wid2windowdata\n",
 			(int) id);
-		return 0;
+		return NULL;
 	}
 	return item->data;
 }
@@ -1193,7 +1193,7 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 		XSetTransientForHint(g->display, vm_window->local_winid,
 				     transdata->local_winid);
 	} else
-		vm_window->transient_for = 0;
+		vm_window->transient_for = NULL;
 	vm_window->override_redirect = 0;
 	if (untrusted_txt.override_redirect || vm_window->is_docked)
 		fix_menu(g, vm_window);
@@ -1347,7 +1347,7 @@ void handle_message(Ghandles * g)
 	uint32_t type;
 	XID window;
 	struct genlist *l;
-	struct windowdata *vm_window = 0;
+	struct windowdata *vm_window = NULL;
 
 	read_struct(untrusted_hdr);
 	VERIFY(untrusted_hdr.type > MSG_MIN && untrusted_hdr.type < MSG_MAX);
@@ -1574,7 +1574,7 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 			g->cmdline_color = optarg;
 			break;
 		case 'l':
-			g->label_index = strtoul(optarg, 0, 0);
+			g->label_index = strtoul(optarg, NULL, 0);
 			break;
 		case 'i':
 			g->cmdline_icon = optarg;
@@ -1644,7 +1644,7 @@ int main(int argc, char **argv)
 	}
 	fscanf(f, "%d", &ghandles.cmd_shmid);
 	fclose(f);
-	ghandles.shmcmd = shmat(ghandles.cmd_shmid, 0, 0);
+	ghandles.shmcmd = shmat(ghandles.cmd_shmid, NULL, 0);
 	if (ghandles.shmcmd == (void *) (-1UL)) {
 		fprintf(stderr,
 			"Invalid or stale shm id 0x%x in /var/run/shm.id\n",
