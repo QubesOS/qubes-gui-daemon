@@ -527,6 +527,28 @@ int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char * caller)
 	return ret;
 }
 
+/* undo the calculations that fix_docked_xy did, then perform move&resize */
+void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
+{
+	int x=0, y=0;
+	Window win;
+	if (!vm_window->is_docked) {
+		x = vm_window->x;
+		y = vm_window->y;
+	} else
+		XTranslateCoordinates(g->display, g->root_win, vm_window->local_winid,
+		vm_window->x, vm_window->y, &x, &y, &win);
+	fprintf(stderr, "XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d\n",
+	(int)vm_window->local_winid, (int)vm_window->remote_winid,
+	x, y, 
+	vm_window->x, vm_window->y,
+	vm_window->width, vm_window->height);
+	XMoveResizeWindow(g->display, vm_window->local_winid, x,
+			  y, vm_window->width,
+			  vm_window->height);
+}	
+
+
 /* force window to not hide it's frame
  * checks if at least border_width is from every screen edge (and fix if no)
  * Exception: allow window to be entriely off the screen */
@@ -672,9 +694,7 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 		// do not let menu window hide its color frame by moving outside of the screen
 		// if it is located offscreen, then allow negative x/y
 		force_on_screen(g, vm_window, 0, "handle_configure_from_vm");
-	XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x,
-			  vm_window->y, vm_window->width,
-			  vm_window->height);
+	moveresize_vm_window(g, vm_window);
 }
 
 /* handle local Xserver event: EnterNotify, LeaveNotify
@@ -1145,9 +1165,7 @@ void handle_create(Ghandles * g, XID window)
 	/* do not allow to hide color frame off the screen */
 	if (vm_window->override_redirect
 	    && force_on_screen(g, vm_window, 0, "handle_create"))
-		XMoveResizeWindow(g->display, vm_window->local_winid,
-				  vm_window->x, vm_window->y,
-				  vm_window->width, vm_window->height);
+		moveresize_vm_window(g, vm_window);
 }
 
 /* handle VM message: MSG_DESTROY
@@ -1206,9 +1224,7 @@ void fix_menu(Ghandles * g, struct windowdata *vm_window)
 	// do not let menu window hide its color frame by moving outside of the screen
 	// if it is located offscreen, then allow negative x/y
 	if (force_on_screen(g, vm_window, 0, "fix_menu"))
-		XMoveResizeWindow(g->display, vm_window->local_winid,
-				  vm_window->x, vm_window->y,
-				  vm_window->width, vm_window->height);
+		moveresize_vm_window(g, vm_window);
 }
 
 /* handle VM message: MSG_VMNAME
