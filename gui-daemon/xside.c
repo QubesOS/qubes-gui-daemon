@@ -519,6 +519,8 @@ int fix_docked_xy(Ghandles * g, struct windowdata *vm_window)
 			x = y = 0;
 		if (vm_window->x != x || vm_window->y != y)
 			ret = 1;
+		fprintf(stderr, "fix_docked_xy, calculated xy %d/%d, was "
+			"%d/%d\n", x, y, vm_window->x, vm_window->y);
 		vm_window->x = x;
 		vm_window->y = y;
 	}
