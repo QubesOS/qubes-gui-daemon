@@ -555,7 +555,8 @@ void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
 int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		    int border_width, char * caller)
 {
-	int do_move = 0, reason = -1;
+	int do_move = 0, reason = -1; 
+	int x=vm_window->x, y=vm_window->y, w=vm_window->width, h=vm_window->height;
 
 	if (vm_window->x < border_width
 	    && vm_window->x + vm_window->width > 0) {
@@ -586,10 +587,10 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		reason = 4;
 	}
 	if (do_move)
-		fprintf(stderr, "force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d\n",
+		fprintf(stderr, "force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, root %d %d borderwidth %d\n",
 			caller, reason,
-			(int)vm_window->local_winid, vm_window->x, vm_window->y,
-			vm_window->width, vm_window->height);
+			(int)vm_window->local_winid, x, y,
+			w, h, g->root_width, g->root_height, border_width);
 	return do_move;
 }
 
