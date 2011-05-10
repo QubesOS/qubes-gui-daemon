@@ -565,9 +565,10 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
-	fprintf(stderr, "process_xevent_configure, %d/%d, was"
-		"%d/%d\n", ev->width, ev->height,
-		vm_window->width, vm_window->height);
+	fprintf(stderr, "process_xevent_configure, %d/%d, was "
+		"%d/%d, xy %d/%d was %d/%d\n", ev->width, ev->height,
+		vm_window->width, vm_window->height, ev->x, ev->y,
+		vm_window->x, vm_window->y);
 	if (vm_window->width == ev->width
 	    && vm_window->height == ev->height && vm_window->x == ev->x
 	    && vm_window->y == ev->y)
