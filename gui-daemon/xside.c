@@ -533,7 +533,7 @@ int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char * caller)
 int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		    int border_width, char * caller)
 {
-	int do_move;
+	int do_move = 0;
 
 	if (vm_window->x < border_width
 	    && vm_window->x + vm_window->width > 0) {
