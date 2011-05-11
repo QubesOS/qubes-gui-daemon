@@ -1283,8 +1283,10 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 				     transdata->local_winid);
 	} else
 		vm_window->transient_for = NULL;
-	vm_window->override_redirect = 0;
-	if (untrusted_txt.override_redirect || vm_window->is_docked)
+	// ignore override_redirect attribute from the message
+	// so that we can skip force_on_screen check
+	// vm_window->override_redirect = 0;
+	if (vm_window->override_redirect || vm_window->is_docked)
 		fix_menu(g, vm_window);
 	(void) XMapWindow(g->display, vm_window->local_winid);
 }
