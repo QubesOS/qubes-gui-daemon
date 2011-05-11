@@ -505,7 +505,7 @@ void send_configure(struct windowdata *vm_window, int x, int y, int w,
 /* fix position of docked tray icon;
  * icon position is relative to embedder 0,0 so we must translate it to
  * absolute position */
-int fix_docked_xy(Ghandles * g, struct windowdata *vm_window)
+int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char * caller)
 {
 
 	/* docked window is reparented to root_win on vmside */
@@ -519,29 +519,56 @@ int fix_docked_xy(Ghandles * g, struct windowdata *vm_window)
 			x = y = 0;
 		if (vm_window->x != x || vm_window->y != y)
 			ret = 1;
+		fprintf(stderr, "fix_docked_xy(from %s), calculated xy %d/%d, was "
+			"%d/%d\n", caller, x, y, vm_window->x, vm_window->y);
 		vm_window->x = x;
 		vm_window->y = y;
 	}
 	return ret;
 }
 
+/* undo the calculations that fix_docked_xy did, then perform move&resize */
+void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
+{
+	int x=0, y=0;
+	Window win;
+	if (!vm_window->is_docked) {
+		x = vm_window->x;
+		y = vm_window->y;
+	} else
+		XTranslateCoordinates(g->display, g->root_win, vm_window->local_winid,
+		vm_window->x, vm_window->y, &x, &y, &win);
+	fprintf(stderr, "XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d\n",
+	(int)vm_window->local_winid, (int)vm_window->remote_winid,
+	x, y, 
+	vm_window->x, vm_window->y,
+	vm_window->width, vm_window->height);
+	XMoveResizeWindow(g->display, vm_window->local_winid, x,
+			  y, vm_window->width,
+			  vm_window->height);
+}	
+
+
 /* force window to not hide it's frame
  * checks if at least border_width is from every screen edge (and fix if no)
  * Exception: allow window to be entriely off the screen */
 int force_on_screen(Ghandles * g, struct windowdata *vm_window,
-		    int border_width)
+		    int border_width, char * caller)
 {
-	int do_move;
+	int do_move = 0, reason = -1; 
+	int x=vm_window->x, y=vm_window->y, w=vm_window->width, h=vm_window->height;
 
 	if (vm_window->x < border_width
 	    && vm_window->x + vm_window->width > 0) {
 		vm_window->x = border_width;
 		do_move = 1;
+		reason = 1;
 	}
 	if (vm_window->y < border_width
 	    && vm_window->y + vm_window->height > 0) {
 		vm_window->y = border_width;
 		do_move = 1;
+		reason = 2;
 	}
 	if (vm_window->x < g->root_width &&
 	    vm_window->x + vm_window->width >
@@ -549,6 +576,7 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		vm_window->width =
 		    g->root_width - vm_window->x - border_width;
 		do_move = 1;
+		reason = 3;
 	}
 	if (vm_window->y < g->root_height &&
 	    vm_window->y + vm_window->height >
@@ -556,7 +584,13 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		vm_window->height =
 		    g->root_height - vm_window->y - border_width;
 		do_move = 1;
+		reason = 4;
 	}
+	if (do_move)
+		fprintf(stderr, "force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, root %d %d borderwidth %d\n",
+			caller, reason,
+			(int)vm_window->local_winid, x, y,
+			w, h, g->root_width, g->root_height, border_width);
 	return do_move;
 }
 
@@ -565,9 +599,12 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
-	fprintf(stderr, "process_xevent_configure, %d/%d, was"
-		"%d/%d\n", ev->width, ev->height,
-		vm_window->width, vm_window->height);
+	fprintf(stderr, "process_xevent_configure local 0x%x remote 0x%x, %d/%d, was "
+		"%d/%d, xy %d/%d was %d/%d\n", 
+		(int)vm_window->local_winid, (int)vm_window->remote_winid,
+		ev->width, ev->height,
+		vm_window->width, vm_window->height, ev->x, ev->y,
+		vm_window->x, vm_window->y);
 	if (vm_window->width == ev->width
 	    && vm_window->height == ev->height && vm_window->x == ev->x
 	    && vm_window->y == ev->y)
@@ -578,7 +615,7 @@ void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 		vm_window->x = ev->x;
 		vm_window->y = ev->y;
 	} else
-		fix_docked_xy(g, vm_window);
+		fix_docked_xy(g, vm_window, "process_xevent_configure");
 
 // if AppVM has not unacknowledged previous resize msg, do not send another one
 	if (vm_window->have_queued_configure)
@@ -597,8 +634,9 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	int conf_changed;
 
 	read_struct(untrusted_conf);
-	fprintf(stderr, "handle_configure_from_vm, %d/%d, was"
+	fprintf(stderr, "handle_configure_from_vm, local 0x%x remote 0x%x, %d/%d, was"
 		" %d/%d, ovr=%d, xy %d/%d, was %d/%d\n",
+		(int)vm_window->local_winid, (int)vm_window->remote_winid,
 		untrusted_conf.width, untrusted_conf.height,
 		vm_window->width, vm_window->height,
 		untrusted_conf.override_redirect, untrusted_conf.x,
@@ -660,10 +698,8 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	if (vm_window->override_redirect)
 		// do not let menu window hide its color frame by moving outside of the screen
 		// if it is located offscreen, then allow negative x/y
-		force_on_screen(g, vm_window, 0);
-	XMoveResizeWindow(g->display, vm_window->local_winid, vm_window->x,
-			  vm_window->y, vm_window->width,
-			  vm_window->height);
+		force_on_screen(g, vm_window, 0, "handle_configure_from_vm");
+	moveresize_vm_window(g, vm_window);
 }
 
 /* handle local Xserver event: EnterNotify, LeaveNotify
@@ -674,7 +710,7 @@ void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
 	/* move tray to correct position in VM */
-	if (fix_docked_xy(g, vm_window)) {
+	if (fix_docked_xy(g, vm_window, "process_xevent_crossing")) {
 		send_configure(vm_window, vm_window->x, vm_window->y,
 			       vm_window->width, vm_window->height);
 	}
@@ -932,7 +968,7 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 		hdr.window = vm_window->remote_winid;
 		write_struct(hdr);
 		write_struct(map_info);
-		if (vm_window->is_docked && fix_docked_xy(g, vm_window))
+		if (vm_window->is_docked && fix_docked_xy(g, vm_window, "process_xevent_mapnotify"))
 			send_configure(vm_window, vm_window->x,
 				       vm_window->y, vm_window->width,
 				       vm_window->height);
@@ -951,7 +987,7 @@ void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
 			if (!vm_window->is_mapped)
 				XMapWindow(g->display, ev->window);
 			/* move tray to correct position in VM */
-			if (fix_docked_xy(g, vm_window)) {
+			if (fix_docked_xy(g, vm_window, "process_xevent_xembed")) {
 				send_configure(vm_window, vm_window->x,
 					       vm_window->y,
 					       vm_window->width,
@@ -1133,10 +1169,8 @@ void handle_create(Ghandles * g, XID window)
 
 	/* do not allow to hide color frame off the screen */
 	if (vm_window->override_redirect
-	    && force_on_screen(g, vm_window, 0))
-		XMoveResizeWindow(g->display, vm_window->local_winid,
-				  vm_window->x, vm_window->y,
-				  vm_window->width, vm_window->height);
+	    && force_on_screen(g, vm_window, 0, "handle_create"))
+		moveresize_vm_window(g, vm_window);
 }
 
 /* handle VM message: MSG_DESTROY
@@ -1194,10 +1228,16 @@ void fix_menu(Ghandles * g, struct windowdata *vm_window)
 
 	// do not let menu window hide its color frame by moving outside of the screen
 	// if it is located offscreen, then allow negative x/y
-	if (force_on_screen(g, vm_window, 0))
-		XMoveResizeWindow(g->display, vm_window->local_winid,
-				  vm_window->x, vm_window->y,
-				  vm_window->width, vm_window->height);
+	// correction - remove this check
+	// MapEvent does not change window dimensions; so if VM sent evil dimensions,
+	// in create or configure_from_vm message, they would have been 
+	// corrected once the mesage has arrived.
+	// Apparently, KDE tray temporarily moves the window without resizing so 
+	// that it is partially offscreen (which is fine:
+	// we allow window manager do to anything, it is trusted), which
+	// triggered the below check and caused tray malfunction.
+	//	if (force_on_screen(g, vm_window, 0, "fix_menu"))
+	//		moveresize_vm_window(g, vm_window);
 }
 
 /* handle VM message: MSG_VMNAME
@@ -1243,8 +1283,10 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 				     transdata->local_winid);
 	} else
 		vm_window->transient_for = NULL;
-	vm_window->override_redirect = 0;
-	if (untrusted_txt.override_redirect || vm_window->is_docked)
+	// ignore override_redirect attribute from the message
+	// so that we can skip force_on_screen check
+	// vm_window->override_redirect = 0;
+	if (vm_window->override_redirect || vm_window->is_docked)
 		fix_menu(g, vm_window);
 	(void) XMapWindow(g->display, vm_window->local_winid);
 }
