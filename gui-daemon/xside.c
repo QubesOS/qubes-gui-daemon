@@ -1197,21 +1197,11 @@ void handle_destroy(Ghandles * g, struct genlist *l)
  * given string must be NULL terminated already */
 void sanitize_string_from_vm(unsigned char *untrusted_s)
 {
-	static unsigned char allowed_chars[] = { '-', '_', ' ', '.' };
-	int i, ok;
 	for (; *untrusted_s; untrusted_s++) {
-		if (*untrusted_s >= '0' || *untrusted_s <= '9')
+		// allow only non-controll ASCII chars
+		if (*untrusted_s >= 0x20 && *untrusted_s <= 0x7E)
 			continue;
-		if (*untrusted_s >= 'a' || *untrusted_s <= 'z')
-			continue;
-		if (*untrusted_s >= 'A' || *untrusted_s <= 'Z')
-			continue;
-		ok = 0;
-		for (i = 0; i < sizeof(allowed_chars); i++)
-			if (*untrusted_s == allowed_chars[i])
-				ok = 1;
-		if (!ok)
-			*untrusted_s = '_';
+		*untrusted_s = '_';
 	}
 }
 
