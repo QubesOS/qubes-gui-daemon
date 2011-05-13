@@ -386,24 +386,27 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 	struct msghdr hdr;
 	char *data;
 	int len;
-	if ((ev->state & (ShiftMask | ControlMask)) !=
-	    (ShiftMask | ControlMask))
-		return 0;
-	if (ev->keycode == XKeysymToKeycode(g->display, XK_c)) {
+	if ((ev->state & (Mod1Mask | ShiftMask | ControlMask)) ==
+	    g->copy_seq_mask
+	    && ev->keycode == XKeysymToKeycode(g->display,
+					       g->copy_seq_key)) {
 		if (ev->type != KeyPress)
 			return 1;
 		g->clipboard_requested = 1;
 		hdr.type = MSG_CLIPBOARD_REQ;
 		hdr.window = remote_winid;
-		fprintf(stderr, "Ctrl-Shift-c\n");
+		fprintf(stderr, "secure copy\n");
 		write_struct(hdr);
 		return 1;
 	}
-	if (ev->keycode == XKeysymToKeycode(g->display, XK_v)) {
+	if ((ev->state & (Mod1Mask | ShiftMask | ControlMask)) ==
+	    g->paste_seq_mask
+	    && ev->keycode == XKeysymToKeycode(g->display,
+					       g->paste_seq_key)) {
 		if (ev->type != KeyPress)
 			return 1;
 		hdr.type = MSG_CLIPBOARD_DATA;
-		fprintf(stderr, "Ctrl-Shift-v\n");
+		fprintf(stderr, "secure paste\n");
 		get_qubes_clipboard(&data, &len);
 		if (len > 0) {
 			hdr.window = len;
