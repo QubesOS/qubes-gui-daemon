@@ -41,10 +41,12 @@ Requires:	qubes-core-dom0 >= 1.3.14
 Requires:	xorg-x11-server-Xorg kdm pulseaudio-libs
 Requires:	/usr/bin/kdialog
 Requires:	pulseaudio
+Requires:	libconfig
 BuildRequires:  pulseaudio-libs-devel
 BuildRequires:  xen-devel
 BuildRequires:  libXt-devel
 BuildRequires:  libXext-devel
+BuildRequires:	libconfig-devel
 BuildRequires:	gcc
 BuildRequires:	qubes-core-appvm-devel
 BuildRequires:	qubes-core-appvm-libs
@@ -69,6 +71,7 @@ install -D gui-daemon/qubes_guid $RPM_BUILD_ROOT/usr/bin/qubes_guid
 install -D pulse/pacat-simple-vchan $RPM_BUILD_ROOT/usr/bin/pacat-simple-vchan
 install -D shmoverride/X_wrapper_qubes $RPM_BUILD_ROOT/usr/bin/X_wrapper_qubes
 install -D shmoverride/shmoverride.so $RPM_BUILD_ROOT/%{_libdir}/shmoverride.so
+install -D gui-daemon/guid.conf $RPM_BUILD_ROOT/%{_sysconfdir}/qubes/guid.conf
 
 %triggerin -- xorg-x11-server-Xorg
 ln -sf /usr/bin/X_wrapper_qubes /usr/bin/X
@@ -88,3 +91,4 @@ rm -rf $RPM_BUILD_ROOT
 /usr/bin/pacat-simple-vchan
 /usr/bin/X_wrapper_qubes
 %{_libdir}/shmoverride.so
+%config(noreplace) %{_sysconfdir}/qubes/guid.conf

@@ -41,6 +41,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
 #include <X11/Xatom.h>
+#include <libconfig.h>
 #include "messages.h"
 #include "txrx.h"
 #include "list.h"
@@ -56,6 +57,8 @@
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes_clipboard.bin"
 /* limit of created windows - after exceed, warning the user */
 #define WINDOWS_COUNT_LIMIT 100
+#define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
+#define GUID_CONFIG_DIR "/etc/qubes"
 
 /* per-window data */
 struct windowdata {
@@ -117,6 +120,12 @@ struct _global_handles {
 	struct windowdata *last_input_window;
 	/* signal was caught */
 	int volatile signal_caught;
+	/* configuration */
+	int allow_utf8_titles;	/* allow UTF-8 chars in window title */
+	int copy_seq_mask;	/* modifiers mask for secure-copy key sequence */
+	KeySym copy_seq_key;	/* key for secure-copy key sequence */
+	int paste_seq_mask;	/* modifiers mask for secure-paste key sequence */
+	KeySym paste_seq_key;	/* key for secure-paste key sequence */
 };
 
 typedef struct _global_handles Ghandles;
@@ -1772,6 +1781,119 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 	}
 }
 
+
+void load_default_config_values(Ghandles * g)
+{
+
+	g->allow_utf8_titles = 0;
+	g->copy_seq_mask = ControlMask | ShiftMask;
+	g->copy_seq_key = XK_c;
+	g->paste_seq_mask = ControlMask | ShiftMask;
+	g->paste_seq_key = XK_v;
+}
+
+// parse string describing key sequence like Ctrl-Alt-c
+void parse_key_sequence(const char *seq, int *mask, KeySym * key)
+{
+	const char *seqp = seq;
+	int found_modifier;
+
+	// ignore null string
+	if (seq == NULL)
+		return;
+	*mask = 0;
+	do {
+		found_modifier = 1;
+		if (strncasecmp(seqp, "Ctrl-", 5) == 0) {
+			*mask |= ControlMask;
+			seqp += 5;
+		} else if (strncasecmp(seqp, "Alt-", 4) == 0) {
+			*mask |= Mod1Mask;
+			seqp += 4;
+		} else if (strncasecmp(seqp, "Shift-", 6) == 0) {
+			*mask |= ShiftMask;
+			seqp += 6;
+		} else
+			found_modifier = 0;
+	} while (found_modifier);
+
+	*key = XStringToKeysym(seqp);
+	if (*key == NoSymbol) {
+		fprintf(stderr,
+			"Warning: key sequence (%s) is invalid (will be disabled)\n",
+			seq);
+	}
+}
+
+void parse_vm_config(Ghandles * g, config_setting_t * group)
+{
+	config_setting_t *setting;
+
+	if ((setting =
+	     config_setting_get_member(group, "secure_copy_sequence"))) {
+		parse_key_sequence(config_setting_get_string(setting),
+				   &g->copy_seq_mask, &g->copy_seq_key);
+	}
+	if ((setting =
+	     config_setting_get_member(group, "secure_paste_sequence"))) {
+		parse_key_sequence(config_setting_get_string(setting),
+				   &g->paste_seq_mask, &g->paste_seq_key);
+	}
+
+	if ((setting =
+	     config_setting_get_member(group, "allow_utf8_titles"))) {
+		g->allow_utf8_titles = config_setting_get_bool(setting);
+	}
+}
+
+void parse_config(Ghandles * g)
+{
+	config_t config;
+	config_setting_t *setting;
+	char buf[128];
+
+	config_init(&config);
+#if (((LIBCONFIG_VER_MAJOR == 1) && (LIBCONFIG_VER_MINOR >= 4)) \
+		|| (LIBCONFIG_VER_MAJOR > 1))
+	config_set_include_dir(&config, GUID_CONFIG_DIR);
+#endif
+	if (config_read_file(&config, GUID_CONFIG_FILE) == CONFIG_FALSE) {
+#if (((LIBCONFIG_VER_MAJOR == 1) && (LIBCONFIG_VER_MINOR >= 4)) \
+		|| (LIBCONFIG_VER_MAJOR > 1))
+		if (config_error_type(&config) == CONFIG_ERR_FILE_IO) {
+#else
+		if (strcmp(config_error_text(&config), "file I/O error") ==
+		    0) {
+#endif
+			fprintf(stderr,
+				"Warning: cannot read config file (%s): %s\n",
+				GUID_CONFIG_FILE,
+				config_error_text(&config));
+		} else {
+			fprintf(stderr,
+				"Critical: error reading config (%s:%d): %s\n",
+#if (((LIBCONFIG_VER_MAJOR == 1) && (LIBCONFIG_VER_MINOR >= 4)) \
+		|| (LIBCONFIG_VER_MAJOR > 1))
+				config_error_file(&config),
+#else
+				GUID_CONFIG_FILE,
+#endif
+				config_error_line(&config),
+				config_error_text(&config));
+			exit(1);
+		}
+	}
+	// first load global settings
+	if ((setting = config_lookup(&config, "global"))) {
+		parse_vm_config(g, setting);
+	}
+	// then try to load per-VM settings
+	snprintf(buf, sizeof(buf), "VM/%s", g->vmname);
+	if ((setting = config_lookup(&config, buf))) {
+		parse_vm_config(g, setting);
+	}
+}
+
 /* create guid_running file when connected to VM */
 void set_alive_flag(int domid)
 {
@@ -1801,8 +1923,11 @@ int main(int argc, char **argv)
 	int pipe_notify[2];
 	char dbg_log[256];
 	int logfd;
-	parse_cmdline(&ghandles, argc, argv);
 
+	parse_cmdline(&ghandles, argc, argv);
+	/* load config file */
+	load_default_config_values(&ghandles);
+	parse_config(&ghandles);
 
 	// daemonize...
 	if (pipe(pipe_notify) < 0) {
