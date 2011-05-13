@@ -221,7 +221,7 @@ void getwmname_tochar(Ghandles * g, XID window, char *outbuf, int bufsize)
 	if (!XGetWMName(g->display, window, &text_prop_return) ||
 	    !text_prop_return.value || !text_prop_return.nitems)
 		return;
-	if (XmbTextPropertyToTextList(g->display,
+	if (Xutf8TextPropertyToTextList(g->display,
 				      &text_prop_return, &list,
 				      &count) < 0 || count <= 0
 	    || !*list) {

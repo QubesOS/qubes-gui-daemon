@@ -1216,11 +1216,13 @@ void handle_destroy(Ghandles * g, struct genlist *l)
 
 /* replace non-printable charactes with '_'
  * given string must be NULL terminated already */
-void sanitize_string_from_vm(unsigned char *untrusted_s)
+void sanitize_string_from_vm(unsigned char *untrusted_s, int allow_utf8)
 {
 	for (; *untrusted_s; untrusted_s++) {
 		// allow only non-controll ASCII chars
 		if (*untrusted_s >= 0x20 && *untrusted_s <= 0x7E)
+			continue;
+		if (allow_utf8 && *untrusted_s >= 0x80)
 			continue;
 		*untrusted_s = '_';
 	}
@@ -1263,13 +1265,14 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 	read_struct(untrusted_msg);
 	/* sanitize start */
 	untrusted_msg.data[sizeof(untrusted_msg.data) - 1] = 0;
-	sanitize_string_from_vm((unsigned char *) (untrusted_msg.data));
+	sanitize_string_from_vm((unsigned char *) (untrusted_msg.data),
+				g->allow_utf8_titles);
 	snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
 	/* sanitize end */
 	fprintf(stderr, "set title for window 0x%x to %s\n",
 		(int) vm_window->local_winid, buf);
-	XmbTextListToTextProperty(g->display, list, 1, XStringStyle,
-				  &text_prop);
+	Xutf8TextListToTextProperty(g->display, list, 1, XUTF8StringStyle,
+				    &text_prop);
 	XSetWMName(g->display, vm_window->local_winid, &text_prop);
 	XSetWMIconName(g->display, vm_window->local_winid, &text_prop);
 	XFree(text_prop.value);
