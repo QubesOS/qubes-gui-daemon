@@ -35,7 +35,7 @@ help:
 	    echo "make update-repo-current-testing <-- same, but for -current-testing repo";\
 	    echo "make update-repo-unstable <-- same, but to -testing repo";\
 	    echo "make update-repo-installer -- copy dom0 rpms to installer repo"
-	    exit 0;
+	    @exit 0;
 
 dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
 
