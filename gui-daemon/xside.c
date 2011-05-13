@@ -505,7 +505,7 @@ void send_configure(struct windowdata *vm_window, int x, int y, int w,
 /* fix position of docked tray icon;
  * icon position is relative to embedder 0,0 so we must translate it to
  * absolute position */
-int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char * caller)
+int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char *caller)
 {
 
 	/* docked window is reparented to root_win on vmside */
@@ -519,8 +519,10 @@ int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char * caller)
 			x = y = 0;
 		if (vm_window->x != x || vm_window->y != y)
 			ret = 1;
-		fprintf(stderr, "fix_docked_xy(from %s), calculated xy %d/%d, was "
-			"%d/%d\n", caller, x, y, vm_window->x, vm_window->y);
+		fprintf(stderr,
+			"fix_docked_xy(from %s), calculated xy %d/%d, was "
+			"%d/%d\n", caller, x, y, vm_window->x,
+			vm_window->y);
 		vm_window->x = x;
 		vm_window->y = y;
 	}
@@ -530,33 +532,34 @@ int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char * caller)
 /* undo the calculations that fix_docked_xy did, then perform move&resize */
 void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
 {
-	int x=0, y=0;
+	int x = 0, y = 0;
 	Window win;
 	if (!vm_window->is_docked) {
 		x = vm_window->x;
 		y = vm_window->y;
 	} else
-		XTranslateCoordinates(g->display, g->root_win, vm_window->local_winid,
-		vm_window->x, vm_window->y, &x, &y, &win);
-	fprintf(stderr, "XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d\n",
-	(int)vm_window->local_winid, (int)vm_window->remote_winid,
-	x, y, 
-	vm_window->x, vm_window->y,
-	vm_window->width, vm_window->height);
-	XMoveResizeWindow(g->display, vm_window->local_winid, x,
-			  y, vm_window->width,
-			  vm_window->height);
-}	
+		XTranslateCoordinates(g->display, g->root_win,
+				      vm_window->local_winid, vm_window->x,
+				      vm_window->y, &x, &y, &win);
+	fprintf(stderr,
+		"XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d\n",
+		(int) vm_window->local_winid,
+		(int) vm_window->remote_winid, x, y, vm_window->x,
+		vm_window->y, vm_window->width, vm_window->height);
+	XMoveResizeWindow(g->display, vm_window->local_winid, x, y,
+			  vm_window->width, vm_window->height);
+}
 
 
 /* force window to not hide it's frame
  * checks if at least border_width is from every screen edge (and fix if no)
  * Exception: allow window to be entriely off the screen */
 int force_on_screen(Ghandles * g, struct windowdata *vm_window,
-		    int border_width, char * caller)
+		    int border_width, char *caller)
 {
-	int do_move = 0, reason = -1; 
-	int x=vm_window->x, y=vm_window->y, w=vm_window->width, h=vm_window->height;
+	int do_move = 0, reason = -1;
+	int x = vm_window->x, y = vm_window->y, w = vm_window->width, h =
+	    vm_window->height;
 
 	if (vm_window->x < border_width
 	    && vm_window->x + vm_window->width > 0) {
@@ -587,9 +590,9 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		reason = 4;
 	}
 	if (do_move)
-		fprintf(stderr, "force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, root %d %d borderwidth %d\n",
-			caller, reason,
-			(int)vm_window->local_winid, x, y,
+		fprintf(stderr,
+			"force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, root %d %d borderwidth %d\n",
+			caller, reason, (int) vm_window->local_winid, x, y,
 			w, h, g->root_width, g->root_height, border_width);
 	return do_move;
 }
@@ -599,10 +602,11 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
-	fprintf(stderr, "process_xevent_configure local 0x%x remote 0x%x, %d/%d, was "
-		"%d/%d, xy %d/%d was %d/%d\n", 
-		(int)vm_window->local_winid, (int)vm_window->remote_winid,
-		ev->width, ev->height,
+	fprintf(stderr,
+		"process_xevent_configure local 0x%x remote 0x%x, %d/%d, was "
+		"%d/%d, xy %d/%d was %d/%d\n",
+		(int) vm_window->local_winid,
+		(int) vm_window->remote_winid, ev->width, ev->height,
 		vm_window->width, vm_window->height, ev->x, ev->y,
 		vm_window->x, vm_window->y);
 	if (vm_window->width == ev->width
@@ -634,11 +638,12 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	int conf_changed;
 
 	read_struct(untrusted_conf);
-	fprintf(stderr, "handle_configure_from_vm, local 0x%x remote 0x%x, %d/%d, was"
+	fprintf(stderr,
+		"handle_configure_from_vm, local 0x%x remote 0x%x, %d/%d, was"
 		" %d/%d, ovr=%d, xy %d/%d, was %d/%d\n",
-		(int)vm_window->local_winid, (int)vm_window->remote_winid,
-		untrusted_conf.width, untrusted_conf.height,
-		vm_window->width, vm_window->height,
+		(int) vm_window->local_winid,
+		(int) vm_window->remote_winid, untrusted_conf.width,
+		untrusted_conf.height, vm_window->width, vm_window->height,
 		untrusted_conf.override_redirect, untrusted_conf.x,
 		untrusted_conf.y, vm_window->x, vm_window->y);
 	/* sanitize start */
@@ -698,7 +703,8 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	if (vm_window->override_redirect)
 		// do not let menu window hide its color frame by moving outside of the screen
 		// if it is located offscreen, then allow negative x/y
-		force_on_screen(g, vm_window, 0, "handle_configure_from_vm");
+		force_on_screen(g, vm_window, 0,
+				"handle_configure_from_vm");
 	moveresize_vm_window(g, vm_window);
 }
 
@@ -968,7 +974,9 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 		hdr.window = vm_window->remote_winid;
 		write_struct(hdr);
 		write_struct(map_info);
-		if (vm_window->is_docked && fix_docked_xy(g, vm_window, "process_xevent_mapnotify"))
+		if (vm_window->is_docked
+		    && fix_docked_xy(g, vm_window,
+				     "process_xevent_mapnotify"))
 			send_configure(vm_window, vm_window->x,
 				       vm_window->y, vm_window->width,
 				       vm_window->height);
@@ -987,7 +995,8 @@ void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
 			if (!vm_window->is_mapped)
 				XMapWindow(g->display, ev->window);
 			/* move tray to correct position in VM */
-			if (fix_docked_xy(g, vm_window, "process_xevent_xembed")) {
+			if (fix_docked_xy
+			    (g, vm_window, "process_xevent_xembed")) {
 				send_configure(vm_window, vm_window->x,
 					       vm_window->y,
 					       vm_window->width,
@@ -1226,8 +1235,8 @@ void fix_menu(Ghandles * g, struct windowdata *vm_window)
 	// that it is partially offscreen (which is fine:
 	// we allow window manager do to anything, it is trusted), which
 	// triggered the below check and caused tray malfunction.
-	//	if (force_on_screen(g, vm_window, 0, "fix_menu"))
-	//		moveresize_vm_window(g, vm_window);
+	//      if (force_on_screen(g, vm_window, 0, "fix_menu"))
+	//              moveresize_vm_window(g, vm_window);
 }
 
 /* handle VM message: MSG_VMNAME
@@ -1266,58 +1275,68 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 	read_struct(untrusted_msg);
 
 	/* sanitize start */
-	size_hints.flags       = 0;
+	size_hints.flags = 0;
 	/* check every value and pass it only when sane */
 	if ((untrusted_msg.flags & PMinSize) &&
-			untrusted_msg.min_width >= 0 && untrusted_msg.min_width <= MAX_WINDOW_WIDTH &&
-			untrusted_msg.min_height >= 0 && untrusted_msg.min_height <= MAX_WINDOW_HEIGHT) {
+	    untrusted_msg.min_width >= 0
+	    && untrusted_msg.min_width <= MAX_WINDOW_WIDTH
+	    && untrusted_msg.min_height >= 0
+	    && untrusted_msg.min_height <= MAX_WINDOW_HEIGHT) {
 		size_hints.flags |= PMinSize;
-		size_hints.min_width   = untrusted_msg.min_width;
-		size_hints.min_height  = untrusted_msg.min_height;
+		size_hints.min_width = untrusted_msg.min_width;
+		size_hints.min_height = untrusted_msg.min_height;
 	} else
 		fprintf(stderr, "invalid PMinSize for 0x%x (%d/%d)\n",
-				(int) vm_window->local_winid, untrusted_msg.min_width, untrusted_msg.min_height);
-	if ((untrusted_msg.flags & PMaxSize) &&
-			untrusted_msg.max_width > 0 && untrusted_msg.max_width <= MAX_WINDOW_WIDTH &&
-			untrusted_msg.max_height > 0 && untrusted_msg.max_height <= MAX_WINDOW_HEIGHT) {
+			(int) vm_window->local_winid,
+			untrusted_msg.min_width, untrusted_msg.min_height);
+	if ((untrusted_msg.flags & PMaxSize) && untrusted_msg.max_width > 0
+	    && untrusted_msg.max_width <= MAX_WINDOW_WIDTH
+	    && untrusted_msg.max_height > 0
+	    && untrusted_msg.max_height <= MAX_WINDOW_HEIGHT) {
 		size_hints.flags |= PMaxSize;
-		size_hints.max_width   = untrusted_msg.max_width;
-		size_hints.max_height  = untrusted_msg.max_height;
+		size_hints.max_width = untrusted_msg.max_width;
+		size_hints.max_height = untrusted_msg.max_height;
 	} else
 		fprintf(stderr, "invalid PMaxSize for 0x%x (%d/%d)\n",
-				(int) vm_window->local_winid, untrusted_msg.max_width, untrusted_msg.max_height);
-	if ((untrusted_msg.flags & PResizeInc) &&
-			size_hints.width_inc >= 0 && size_hints.width_inc < MAX_WINDOW_WIDTH &&
-			size_hints.height_inc >= 0 && size_hints.height_inc < MAX_WINDOW_HEIGHT) {
+			(int) vm_window->local_winid,
+			untrusted_msg.max_width, untrusted_msg.max_height);
+	if ((untrusted_msg.flags & PResizeInc) && size_hints.width_inc >= 0
+	    && size_hints.width_inc < MAX_WINDOW_WIDTH
+	    && size_hints.height_inc >= 0
+	    && size_hints.height_inc < MAX_WINDOW_HEIGHT) {
 		size_hints.flags |= PResizeInc;
-		size_hints.width_inc   = untrusted_msg.width_inc;
-		size_hints.height_inc  = untrusted_msg.height_inc;
+		size_hints.width_inc = untrusted_msg.width_inc;
+		size_hints.height_inc = untrusted_msg.height_inc;
 	} else
 		fprintf(stderr, "invalid PResizeInc for 0x%x (%d/%d)\n",
-				(int) vm_window->local_winid, untrusted_msg.width_inc, untrusted_msg.height_inc);
-	if ((untrusted_msg.flags & PBaseSize) &&
-			size_hints.base_width >= 0 && size_hints.base_width <= MAX_WINDOW_WIDTH &&
-			size_hints.base_height >= 0 && size_hints.base_height <= MAX_WINDOW_HEIGHT) {
+			(int) vm_window->local_winid,
+			untrusted_msg.width_inc, untrusted_msg.height_inc);
+	if ((untrusted_msg.flags & PBaseSize) && size_hints.base_width >= 0
+	    && size_hints.base_width <= MAX_WINDOW_WIDTH
+	    && size_hints.base_height >= 0
+	    && size_hints.base_height <= MAX_WINDOW_HEIGHT) {
 		size_hints.flags |= PBaseSize;
-		size_hints.base_width  = untrusted_msg.base_width;
+		size_hints.base_width = untrusted_msg.base_width;
 		size_hints.base_height = untrusted_msg.base_height;
 	} else
 		fprintf(stderr, "invalid PBaseSize for 0x%x (%d/%d)\n",
-				(int) vm_window->local_winid, untrusted_msg.base_width, untrusted_msg.base_height);
+			(int) vm_window->local_winid,
+			untrusted_msg.base_width,
+			untrusted_msg.base_height);
 	/* sanitize end */
 
 	/* if no valid values self - do not send it to X server */
 	if (size_hints.flags == 0)
 		return;
 
-	fprintf(stderr, "set WM_NORMAL_HINTS for window 0x%x to min=%d/%d, max=%d/%d, base=%d/%d, inc=%d/%d (flags 0x%x)\n",
-		(int) vm_window->local_winid, 
-        size_hints.min_width, size_hints.min_height,
-        size_hints.max_width, size_hints.max_height,
-        size_hints.base_width, size_hints.base_height,
-        size_hints.width_inc, size_hints.height_inc,
-        (int) size_hints.flags);
-    XSetWMNormalHints(g->display, vm_window->local_winid, &size_hints);
+	fprintf(stderr,
+		"set WM_NORMAL_HINTS for window 0x%x to min=%d/%d, max=%d/%d, base=%d/%d, inc=%d/%d (flags 0x%x)\n",
+		(int) vm_window->local_winid, size_hints.min_width,
+		size_hints.min_height, size_hints.max_width,
+		size_hints.max_height, size_hints.base_width,
+		size_hints.base_height, size_hints.width_inc,
+		size_hints.height_inc, (int) size_hints.flags);
+	XSetWMNormalHints(g->display, vm_window->local_winid, &size_hints);
 }
 
 /* handle VM message: MSG_MAP
