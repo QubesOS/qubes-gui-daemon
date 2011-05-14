@@ -60,6 +60,8 @@
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
 
+#define SPECAL_KEYS_MASK (Mod1Mask | Mod2Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
+
 /* per-window data */
 struct windowdata {
 	int width;
@@ -386,7 +388,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 	struct msghdr hdr;
 	char *data;
 	int len;
-	if ((ev->state & (Mod1Mask | ShiftMask | ControlMask)) ==
+	if ((ev->state & SPECAL_KEYS_MASK) ==
 	    g->copy_seq_mask
 	    && ev->keycode == XKeysymToKeycode(g->display,
 					       g->copy_seq_key)) {
@@ -399,7 +401,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 		write_struct(hdr);
 		return 1;
 	}
-	if ((ev->state & (Mod1Mask | ShiftMask | ControlMask)) ==
+	if ((ev->state & SPECAL_KEYS_MASK) ==
 	    g->paste_seq_mask
 	    && ev->keycode == XKeysymToKeycode(g->display,
 					       g->paste_seq_key)) {
@@ -1813,6 +1815,19 @@ void parse_key_sequence(const char *seq, int *mask, KeySym * key)
 		if (strncasecmp(seqp, "Ctrl-", 5) == 0) {
 			*mask |= ControlMask;
 			seqp += 5;
+		} else if (strncasecmp(seqp, "Mod1-", 5) == 0) {
+			*mask |= Mod1Mask;
+			seqp += 4;
+		} else if (strncasecmp(seqp, "Mod2-", 5) == 0) {
+			*mask |= Mod2Mask;
+			seqp += 4;
+		} else if (strncasecmp(seqp, "Mod3-", 5) == 0) {
+			*mask |= Mod3Mask;
+			seqp += 4;
+		} else if (strncasecmp(seqp, "Mod4-", 5) == 0) {
+			*mask |= Mod4Mask;
+			seqp += 4;
+			/* second name just for convenience */
 		} else if (strncasecmp(seqp, "Alt-", 4) == 0) {
 			*mask |= Mod1Mask;
 			seqp += 4;
