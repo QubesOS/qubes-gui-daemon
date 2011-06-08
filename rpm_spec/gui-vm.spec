@@ -87,6 +87,7 @@ install -D appvm_scripts/etc/profile.d/qubes_gui.sh $RPM_BUILD_ROOT/etc/profile.
 install -D appvm_scripts/etc/profile.d/qubes_gui.csh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.csh
 install -D appvm_scripts/etc/profile.d/qubes-session.sh $RPM_BUILD_ROOT/etc/profile.d/qubes-session.sh
 install -D appvm_scripts/etc/sysconfig/desktop $RPM_BUILD_ROOT/etc/sysconfig/desktop
+install -D appvm_scripts/etc/X11/xinit/xinitrc.d/qubes_keymap.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/qubes_keymap.sh
 install -d $RPM_BUILD_ROOT/var/log/qubes
 
 %post
@@ -126,5 +127,6 @@ rm -rf $RPM_BUILD_ROOT
 /etc/profile.d/qubes_gui.sh
 /etc/profile.d/qubes_gui.csh
 /etc/profile.d/qubes-session.sh
+/etc/X11/xinit/xinitrc.d/qubes_keymap.sh
 %config /etc/sysconfig/desktop
 %dir /var/log/qubes

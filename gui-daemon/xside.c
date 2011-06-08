@@ -1944,6 +1944,7 @@ int main(int argc, char **argv)
 	int pipe_notify[2];
 	char dbg_log[256];
 	int logfd;
+	char cmd_tmp[256];
 
 	parse_cmdline(&ghandles, argc, argv);
 	/* load config file */
@@ -2012,6 +2013,16 @@ int main(int argc, char **argv)
 	strncpy(ghandles.vmname, vmname, sizeof(ghandles.vmname));
 	ghandles.vmname[sizeof(ghandles.vmname) - 1] = 0;
 	xfd = ConnectionNumber(ghandles.display);
+
+	/* provide keyboard map before VM Xserver starts */
+
+	if (snprintf(cmd_tmp, sizeof(cmd_tmp), "/usr/bin/xenstore-write	"
+		     "/local/domain/%d/qubes_keyboard \"`/usr/bin/setxkbmap -print`\"",
+		     ghandles.domid) < sizeof(cmd_tmp)) {
+		/* intentionally ignore return value - don't fail gui-daemon if only
+		 * keyboard layout fails */
+		system(cmd_tmp);
+	}
 
 	get_protocol_version();
 	send_xconf(&ghandles);
