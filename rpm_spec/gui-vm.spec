@@ -53,7 +53,7 @@ BuildRequires:	xorg-x11-server-devel
 BuildRequires:	qubes-core-appvm-devel
 BuildRequires:	qubes-core-appvm-libs
 BuildRequires:	ConsoleKit-devel
-Requires:	qubes-core-vm qubes-u2mfn-vm xen-qubes-vm-essentials
+Requires:	qubes-core-vm xen-qubes-vm-essentials
 Requires:	pulseaudio = %{pa_ver}
 AutoReq: 0
 
