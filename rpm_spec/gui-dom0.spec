@@ -27,7 +27,7 @@
 
 Name:		qubes-gui-dom0	
 Version:	%{version}
-Release:	1%{dist}
+Release:	2%{dist}
 Summary:	The Qubes GUI virtualization (Dom0 side) 
 
 Group:		Qubes
@@ -48,7 +48,7 @@ BuildRequires:  libXt-devel
 BuildRequires:  libXext-devel
 BuildRequires:	libconfig-devel
 BuildRequires:	gcc
-BuildRequires:	qubes-core-appvm-devel
+BuildRequires:	qubes-core-appvm-devel >= 1.6.1
 BuildRequires:	qubes-core-appvm-libs
 
 %define _builddir %(pwd)

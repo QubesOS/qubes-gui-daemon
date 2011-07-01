@@ -27,7 +27,7 @@
 
 Name:		qubes-gui-vm	
 Version:	%{version}
-Release:	1%{dist}
+Release:	2%{dist}
 Summary:	The Qubes GUI Agent for AppVMs
 
 Group:		Qubes
@@ -50,7 +50,7 @@ BuildRequires:	libtool-ltdl-devel
 BuildRequires:	pulseaudio-libs-devel
 BuildRequires:	xen-devel
 BuildRequires:	xorg-x11-server-devel
-BuildRequires:	qubes-core-appvm-devel
+BuildRequires:	qubes-core-appvm-devel >= 1.6.1
 BuildRequires:	qubes-core-appvm-libs
 BuildRequires:	ConsoleKit-devel
 Requires:	qubes-core-vm xen-qubes-vm-essentials
