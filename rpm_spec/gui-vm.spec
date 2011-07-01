@@ -27,7 +27,7 @@
 
 Name:		qubes-gui-vm	
 Version:	%{version}
-Release:	1%{dist}
+Release:	2%{dist}
 Summary:	The Qubes GUI Agent for AppVMs
 
 Group:		Qubes
