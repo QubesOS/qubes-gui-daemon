@@ -448,6 +448,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 		Window w;
 		int ret;
 		struct msghdr hdr;
+		XWindowAttributes attr;
 
 		switch (ev->data.l[1]) {
 		case SYSTEM_TRAY_REQUEST_DOCK:
@@ -456,12 +457,20 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 			fprintf(stderr,
 				"tray request dock for window 0x%x\n",
 				(int) w);
+
+			/* just check for window existence (may be already deleted...) */
+			ret = XGetWindowAttributes(g->display, w, &attr);
+			if (ret != 1) {
+				fprintf(stderr, "XGetWindowAttributes for 0x%x failed in "
+						"handle_dock, ret=0x%x\n", (int) w, ret);
+				return;
+			}
 			ret = XReparentWindow(g->display, w, g->root_win, 0, 0);
 			if (ret != 1) {
 				fprintf(stderr, "XReparentWindow for 0x%x failed in "
 						"handle_dock, ret=0x%x\n", (int) w, ret);
 				return;
-			};
+			}
 
 			memset(&resp, 0, sizeof(ev));
 			resp.type = ClientMessage;
@@ -475,7 +484,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 			resp.data.l[4] = 0;
 			resp.display = g->display;
 			XSendEvent(resp.display, resp.window, False,
-				   NoEventMask, (XEvent *) & ev);
+					NoEventMask, (XEvent *) & ev);
 			XSync(g->display, False);
 
 			hdr.type = MSG_DOCK;
