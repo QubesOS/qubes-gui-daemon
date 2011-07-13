@@ -30,3 +30,5 @@ int read_ready();
 void wait_for_vchan_or_argfd(int nfd, int *fd, fd_set * retset);
 int peer_server_init(int port);
 char *peer_client_init(int dom, int port);
+void vchan_register_at_eof(void (*new_vchan_at_eof)(void));
+void vchan_close();
