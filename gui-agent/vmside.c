@@ -453,6 +453,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 		case SYSTEM_TRAY_REQUEST_DOCK:
 			w = ev->data.l[2];
 
+			if (!list_lookup(windows_list, w)) return;
 			fprintf(stderr,
 				"tray request dock for window 0x%x\n",
 				(int) w);
