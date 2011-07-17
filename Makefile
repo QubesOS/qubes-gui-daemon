@@ -95,21 +95,27 @@ clean:
 
 update-repo-current:
 	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../yum/current-release/current/dom0/rpm/
-	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc13*.rpm ../yum/current-release/current/vm/f13/rpm/
-	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc14*.rpm ../yum/current-release/current/vm/f14/rpm/
-	cd ../yum && ./update_repo.sh
+	for vmrepo in ../yum/current-release/current/vm/* ; do \
+		dist=$$(basename $$vmrepo) ;\
+		ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*$$dist*.rpm $$vmrepo/rpm/ ;\
+		ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm $$vmrepo/rpm/ ;\
+	done
 
 update-repo-current-testing:
 	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../yum/current-release/current-testing/dom0/rpm/
-	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc13*.rpm ../yum/current-release/current-testing/vm/f13/rpm/
-	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc14*.rpm ../yum/current-release/current-testing/vm/f14/rpm/
-	cd ../yum && ./update_repo.sh
+	for vmrepo in ../yum/current-release/current-testing/vm/* ; do \
+		dist=$$(basename $$vmrepo) ;\
+		ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*$$dist*.rpm $$vmrepo/rpm/ ;\
+		ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm $$vmrepo/rpm/ ;\
+	done
 
 update-repo-unstable:
 	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../yum/current-release/unstable/dom0/rpm/
-	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc13*.rpm ../yum/current-release/unstable/vm/f13/rpm/
-	ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*fc14*.rpm ../yum/current-release/unstable/vm/f14/rpm/
-	cd ../yum && ./update_repo.sh
+	for vmrepo in ../yum/current-release/unstable/vm/* ; do \
+		dist=$$(basename $$vmrepo) ;\
+		ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*$$dist*.rpm $$vmrepo/rpm/ ;\
+		ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm $$vmrepo/rpm/ ;\
+	done
 
 update-repo-installer:
 	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../installer/yum/qubes-dom0/rpm/
