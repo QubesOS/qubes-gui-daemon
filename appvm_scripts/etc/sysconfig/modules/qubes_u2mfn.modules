@@ -1,3 +1,1 @@
-modprobe xen-evtchn || modprobe evtchn
 modprobe u2mfn
-

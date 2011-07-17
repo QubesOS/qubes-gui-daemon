@@ -30,6 +30,13 @@
 struct libvchan *ctrl;
 int double_buffered = 0;
 int is_server;
+void (*vchan_at_eof)(void) = NULL;
+
+
+void vchan_register_at_eof(void (*new_vchan_at_eof)(void)) {
+	vchan_at_eof = new_vchan_at_eof;
+}
+
 int write_data_exact(char *buf, int size)
 {
 	int written = 0;
@@ -114,6 +121,8 @@ void slow_check_for_libvchan_is_eof(struct libvchan *ctrl)
 	}
 	if (evst.status != EVTCHNSTAT_interdomain) {
 		fprintf(stderr, "event channel disconnected\n");
+		if (vchan_at_eof != NULL)
+			vchan_at_eof();
 		exit(0);
 	}
 }
@@ -144,6 +153,8 @@ int wait_for_vchan_or_argfd_once(int nfd, int *fd, fd_set * retset)
 	}
 	if (libvchan_is_eof(ctrl)) {
 		fprintf(stderr, "libvchan_is_eof\n");
+		if (vchan_at_eof != NULL)
+			vchan_at_eof();
 		exit(0);
 	}
 	if (!is_server && ret == 0)
@@ -227,4 +238,9 @@ char *peer_client_init(int dom, int port)
 		exit(1);
 	}
 	return name;
+}
+
+void vchan_close()
+{
+	libvchan_close(ctrl);
 }

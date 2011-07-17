@@ -44,6 +44,9 @@
 #include "tray.h"
 
 int damage_event, damage_error;
+
+char **saved_argv;
+
 struct _global_handles {
 	Display *display;
 	int screen;		/* shortcut to the default screen */
@@ -453,6 +456,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 		case SYSTEM_TRAY_REQUEST_DOCK:
 			w = ev->data.l[2];
 
+			if (!list_lookup(windows_list, w)) return;
 			fprintf(stderr,
 				"tray request dock for window 0x%x\n",
 				(int) w);
@@ -1001,6 +1005,18 @@ void send_protocol_version()
 	write_struct(version);
 }
 
+void handle_guid_disconnect()
+{
+	/* cleanup old session */
+	system("killall Xorg");
+	unlink("/tmp/qubes-session-env");
+	unlink("/tmp/qubes-session-waiter");
+	/* start new gui agent */
+	execv("/usr/bin/qubes_gui", saved_argv);
+	perror("execv");
+	exit(1);
+}
+
 int main(int argc, char **argv)
 {
 	int i;
@@ -1008,6 +1024,8 @@ int main(int argc, char **argv)
 	Ghandles g;
 
 	peer_server_init(6000);
+	saved_argv = argv;
+	vchan_register_at_eof(handle_guid_disconnect);
 	send_protocol_version();
 	get_xconf_and_run_x();
 	mkghandles(&g);

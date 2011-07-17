@@ -1999,6 +1999,7 @@ int main(int argc, char **argv)
 	mkghandles(&ghandles);
 	XSetErrorHandler(dummy_handler);
 	vmname = peer_client_init(ghandles.domid, 6000);
+	atexit(vchan_close);
 	exec_pacat(ghandles.domid);
 	/* drop root privileges */
 	setuid(getuid());
