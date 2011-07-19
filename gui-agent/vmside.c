@@ -352,6 +352,25 @@ void send_clipboard_data(char *data, int len)
 	write_data((char *) data, len);
 }
 
+void handle_targets_list(Ghandles * g, Atom Qprop, unsigned char * data, int len)
+{
+        Atom Clp = XInternAtom(g->display, "CLIPBOARD", False);
+	Atom Utf8_string_atom=XInternAtom(g->display, "UTF8_STRING", False);
+        Atom * atoms=(Atom*)data;
+        int i;
+        int have_utf8=0;
+        fprintf(stderr, "target list data size %d\n", len);
+                for (i=0;i<len;i++) {
+                        if (atoms[i]==Utf8_string_atom)
+                                have_utf8=1;
+                        fprintf(stderr, "supported 0x%x %s\n", (int)atoms[i], XGetAtomName(g->display, atoms[i]));
+                }
+        XConvertSelection(g->display, Clp, have_utf8?Utf8_string_atom:XA_STRING, 
+        Qprop,
+			  g->clipboard_win, CurrentTime);
+}
+        
+
 void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 {
 	int format, result;
@@ -359,7 +378,9 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 	unsigned long len, bytes_left, dummy;
 	unsigned char *data;
 	Atom Qprop = XInternAtom(g->display, "QUBES_SELECTION", False);
-	fprintf(stderr, "selection event\n");
+	Atom Targets = XInternAtom(g->display, "TARGETS", False);
+	
+	fprintf(stderr, "selection event, target=%s\n", XGetAtomName(g->display, ev->target));
 	if (ev->requestor != g->clipboard_win || ev->property != Qprop)
 		return;
 	XGetWindowProperty(g->display, ev->requestor, Qprop, 0, 0, 0,
@@ -374,7 +395,13 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 			       &format, &len, &dummy, &data);
 	if (result != Success)
 		return;
-	send_clipboard_data((char *) data, len);
+		
+        if (ev->target==Targets)
+                handle_targets_list(g, Qprop, data, len);
+        else
+        	send_clipboard_data((char *) data, len);
+        /* even if the clipboard owner does not support UTF8 and we requested
+        XA_STRING, it is fine - ascii is legal UTF8 */
 	XFree(data);
 
 }
@@ -386,18 +413,14 @@ void process_xevent_selection_req(Ghandles * g,
 	Atom Targets = XInternAtom(g->display, "TARGETS", False);
 	Atom Compound_text =
 	    XInternAtom(g->display, "COMPOUND_TEXT", False);
-	fprintf(stderr, "selection req event\n");
-	if (req->target == XA_STRING) {
-		XChangeProperty(g->display,
-				req->requestor,
-				req->property,
-				XA_STRING,
-				8,
-				PropModeReplace,
-				g->clipboard_data, g->clipboard_data_len);
-		resp.property = req->property;
-	} else if (req->target == Targets) {
-		Atom tmp[2] = { XA_STRING, Compound_text };
+	Atom Utf8_string_atom=XInternAtom(g->display, "UTF8_STRING", False);
+	int convert_style=XConverterNotFound;
+
+	fprintf(stderr, "selection req event, target=%s\n", XGetAtomName(g->display,
+	                                                        req->target));
+        resp.property = None;
+        if (req->target == Targets) {
+		Atom tmp[4] = { XA_STRING, Targets, Utf8_string_atom, Compound_text };
 		XChangeProperty(g->display,
 				req->requestor,
 				req->property,
@@ -405,22 +428,29 @@ void process_xevent_selection_req(Ghandles * g,
 				32, PropModeReplace, (unsigned char *)
 				tmp, sizeof(tmp) / sizeof(tmp[0]));
 		resp.property = req->property;
-	} else if (req->target == Compound_text) {
+	}
+	if (req->target == Utf8_string_atom)
+	        convert_style=XUTF8StringStyle;
+	if (req->target == XA_STRING)
+	        convert_style=XTextStyle;
+	if (req->target == Compound_text)
+	        convert_style=XCompoundTextStyle;
+        if (convert_style!=XConverterNotFound){
 		XTextProperty ct;
-		XmbTextListToTextProperty(g->display,
+		Xutf8TextListToTextProperty(g->display,
 					  (char **) &g->clipboard_data, 1,
-					  XCompoundTextStyle, &ct);
+					  convert_style, &ct);
 		XSetTextProperty(g->display, req->requestor, &ct,
 				 req->property);
 		XFree(ct.value);
 		resp.property = req->property;
-	} else {
+        }
+
+	if (resp.property==None)
 		fprintf(stderr,
 			"Not supported selection_req target 0x%x %s\n",
 			(int) req->target, XGetAtomName(g->display,
 							req->target));
-		resp.property = None;
-	}
 	resp.type = SelectionNotify;
 	resp.display = req->display;
 	resp.requestor = req->requestor;
@@ -894,6 +924,7 @@ void handle_clipboard_req(Ghandles * g, XID winid)
 {
 	Atom Clp;
 	Atom QProp = XInternAtom(g->display, "QUBES_SELECTION", False);
+	Atom Targets = XInternAtom(g->display, "TARGETS", False);
 	Window owner;
 #ifdef CLIPBOARD_4WAY
 	Clp = XInternAtom(g->display, "CLIPBOARD", False);
@@ -906,7 +937,7 @@ void handle_clipboard_req(Ghandles * g, XID winid)
 		send_clipboard_data(NULL, 0);
 		return;
 	}
-	XConvertSelection(g->display, Clp, XA_STRING, QProp,
+	XConvertSelection(g->display, Clp, Targets, QProp,
 			  g->clipboard_win, CurrentTime);
 }
 
