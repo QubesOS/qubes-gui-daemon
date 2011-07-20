@@ -26,7 +26,7 @@
 # Save user environment for later
 umask 0077
 rm -f /tmp/qubes-session-env
-env > /tmp/qubes-session-env
+env | grep -v ^PWD= > /tmp/qubes-session-env
 
 # Wake waiting for environment processes
 [ -s /tmp/qubes-session-waiter ] && kill -KILL `cat /tmp/qubes-session-waiter` 
