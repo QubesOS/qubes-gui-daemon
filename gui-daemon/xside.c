@@ -1915,25 +1915,28 @@ void parse_config(Ghandles * g)
 	}
 }
 
+/* helper to get a file flag path */
+char * guid_fs_flag(char * type, int domid)
+{
+        static char buf[256];
+        snprintf(buf, sizeof(buf), "/var/run/qubes/guid_%s.%d",
+                type, domid);
+        return buf;
+}
+
 /* create guid_running file when connected to VM */
 void set_alive_flag(int domid)
 {
-	char buf[256];
-	int fd;
-	snprintf(buf, sizeof(buf), "/var/run/qubes/guid_running.%d",
-		 domid);
-	fd = open(buf, O_WRONLY | O_CREAT | O_NOFOLLOW, 0600);
+	int fd = open(guid_fs_flag("running", domid), O_WRONLY | O_CREAT | O_NOFOLLOW, 0600);
 	close(fd);
 }
 
 /* remove guid_running file at exit */
 void unset_alive_flag()
 {
-	char buf[256];
-	snprintf(buf, sizeof(buf), "/var/run/qubes/guid_running.%d",
-		 ghandles.domid);
-	unlink(buf);
+	unlink(guid_fs_flag("running", ghandles.domid);
 }
+
 
 int main(int argc, char **argv)
 {
