@@ -224,8 +224,10 @@ char *peer_client_init(int dom, int port)
 	free(dummy);
 	xs_daemon_close(xs);
 
-	// now client init should succeed; "while" is redundant
-	while (!(ctrl = libvchan_client_init(dom, port)));
+	if (!(ctrl = libvchan_client_init(dom, port))) {
+          perror("libvchan_client_init");
+          exit(1);
+        }
 
 #ifdef XENCTRL_HAS_XC_INTERFACE
 	xc_handle = xc_interface_open(NULL, 0, 0);
