@@ -98,7 +98,6 @@ update-repo-current:
 	for vmrepo in ../yum/current-release/current/vm/* ; do \
 		dist=$$(basename $$vmrepo) ;\
 		ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*$$dist*.rpm $$vmrepo/rpm/ ;\
-		ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm $$vmrepo/rpm/ ;\
 	done
 
 update-repo-current-testing:
@@ -106,7 +105,6 @@ update-repo-current-testing:
 	for vmrepo in ../yum/current-release/current-testing/vm/* ; do \
 		dist=$$(basename $$vmrepo) ;\
 		ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*$$dist*.rpm $$vmrepo/rpm/ ;\
-		ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm $$vmrepo/rpm/ ;\
 	done
 
 update-repo-unstable:
@@ -114,7 +112,6 @@ update-repo-unstable:
 	for vmrepo in ../yum/current-release/unstable/vm/* ; do \
 		dist=$$(basename $$vmrepo) ;\
 		ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*$$dist*.rpm $$vmrepo/rpm/ ;\
-		ln -f $(RPMS_DIR)/x86_64/qubes-u2mfn-vm-*$(VERSION_U2MFN)*.rpm $$vmrepo/rpm/ ;\
 	done
 
 update-repo-installer:
