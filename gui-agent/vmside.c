@@ -383,8 +383,12 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 	Atom type;
 	unsigned long len, bytes_left, dummy;
 	unsigned char *data;
+	Atom Clp = XInternAtom(g->display, "CLIPBOARD", False);
 	Atom Qprop = XInternAtom(g->display, "QUBES_SELECTION", False);
 	Atom Targets = XInternAtom(g->display, "TARGETS", False);
+	Atom Atom_atom = XInternAtom(g->display, "ATOM", False);
+	Atom Utf8_string_atom =
+	    XInternAtom(g->display, "UTF8_STRING", False);
 
 	fprintf(stderr, "selection event, target=%s\n",
 		XGetAtomName(g->display, ev->target));
@@ -405,6 +409,16 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 
 	if (ev->target == Targets)
 		handle_targets_list(g, Qprop, data, len);
+	// If we receive TARGETS atom in response for TARGETS query, let's assume
+	// that UTF8 is supported.
+	// this is workaround for Opera web browser...
+	else if (ev->target == Atom_atom &&
+			len >= 4 && len <= 8 &&
+			// compare only first 4 bytes
+			*((int*)data) == Targets)
+		XConvertSelection(g->display, Clp,
+			  Utf8_string_atom, Qprop,
+			  g->clipboard_win, CurrentTime);
 	else
 		send_clipboard_data((char *) data, len);
 	/* even if the clipboard owner does not support UTF8 and we requested
