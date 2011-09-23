@@ -40,7 +40,6 @@ Source:		.
 %define pa_ver 0.9.21
 
 BuildRequires:	gcc
-BuildRequires:	kernel-devel
 BuildRequires:	libX11-devel
 BuildRequires:	libXcomposite-devel
 BuildRequires:	libXdamage-devel
