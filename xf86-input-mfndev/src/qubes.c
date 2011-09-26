@@ -94,8 +94,14 @@
 #include "qubes.h"
 #include "shm_cmd.h"
 
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) >= 12
+static int QubesPreInit(InputDriverPtr drv, InputInfoPtr pInfo,
+				  int flags);
+#else
 static InputInfoPtr QubesPreInit(InputDriverPtr drv, IDevPtr dev,
 				  int flags);
+#endif
+
 static void QubesUnInit(InputDriverPtr drv, InputInfoPtr pInfo,
 			 int flags);
 static pointer QubesPlug(pointer module, pointer options, int *errmaj,
@@ -149,34 +155,53 @@ QubesPlug(pointer module, pointer options, int *errmaj, int *errmin)
 	return module;
 };
 
+
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) >= 12
+static int QubesPreInit(InputDriverPtr drv,
+				  InputInfoPtr pInfo, int flags)
+#else
 static InputInfoPtr QubesPreInit(InputDriverPtr drv,
 				  IDevPtr dev, int flags)
+#endif
 {
-	InputInfoPtr pInfo;
 	QubesDevicePtr pQubes;
-
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) < 12
+	InputInfoPtr pInfo;
 
 	if (!(pInfo = xf86AllocateInput(drv, 0)))
 		return NULL;
+#endif
 
 	pQubes = calloc(1, sizeof(QubesDeviceRec));
 	if (!pQubes) {
 		pInfo->private = NULL;
 		xf86DeleteInput(pInfo, 0);
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) >= 12
+		return BadAlloc;
+#else
 		return NULL;
+#endif
 	}
 
-	pInfo->private = pQubes;
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) < 12
 	pInfo->name = xstrdup(dev->identifier);
 	pInfo->flags = 0;
-	pInfo->type_name = XI_MOUSE;	/* see XI.h */
 	pInfo->conf_idev = dev;
+#endif
+
+	pInfo->private = pQubes;
+	pInfo->type_name = XI_MOUSE;	/* see XI.h */
 	pInfo->read_input = QubesReadInput;	/* new data avl */
 	pInfo->switch_mode = NULL;	/* toggle absolute/relative mode */
 	pInfo->device_control = QubesControl;	/* enable/disable dev */
 	/* process driver specific options */
-	pQubes->device = xf86SetStrOption(dev->commonOptions,
-					   "Device", "/var/run/xf86-qubes-socket");
+	pQubes->device = xf86SetStrOption(
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) >= 12
+			pInfo->options,
+#else
+			dev->commonOptions,
+#endif
+			"Device", "/var/run/xf86-qubes-socket");
 
 	xf86Msg(X_INFO, "%s: Using device %s.\n", pInfo->name,
 		pQubes->device);
@@ -186,7 +211,11 @@ static InputInfoPtr QubesPreInit(InputDriverPtr drv,
 //		dixLookupResourceByClass);
 
 	/* process generic options */
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) >= 12
+	xf86CollectInputOptions(pInfo, NULL);
+#else
 	xf86CollectInputOptions(pInfo, NULL, NULL);
+#endif
 	xf86ProcessCommonOptions(pInfo, pInfo->options);
 	/* Open sockets, init device files, etc. */
 #if 0
@@ -228,6 +257,7 @@ static void QubesUnInit(InputDriverPtr drv, InputInfoPtr pInfo, int flags)
 static int _qubes_init_kbd(DeviceIntPtr device)
 {
          InitKeyboardDeviceStruct(device, NULL, NULL, NULL);
+	 return Success;
 }
                                     
 static int _qubes_init_buttons(DeviceIntPtr device)
@@ -309,13 +339,19 @@ static int _qubes_init_axes(DeviceIntPtr device)
 					   GetMotionHistorySize(), 0))
 		return BadAlloc;
 
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) < 12
 	pInfo->dev->valuator->mode = Relative;
+#endif
 	if (!InitAbsoluteClassDeviceStruct(device))
 		return BadAlloc;
 
 	for (i = 0; i < pQubes->axes; i++) {
 		xf86InitValuatorAxisStruct(device, i, *pQubes->labels, -1,
-					   -1, 1, 1, 1);
+					   -1, 1, 1, 1
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) >= 12
+					   , Relative
+#endif
+					   );
 		xf86InitValuatorDefaults(device, i);
 	}
 	free(atoms);
