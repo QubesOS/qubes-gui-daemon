@@ -159,7 +159,7 @@ static InputInfoPtr QubesPreInit(InputDriverPtr drv,
 	if (!(pInfo = xf86AllocateInput(drv, 0)))
 		return NULL;
 
-	pQubes = xcalloc(1, sizeof(QubesDeviceRec));
+	pQubes = calloc(1, sizeof(QubesDeviceRec));
 	if (!pQubes) {
 		pInfo->private = NULL;
 		xf86DeleteInput(pInfo, 0);
@@ -195,7 +195,7 @@ static InputInfoPtr QubesPreInit(InputDriverPtr drv,
 		xf86Msg(X_ERROR, "%s: failed to open %s.",
 			pInfo->name, pQubes->device);
 		pInfo->private = NULL;
-		xfree(pQubes);
+		free(pQubes);
 		xf86DeleteInput(pInfo, 0);
 		return NULL;
 	}
@@ -203,16 +203,20 @@ static InputInfoPtr QubesPreInit(InputDriverPtr drv,
 	close(pInfo->fd);
 #endif
 	pInfo->fd = -1;
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) >= 12
+	return Success;
+#else
 	pInfo->flags |= XI86_OPEN_ON_INIT;
 	pInfo->flags |= XI86_CONFIGURED;
 	return pInfo;
+#endif
 }
 
 static void QubesUnInit(InputDriverPtr drv, InputInfoPtr pInfo, int flags)
 {
 	QubesDevicePtr pQubes = pInfo->private;
 	if (pQubes->device) {
-		xfree(pQubes->device);
+		free(pQubes->device);
 		pQubes->device = NULL;
 		/* Common error - pInfo->private must be NULL or valid memoy before
 		 * passing into xf86DeleteInput */
@@ -235,14 +239,14 @@ static int _qubes_init_buttons(DeviceIntPtr device)
 	int ret = Success;
 	const int num_buttons = 6;
 
-	map = xcalloc(num_buttons, sizeof(CARD8));
+	map = calloc(num_buttons, sizeof(CARD8));
 
 	xf86Msg(X_INFO, "%s: num_buttons=%d\n", pInfo->name, num_buttons);
 	
 	for (i = 0; i < num_buttons; i++)
 		map[i] = i;
 
-	pQubes->labels = xalloc(sizeof(Atom));
+	pQubes->labels = malloc(sizeof(Atom));
 
 	if (!InitButtonClassDeviceStruct
 	    (device, num_buttons, pQubes->labels, map)) {
@@ -251,7 +255,7 @@ static int _qubes_init_buttons(DeviceIntPtr device)
 		ret = BadAlloc;
 	}
 
-	xfree(map);
+	free(map);
 	return ret;
 }
 
@@ -295,7 +299,7 @@ static int _qubes_init_axes(DeviceIntPtr device)
 	Atom *atoms;
 
 	pQubes->num_vals = num_axes;
-	atoms = xalloc(pQubes->num_vals * sizeof(Atom));
+	atoms = malloc(pQubes->num_vals * sizeof(Atom));
 
 	QubesInitAxesLabels(pQubes, pQubes->num_vals, atoms);
 	if (!InitValuatorClassDeviceStruct(device, num_axes,
@@ -314,7 +318,7 @@ static int _qubes_init_axes(DeviceIntPtr device)
 					   -1, 1, 1, 1);
 		xf86InitValuatorDefaults(device, i);
 	}
-	xfree(atoms);
+	free(atoms);
 	return Success;
 }
 int connect_unix_socket(QubesDevicePtr pQubes);
