@@ -37,7 +37,7 @@ URL:		http://www.qubes-os.org
 
 Source:		.
 
-%define pa_ver 0.9.21
+%define pa_ver %(pkg-config --modversion libpulse)
 
 BuildRequires:	gcc
 BuildRequires:	libX11-devel
@@ -53,7 +53,13 @@ BuildRequires:	qubes-core-appvm-devel >= 1.6.1
 BuildRequires:	qubes-core-appvm-libs
 BuildRequires:	ConsoleKit-devel
 Requires:	qubes-core-vm xen-qubes-vm-essentials
-Requires:	pulseaudio = %{pa_ver}
+
+# The vchan sink needs .h files from pulseaudio sources
+# that are not exported by any *-devel packages; thus they are internal and
+# possible to change across version. They are copied to gui git. 
+# It is possible that our code will work fine with any later pulseaudio
+# version; but this needs to be verified for each pulseaudio version.
+Requires:	pulseaudio = 0.9.21
 AutoReq: 0
 
 %define _builddir %(pwd)
