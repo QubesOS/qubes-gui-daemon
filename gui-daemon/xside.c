@@ -123,6 +123,7 @@ struct _global_handles {
 	/* signal was caught */
 	int volatile signal_caught;
 	/* configuration */
+	int log_level;		/* log level */
 	int allow_utf8_titles;	/* allow UTF-8 chars in window title */
 	int copy_seq_mask;	/* modifiers mask for secure-copy key sequence */
 	KeySym copy_seq_key;	/* key for secure-copy key sequence */
@@ -339,8 +340,9 @@ void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	FILE *file;
 	char *untrusted_data;
 	size_t untrusted_data_sz;
-	fprintf(stderr, "handle_clipboard_data, len=0x%x\n",
-		untrusted_len);
+	if (g->log_level > 0)
+		fprintf(stderr, "handle_clipboard_data, len=0x%x\n",
+			untrusted_len);
 	if (untrusted_len > MAX_CLIPBOARD_SIZE) {
 		fprintf(stderr, "clipboard data len 0x%x?\n",
 			untrusted_len);
@@ -397,7 +399,8 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 		g->clipboard_requested = 1;
 		hdr.type = MSG_CLIPBOARD_REQ;
 		hdr.window = remote_winid;
-		fprintf(stderr, "secure copy\n");
+		if (g->log_level > 0)
+			fprintf(stderr, "secure copy\n");
 		write_struct(hdr);
 		return 1;
 	}
@@ -408,7 +411,8 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 		if (ev->type != KeyPress)
 			return 1;
 		hdr.type = MSG_CLIPBOARD_DATA;
-		fprintf(stderr, "secure paste\n");
+		if (g->log_level > 0)
+			fprintf(stderr, "secure paste\n");
 		get_qubes_clipboard(&data, &len);
 		if (len > 0) {
 			hdr.window = len;
@@ -452,11 +456,13 @@ void dump_mapped(Ghandles * g)
 	for (; item != g->wid2windowdata; item = item->next) {
 		struct windowdata *c = item->data;
 		if (c->is_mapped) {
-			fprintf(stderr,
-				"id 0x%x(0x%x) w=0x%x h=0x%x rx=%d ry=%d ovr=%d\n",
-				(int) c->local_winid,
-				(int) c->remote_winid, c->width, c->height,
-				c->x, c->y, c->override_redirect);
+			if (g->log_level > 1)
+				fprintf(stderr,
+					"id 0x%x(0x%x) w=0x%x h=0x%x rx=%d ry=%d ovr=%d\n",
+					(int) c->local_winid,
+					(int) c->remote_winid, c->width,
+					c->height, c->x, c->y,
+					c->override_redirect);
 		}
 	}
 }
@@ -470,7 +476,7 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
 // for debugging only, inactive
-	if (0 && ev->button == 4) {
+	if (g->log_level > 1 && ev->button == 4) {
 		dump_mapped(g);
 		return;
 	}
@@ -485,9 +491,11 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 	hdr.type = MSG_BUTTON;
 	hdr.window = vm_window->remote_winid;
 	write_message(hdr, k);
-	fprintf(stderr,
-		"xside: win 0x%x(0x%x) type=%d button=%d x=%d, y=%d\n",
-		(int) ev->window, hdr.window, k.type, k.button, k.x, k.y);
+	if (g->log_level > 0)
+		fprintf(stderr,
+			"xside: win 0x%x(0x%x) type=%d button=%d x=%d, y=%d\n",
+			(int) ev->window, hdr.window, k.type, k.button,
+			k.x, k.y);
 }
 
 /* handle local Xserver event: XCloseEvent
@@ -533,10 +541,11 @@ int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char *caller)
 			x = y = 0;
 		if (vm_window->x != x || vm_window->y != y)
 			ret = 1;
-		fprintf(stderr,
-			"fix_docked_xy(from %s), calculated xy %d/%d, was "
-			"%d/%d\n", caller, x, y, vm_window->x,
-			vm_window->y);
+		if (g->log_level > 1)
+			fprintf(stderr,
+				"fix_docked_xy(from %s), calculated xy %d/%d, was "
+				"%d/%d\n", caller, x, y, vm_window->x,
+				vm_window->y);
 		vm_window->x = x;
 		vm_window->y = y;
 	}
@@ -555,11 +564,12 @@ void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
 		XTranslateCoordinates(g->display, g->root_win,
 				      vm_window->local_winid, vm_window->x,
 				      vm_window->y, &x, &y, &win);
-	fprintf(stderr,
-		"XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d\n",
-		(int) vm_window->local_winid,
-		(int) vm_window->remote_winid, x, y, vm_window->x,
-		vm_window->y, vm_window->width, vm_window->height);
+	if (g->log_level > 1)
+		fprintf(stderr,
+			"XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d\n",
+			(int) vm_window->local_winid,
+			(int) vm_window->remote_winid, x, y, vm_window->x,
+			vm_window->y, vm_window->width, vm_window->height);
 	XMoveResizeWindow(g->display, vm_window->local_winid, x, y,
 			  vm_window->width, vm_window->height);
 }
@@ -604,10 +614,13 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		reason = 4;
 	}
 	if (do_move)
-		fprintf(stderr,
-			"force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, root %d %d borderwidth %d\n",
-			caller, reason, (int) vm_window->local_winid, x, y,
-			w, h, g->root_width, g->root_height, border_width);
+		if (g->log_level > 0)
+			fprintf(stderr,
+				"force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, root %d %d borderwidth %d\n",
+				caller, reason,
+				(int) vm_window->local_winid, x, y, w, h,
+				g->root_width, g->root_height,
+				border_width);
 	return do_move;
 }
 
@@ -616,13 +629,14 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
-	fprintf(stderr,
-		"process_xevent_configure local 0x%x remote 0x%x, %d/%d, was "
-		"%d/%d, xy %d/%d was %d/%d\n",
-		(int) vm_window->local_winid,
-		(int) vm_window->remote_winid, ev->width, ev->height,
-		vm_window->width, vm_window->height, ev->x, ev->y,
-		vm_window->x, vm_window->y);
+	if (g->log_level > 0)
+		fprintf(stderr,
+			"process_xevent_configure local 0x%x remote 0x%x, %d/%d, was "
+			"%d/%d, xy %d/%d was %d/%d\n",
+			(int) vm_window->local_winid,
+			(int) vm_window->remote_winid, ev->width,
+			ev->height, vm_window->width, vm_window->height,
+			ev->x, ev->y, vm_window->x, vm_window->y);
 	if (vm_window->width == ev->width
 	    && vm_window->height == ev->height && vm_window->x == ev->x
 	    && vm_window->y == ev->y)
@@ -652,14 +666,16 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	int conf_changed;
 
 	read_struct(untrusted_conf);
-	fprintf(stderr,
-		"handle_configure_from_vm, local 0x%x remote 0x%x, %d/%d, was"
-		" %d/%d, ovr=%d, xy %d/%d, was %d/%d\n",
-		(int) vm_window->local_winid,
-		(int) vm_window->remote_winid, untrusted_conf.width,
-		untrusted_conf.height, vm_window->width, vm_window->height,
-		untrusted_conf.override_redirect, untrusted_conf.x,
-		untrusted_conf.y, vm_window->x, vm_window->y);
+	if (g->log_level > 0)
+		fprintf(stderr,
+			"handle_configure_from_vm, local 0x%x remote 0x%x, %d/%d, was"
+			" %d/%d, ovr=%d, xy %d/%d, was %d/%d\n",
+			(int) vm_window->local_winid,
+			(int) vm_window->remote_winid,
+			untrusted_conf.width, untrusted_conf.height,
+			vm_window->width, vm_window->height,
+			untrusted_conf.override_redirect, untrusted_conf.x,
+			untrusted_conf.y, vm_window->x, vm_window->y);
 	/* sanitize start */
 	if (untrusted_conf.width > MAX_WINDOW_WIDTH)
 		untrusted_conf.width = MAX_WINDOW_WIDTH;
@@ -791,11 +807,12 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 
 	/* sanitize start */
 	if (untrusted_x < 0 || untrusted_y < 0) {
-		fprintf(stderr,
-			"do_shm_update for 0x%x(remote 0x%x), x=%d, y=%d, w=%d, h=%d ?\n",
-			(int) vm_window->local_winid,
-			(int) vm_window->remote_winid, untrusted_x,
-			untrusted_y, untrusted_w, untrusted_h);
+		if (g->log_level > 1)
+			fprintf(stderr,
+				"do_shm_update for 0x%x(remote 0x%x), x=%d, y=%d, w=%d, h=%d ?\n",
+				(int) vm_window->local_winid,
+				(int) vm_window->remote_winid, untrusted_x,
+				untrusted_y, untrusted_w, untrusted_h);
 		return;
 	}
 	x = min(untrusted_x, vm_window->image_width);
@@ -977,8 +994,9 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 		 * switching desktops.
 		 */
 		(void) XUnmapWindow(g->display, vm_window->local_winid);
-		fprintf(stderr, "WM tried to map 0x%x, revert\n",
-			(int) vm_window->local_winid);
+		if (g->log_level > 1)
+			fprintf(stderr, "WM tried to map 0x%x, revert\n",
+				(int) vm_window->local_winid);
 	} else {
 		/* Tray windows shall be visible always */
 		struct msghdr hdr;
@@ -1002,7 +1020,8 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
-	fprintf(stderr, "_XEMBED message %ld\n", ev->data.l[1]);
+	if (g->log_level > 1)
+		fprintf(stderr, "_XEMBED message %ld\n", ev->data.l[1]);
 	if (ev->data.l[1] == XEMBED_EMBEDDED_NOTIFY) {
 		if (vm_window->is_docked < 2) {
 			vm_window->is_docked = 2;
@@ -1066,8 +1085,9 @@ void process_xevent(Ghandles * g)
 					      event_buffer);
 		} else if (event_buffer.xclient.data.l[0] ==
 			   g->wmDeleteMessage) {
-			fprintf(stderr, "close for 0x%x\n",
-				(int) event_buffer.xclient.window);
+			if (g->log_level > 0)
+				fprintf(stderr, "close for 0x%x\n",
+					(int) event_buffer.xclient.window);
 			process_xevent_close(g,
 					     event_buffer.xclient.window);
 		}
@@ -1178,12 +1198,13 @@ void handle_create(Ghandles * g, XID window)
 		vm_window->parent = NULL;
 	vm_window->transient_for = NULL;
 	vm_window->local_winid = mkwindow(&ghandles, vm_window);
-	fprintf(stderr,
-		"Created 0x%x(0x%x) parent 0x%x(0x%x) ovr=%d\n",
-		(int) vm_window->local_winid, (int) window,
-		(int) (vm_window->parent ? vm_window->parent->
-		       local_winid : 0), (unsigned) parent,
-		vm_window->override_redirect);
+	if (g->log_level > 0)
+		fprintf(stderr,
+			"Created 0x%x(0x%x) parent 0x%x(0x%x) ovr=%d\n",
+			(int) vm_window->local_winid, (int) window,
+			(int) (vm_window->parent ? vm_window->parent->
+			       local_winid : 0), (unsigned) parent,
+			vm_window->override_redirect);
 	if (!list_insert
 	    (g->wid2windowdata, vm_window->local_winid, vm_window)) {
 		fprintf(stderr, "list_insert(g->wid2windowdata failed\n");
@@ -1206,8 +1227,9 @@ void handle_destroy(Ghandles * g, struct genlist *l)
 	if (vm_window == g->last_input_window)
 		g->last_input_window = NULL;
 	XDestroyWindow(g->display, vm_window->local_winid);
-	fprintf(stderr, " XDestroyWindow 0x%x\n",
-		(int) vm_window->local_winid);
+	if (g->log_level > 0)
+		fprintf(stderr, " XDestroyWindow 0x%x\n",
+			(int) vm_window->local_winid);
 	if (vm_window->image)
 		release_mapped_mfns(g, vm_window);
 	l2 = list_lookup(g->wid2windowdata, vm_window->local_winid);
@@ -1271,8 +1293,9 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 				g->allow_utf8_titles);
 	snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
 	/* sanitize end */
-	fprintf(stderr, "set title for window 0x%x to %s\n",
-		(int) vm_window->local_winid, buf);
+	if (g->log_level > 0)
+		fprintf(stderr, "set title for window 0x%x to %s\n",
+			(int) vm_window->local_winid, buf);
 	Xutf8TextListToTextProperty(g->display, list, 1, XUTF8StringStyle,
 				    &text_prop);
 	XSetWMName(g->display, vm_window->local_winid, &text_prop);
@@ -1346,13 +1369,14 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 	if (size_hints.flags == 0)
 		return;
 
-	fprintf(stderr,
-		"set WM_NORMAL_HINTS for window 0x%x to min=%d/%d, max=%d/%d, base=%d/%d, inc=%d/%d (flags 0x%x)\n",
-		(int) vm_window->local_winid, size_hints.min_width,
-		size_hints.min_height, size_hints.max_width,
-		size_hints.max_height, size_hints.base_width,
-		size_hints.base_height, size_hints.width_inc,
-		size_hints.height_inc, (int) size_hints.flags);
+	if (g->log_level > 0)
+		fprintf(stderr,
+			"set WM_NORMAL_HINTS for window 0x%x to min=%d/%d, max=%d/%d, base=%d/%d, inc=%d/%d (flags 0x%x)\n",
+			(int) vm_window->local_winid, size_hints.min_width,
+			size_hints.min_height, size_hints.max_width,
+			size_hints.max_height, size_hints.base_width,
+			size_hints.base_height, size_hints.width_inc,
+			size_hints.height_inc, (int) size_hints.flags);
 	XSetWMNormalHints(g->display, vm_window->local_winid, &size_hints);
 }
 
@@ -1389,8 +1413,9 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 void handle_dock(Ghandles * g, struct windowdata *vm_window)
 {
 	Window tray;
-	fprintf(stderr, "docking window 0x%x\n",
-		(int) vm_window->local_winid);
+	if (g->log_level > 0)
+		fprintf(stderr, "docking window 0x%x\n",
+			(int) vm_window->local_winid);
 	tray = XGetSelectionOwner(g->display, g->tray_selection);
 	if (tray != None) {
 		long data[2];
@@ -1609,7 +1634,7 @@ void handle_message(Ghandles * g)
 		handle_wmhints(g, vm_window);
 		break;
 	default:
-		fprintf(stderr, "got msg type %d\n", type);
+		fprintf(stderr, "got unknown msg type %d\n", type);
 		exit(1);
 	}
 }
@@ -1627,22 +1652,26 @@ void print_backtrace(void)
 	char **strings;
 	size_t i;
 
-	size = backtrace(array, 100);
-	strings = backtrace_symbols(array, size);
 
-	fprintf(stderr, "Obtained %zd stack frames.\n", size);
+	if (ghandles.log_level > 1) {
+		size = backtrace(array, 100);
+		strings = backtrace_symbols(array, size);
+		fprintf(stderr, "Obtained %zd stack frames.\n", size);
 
-	for (i = 0; i < size; i++)
-		printf("%s\n", strings[i]);
+		for (i = 0; i < size; i++)
+			printf("%s\n", strings[i]);
 
-	free(strings);
+		free(strings);
+	}
+
 }
 
 /* release all windows mapped memory */
 void release_all_mapped_mfns()
 {
 	struct genlist *curr;
-	fprintf(stderr, "release_all_mapped_mfns running\n");
+	if (ghandles.log_level > 1)
+		fprintf(stderr, "release_all_mapped_mfns running\n");
 	print_backtrace();
 	for (curr = ghandles.wid2windowdata->next;
 	     curr != ghandles.wid2windowdata; curr = curr->next) {
@@ -1724,13 +1753,15 @@ void wait_for_connection_in_parent(int *pipe_notify)
 	struct pollfd pipe_pollfd;
 	int tries, ret;
 
-	fprintf(stderr, "Connecting to VM's GUI agent: ");
+	if (ghandles.log_level > 0)
+		fprintf(stderr, "Connecting to VM's GUI agent: ");
 	close(pipe_notify[1]);	// close the writing end
 	pipe_pollfd.fd = pipe_notify[0];
 	pipe_pollfd.events = POLLIN;
 
 	for (tries = 0;; tries++) {
-		fprintf(stderr, ".");
+		if (ghandles.log_level > 0)
+			fprintf(stderr, ".");
 		ret = poll(&pipe_pollfd, 1, 1000);
 		if (ret < 0) {
 			perror("poll");
@@ -1739,31 +1770,46 @@ void wait_for_connection_in_parent(int *pipe_notify)
 		if (ret > 0) {
 			if (pipe_pollfd.revents == POLLIN)
 				break;
-			fprintf(stderr, "exiting\n");
+			if (ghandles.log_level > 0)
+				fprintf(stderr, "exiting\n");
 			exit(1);
 		}
 		if (tries >= 45) {
-			fprintf(stderr,
-				"\nHmm... this takes more time than usual --"
-				" is the VM running?\n");
-			fprintf(stderr, "Connecting to VM's GUI agent: ");
+			if (ghandles.log_level > 0) {
+				fprintf(stderr,
+					"\nHmm... this takes more time than usual --"
+					" is the VM running?\n");
+				fprintf(stderr,
+					"Connecting to VM's GUI agent: ");
+			}
 			tries = 0;
 		}
 
 	}
-	fprintf(stderr, "connected\n");
+	if (ghandles.log_level > 0)
+		fprintf(stderr, "connected\n");
 	exit(0);
 }
 
 void usage()
 {
 	fprintf(stderr,
-		"usage: qubes_quid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix]\n");
+		"usage: qubes_quid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix] [-v] [-q]\n");
+	fprintf(stderr, "       -v  increase log verbosity\n");
+	fprintf(stderr, "       -q  decrease log verbosity\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Log levels:\n");
+	fprintf(stderr, " 0 - only errors\n");
+	fprintf(stderr, " 1 - some basic messages (default)\n");
+	fprintf(stderr, " 2 - debug\n");
 }
 
 void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
 	int opt;
+	/* defaults */
+	g->log_level = 1;
+
 	while ((opt = getopt(argc, argv, "d:e:c:l:i:")) != -1) {
 		switch (opt) {
 		case 'd':
@@ -1777,6 +1823,12 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 			break;
 		case 'i':
 			g->cmdline_icon = optarg;
+			break;
+		case 'q':
+			g->log_level--;
+			break;
+		case 'v':
+			g->log_level++;
 			break;
 		default:
 			usage();
