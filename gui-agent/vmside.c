@@ -264,8 +264,8 @@ void send_wmhints(Ghandles * g, XID window)
 	}
 	// pass only some hints
 	msg.flags =
-	    size_hints.
-	    flags & (PMinSize | PMaxSize | PResizeInc | PBaseSize);
+	    size_hints.flags & (PMinSize | PMaxSize | PResizeInc |
+				PBaseSize);
 	msg.min_width = size_hints.min_width;
 	msg.min_height = size_hints.min_height;
 	msg.max_width = size_hints.max_width;
@@ -421,13 +421,12 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 	// If we receive TARGETS atom in response for TARGETS query, let's assume
 	// that UTF8 is supported.
 	// this is workaround for Opera web browser...
-	else if (ev->target == Atom_atom &&
-			len >= 4 && len <= 8 &&
-			// compare only first 4 bytes
-			*((int*)data) == Targets)
+	else if (ev->target == Atom_atom && len >= 4 && len <= 8 &&
+		 // compare only first 4 bytes
+		 *((int *) data) == Targets)
 		XConvertSelection(g->display, Clp,
-			  Utf8_string_atom, Qprop,
-			  g->clipboard_win, CurrentTime);
+				  Utf8_string_atom, Qprop,
+				  g->clipboard_win, CurrentTime);
 	else
 		send_clipboard_data((char *) data, len);
 	/* even if the clipboard owner does not support UTF8 and we requested
@@ -452,9 +451,9 @@ void process_xevent_selection_req(Ghandles * g,
 			XGetAtomName(g->display, req->target));
 	resp.property = None;
 	if (req->target == Targets) {
-		Atom tmp[4] =
-		    { XA_STRING, Targets, Utf8_string_atom,
-		  Compound_text };
+		Atom tmp[4] = { XA_STRING, Targets, Utf8_string_atom,
+			Compound_text
+		};
 		XChangeProperty(g->display, req->requestor, req->property,
 				XA_ATOM, 32, PropModeReplace,
 				(unsigned char *)
