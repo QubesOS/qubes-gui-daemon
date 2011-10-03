@@ -28,6 +28,9 @@ umask 0077
 rm -f /tmp/qubes-session-env
 env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
 
+# Set desktop background
+xsetroot -solid white
+
 # Wake waiting for environment processes
 [ -s /tmp/qubes-session-waiter ] && kill -KILL `cat /tmp/qubes-session-waiter` 
 
