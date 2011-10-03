@@ -1841,7 +1841,6 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 	}
 }
 
-
 void load_default_config_values(Ghandles * g)
 {
 
@@ -1968,24 +1967,25 @@ void parse_config(Ghandles * g)
 }
 
 /* helper to get a file flag path */
-char * guid_fs_flag(char * type, int domid)
+char *guid_fs_flag(char *type, int domid)
 {
-        static char buf[256];
-        snprintf(buf, sizeof(buf), "/var/run/qubes/guid_%s.%d",
-                type, domid);
-        return buf;
+	static char buf[256];
+	snprintf(buf, sizeof(buf), "/var/run/qubes/guid_%s.%d",
+		 type, domid);
+	return buf;
 }
 
-int guid_boot_lock=-1;
+int guid_boot_lock = -1;
 
 /* create guid_running file when connected to VM */
 void set_alive_flag(int domid)
 {
-	int fd = open(guid_fs_flag("running", domid), O_WRONLY | O_CREAT | O_NOFOLLOW, 0600);
+	int fd = open(guid_fs_flag("running", domid),
+		      O_WRONLY | O_CREAT | O_NOFOLLOW, 0600);
 	close(fd);
 	unlink(guid_fs_flag("booting", domid));
 	close(guid_boot_lock);
-        	
+
 }
 
 /* remove guid_running file at exit */
@@ -1996,25 +1996,24 @@ void unset_alive_flag()
 
 void get_boot_lock(int domid)
 {
-        struct stat st;
-        int fd = open(guid_fs_flag("booting", domid), O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600);
-        if (fd < 0) {
-                perror("cannot get boot lock ???\n");
-                exit(1);
-        }
-        if (flock(fd, LOCK_EX) < 0) {
+	struct stat st;
+	int fd = open(guid_fs_flag("booting", domid),
+		      O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600);
+	if (fd < 0) {
+		perror("cannot get boot lock ???\n");
+		exit(1);
+	}
+	if (flock(fd, LOCK_EX) < 0) {
 		perror("lock");
 		exit(1);
-        }
-        if (!stat(guid_fs_flag("running", domid), &st)) {
-	        /* guid running, nothing to do */
-	        unlink(guid_fs_flag("booting", domid));
-	        exit(0);
-        }
-        guid_boot_lock=fd;
+	}
+	if (!stat(guid_fs_flag("running", domid), &st)) {
+		/* guid running, nothing to do */
+		unlink(guid_fs_flag("booting", domid));
+		exit(0);
+	}
+	guid_boot_lock = fd;
 }
-                
-        
 
 int main(int argc, char **argv)
 {
