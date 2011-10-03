@@ -60,6 +60,7 @@ struct _global_handles {
 	Window clipboard_win;
 	unsigned char *clipboard_data;
 	unsigned int clipboard_data_len;
+	int log_level;
 };
 
 struct genlist *windows_list;
@@ -76,7 +77,7 @@ void process_xevent_damage(Ghandles * g, XID window,
 	SKIP_NONMANAGED_WINDOW;
 
 	cnt++;
-	if (0 || cnt == 50) {
+	if (g->log_level > 1 && (0 || cnt == 50)) {
 		fprintf(stderr, "update_pixmap (one in 50) for 0x%x "
 			"x=%d y=%d w=%d h=%d\n",
 			(int) window, x, y, width, height);
@@ -105,8 +106,9 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 		return;
 	};
 
-	fprintf(stderr, "Create for 0x%x class 0x%x\n",
-		(int) ev->window, attr.class);
+	if (g->log_level > 0)
+		fprintf(stderr, "Create for 0x%x class 0x%x\n",
+			(int) ev->window, attr.class);
 	if (list_lookup(windows_list, ev->window)) {
 		fprintf(stderr, "CREATE for already existing 0x%x\n",
 			(int) ev->window);
@@ -234,7 +236,8 @@ void getwmname_tochar(Ghandles * g, XID window, char *outbuf, int bufsize)
 	strncat(outbuf, list[0], bufsize);
 	XFree(text_prop_return.value);
 	XFreeStringList(list);
-	fprintf(stderr, "got wmname=%s\n", outbuf);
+	if (g->log_level > 0)
+		fprintf(stderr, "got wmname=%s\n", outbuf);
 }
 
 void send_wmname(Ghandles * g, XID window)
@@ -313,7 +316,8 @@ void process_xevent_destroy(Ghandles * g, XID window)
 	struct msghdr hdr;
 	struct genlist *l;
 	SKIP_NONMANAGED_WINDOW;
-	fprintf(stderr, "handle destroy 0x%x\n", (int) window);
+	if (g->log_level > 0)
+		fprintf(stderr, "handle destroy 0x%x\n", (int) window);
 	hdr.type = MSG_DESTROY;
 	hdr.window = window;
 	write_struct(hdr);
@@ -327,9 +331,11 @@ void process_xevent_configure(Ghandles * g, XID window,
 	struct msghdr hdr;
 	struct msg_configure conf;
 	SKIP_NONMANAGED_WINDOW;
-	fprintf(stderr, "handle configure event 0x%x w=%d h=%d ovr=%d\n",
-		(int) window, ev->width, ev->height,
-		(int) ev->override_redirect);
+	if (g->log_level > 0)
+		fprintf(stderr,
+			"handle configure event 0x%x w=%d h=%d ovr=%d\n",
+			(int) window, ev->width, ev->height,
+			(int) ev->override_redirect);
 	hdr.type = MSG_CONFIGURE;
 	hdr.window = window;
 	conf.x = ev->x;
@@ -345,7 +351,6 @@ void process_xevent_configure(Ghandles * g, XID window,
 void send_clipboard_data(char *data, int len)
 {
 	struct msghdr hdr;
-	fprintf(stderr, "sending clipboard data\n");
 	hdr.type = MSG_CLIPBOARD_DATA;
 	if (len > MAX_CLIPBOARD_SIZE)
 		hdr.window = MAX_CLIPBOARD_SIZE;
@@ -364,12 +369,15 @@ void handle_targets_list(Ghandles * g, Atom Qprop, unsigned char *data,
 	Atom *atoms = (Atom *) data;
 	int i;
 	int have_utf8 = 0;
-	fprintf(stderr, "target list data size %d\n", len);
+	if (g->log_level > 1)
+		fprintf(stderr, "target list data size %d\n", len);
 	for (i = 0; i < len; i++) {
 		if (atoms[i] == Utf8_string_atom)
 			have_utf8 = 1;
-		fprintf(stderr, "supported 0x%x %s\n", (int) atoms[i],
-			XGetAtomName(g->display, atoms[i]));
+		if (g->log_level > 1)
+			fprintf(stderr, "supported 0x%x %s\n",
+				(int) atoms[i], XGetAtomName(g->display,
+							     atoms[i]));
 	}
 	XConvertSelection(g->display, Clp,
 			  have_utf8 ? Utf8_string_atom : XA_STRING, Qprop,
@@ -390,8 +398,9 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 	Atom Utf8_string_atom =
 	    XInternAtom(g->display, "UTF8_STRING", False);
 
-	fprintf(stderr, "selection event, target=%s\n",
-		XGetAtomName(g->display, ev->target));
+	if (g->log_level > 0)
+		fprintf(stderr, "selection event, target=%s\n",
+			XGetAtomName(g->display, ev->target));
 	if (ev->requestor != g->clipboard_win || ev->property != Qprop)
 		return;
 	XGetWindowProperty(g->display, ev->requestor, Qprop, 0, 0, 0,
@@ -438,8 +447,9 @@ void process_xevent_selection_req(Ghandles * g,
 	    XInternAtom(g->display, "UTF8_STRING", False);
 	int convert_style = XConverterNotFound;
 
-	fprintf(stderr, "selection req event, target=%s\n",
-		XGetAtomName(g->display, req->target));
+	if (g->log_level > 0)
+		fprintf(stderr, "selection req event, target=%s\n",
+			XGetAtomName(g->display, req->target));
 	resp.property = None;
 	if (req->target == Targets) {
 		Atom tmp[4] =
@@ -485,8 +495,10 @@ void process_xevent_selection_req(Ghandles * g,
 void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 {
 	SKIP_NONMANAGED_WINDOW;
-	fprintf(stderr, "handle property %s for window 0x%x\n",
-		XGetAtomName(g->display, ev->atom), (int) ev->window);
+	if (g->log_level > 0)
+		fprintf(stderr, "handle property %s for window 0x%x\n",
+			XGetAtomName(g->display, ev->atom),
+			(int) ev->window);
 	if (ev->atom == XInternAtom(g->display, "WM_NAME", False))
 		send_wmname(g, window);
 	else if (ev->atom ==
@@ -496,9 +508,10 @@ void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 
 void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 {
-	fprintf(stderr, "handle message %s to window 0x%x\n",
-		XGetAtomName(g->display, ev->message_type),
-		(int) ev->window);
+	if (g->log_level > 0)
+		fprintf(stderr, "handle message %s to window 0x%x\n",
+			XGetAtomName(g->display, ev->message_type),
+			(int) ev->window);
 	if (ev->message_type == g->tray_opcode) {
 		XClientMessageEvent resp;
 		Window w;
@@ -511,9 +524,10 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 
 			if (!list_lookup(windows_list, w))
 				return;
-			fprintf(stderr,
-				"tray request dock for window 0x%x\n",
-				(int) w);
+			if (g->log_level > 0)
+				fprintf(stderr,
+					"tray request dock for window 0x%x\n",
+					(int) w);
 			ret =
 			    XReparentWindow(g->display, w, g->root_win, 0,
 					    0);
@@ -607,7 +621,7 @@ void process_xevent(Ghandles * g)
 					      dev->area.width,
 					      dev->area.height);
 //                      fprintf(stderr, "@");
-		} else
+		} else if (g->log_level > 1)
 			fprintf(stderr, "#");
 	}
 
@@ -624,7 +638,9 @@ void mkghandles(Ghandles * g)
 		perror("XOpenDisplay");
 		exit(1);
 	}
-	fprintf(stderr, "Connection to local X server established.\n");
+	if (g->log_level > 0)
+		fprintf(stderr,
+			"Connection to local X server established.\n");
 	g->screen = DefaultScreen(g->display);	/* get CRT id number */
 	g->root_win = RootWindow(g->display, g->screen);	/* get default attributes */
 	g->context = XCreateGC(g->display, g->root_win, 0, NULL);
@@ -720,9 +736,10 @@ void handle_button(Ghandles * g, XID winid)
 		   ButtonPressMask, (XEvent *) & event);
 //      XSync(g->display, 0);
 #endif
-	fprintf(stderr,
-		"send buttonevent, win 0x%x type=%d button=%d\n",
-		(int) winid, key.type, key.button);
+	if (g->log_level > 0)
+		fprintf(stderr,
+			"send buttonevent, win 0x%x type=%d button=%d\n",
+			(int) winid, key.type, key.button);
 	feed_xdriver(g, 'B', key.button, key.type == ButtonPress ? 1 : 0);
 }
 
@@ -835,13 +852,15 @@ void handle_focus(Ghandles * g, XID winid)
 		XRaiseWindow(g->display, winid);
 		XSetInputFocus(g->display, winid, RevertToParent,
 			       CurrentTime);
-		fprintf(stderr, "0x%x raised\n", (int) winid);
+		if (g->log_level > 0)
+			fprintf(stderr, "0x%x raised\n", (int) winid);
 	} else if (key.type == FocusOut
 		   && (key.mode == NotifyNormal
 		       || key.mode == NotifyUngrab)) {
 		XSetInputFocus(g->display, None, RevertToParent,
 			       CurrentTime);
-		fprintf(stderr, "0x%x lost focus\n", (int) winid);
+		if (g->log_level > 0)
+			fprintf(stderr, "0x%x lost focus\n", (int) winid);
 	}
 }
 
@@ -859,9 +878,10 @@ void handle_keymap_notify(Ghandles * g)
 	for (i = 0; i < 256; i++) {
 		if (!bitset(remote_keys, i) && bitset(local_keys, i)) {
 			feed_xdriver(g, 'K', i, 0);
-			fprintf(stderr,
-				"handle_keymap_notify: unsetting key %d\n",
-				i);
+			if (g->log_level > 0)
+				fprintf(stderr,
+					"handle_keymap_notify: unsetting key %d\n",
+					i);
 		}
 	}
 }
@@ -890,8 +910,8 @@ void handle_map(Ghandles * g, XID winid)
 	XChangeWindowAttributes(g->display, winid,
 				CWOverrideRedirect, &attr);
 	XMapWindow(g->display, winid);
-	fprintf(stderr, "map msg for 0x%x\n", (int) winid);
-
+	if (g->log_level > 0)
+		fprintf(stderr, "map msg for 0x%x\n", (int) winid);
 }
 
 void handle_close(Ghandles * g, XID winid)
@@ -906,7 +926,9 @@ void handle_close(Ghandles * g, XID winid)
 	ev.data.l[0] = g->wmDeleteMessage;
 //        XSetInputFocus(g->display, winid, RevertToParent, CurrentTime);
 	XSendEvent(ev.display, ev.window, TRUE, 0, (XEvent *) & ev);
-	fprintf(stderr, "wmDeleteMessage sent for 0x%x\n", (int) winid);
+	if (g->log_level > 0)
+		fprintf(stderr, "wmDeleteMessage sent for 0x%x\n",
+			(int) winid);
 }
 
 void do_execute(char *user, char *cmd)
@@ -943,8 +965,8 @@ void handle_execute()
 	if (!ptr)
 		return;
 	*ptr = 0;
-	fprintf(stderr, "handle_execute(): cmd = %s:%s\n", exec_data.cmd,
-		ptr + 1);
+	fprintf(stderr, "handle_execute(): cmd = %s:%s\n",
+		exec_data.cmd, ptr + 1);
 	do_execute(exec_data.cmd, ptr + 1);
 }
 
@@ -961,7 +983,9 @@ void handle_clipboard_req(Ghandles * g, XID winid)
 	Clp = XA_PRIMARY;
 #endif
 	owner = XGetSelectionOwner(g->display, Clp);
-	fprintf(stderr, "clipboard req, owner=0x%x\n", (int) owner);
+	if (g->log_level > 0)
+		fprintf(stderr, "clipboard req, owner=0x%x\n",
+			(int) owner);
 	if (owner == None) {
 		send_clipboard_data(NULL, 0);
 		return;
@@ -1038,7 +1062,7 @@ void handle_message(Ghandles * g)
 		handle_keymap_notify(g);
 		break;
 	default:
-		fprintf(stderr, "got msg type %d\n", hdr.type);
+		fprintf(stderr, "got unknown msg type %d\n", hdr.type);
 		exit(1);
 	}
 }
@@ -1075,6 +1099,43 @@ void handle_guid_disconnect()
 	execv("/usr/bin/qubes_gui", saved_argv);
 	perror("execv");
 	exit(1);
+}
+
+void usage()
+{
+	fprintf(stderr, "Usage: qubes_gui [-v] [-q] [-h]\n");
+	fprintf(stderr, "       -v  increase log verbosity\n");
+	fprintf(stderr, "       -q  decrease log verbosity\n");
+	fprintf(stderr, "       -h  print this message\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Log levels:\n");
+	fprintf(stderr, " 0 - only errors\n");
+	fprintf(stderr, " 1 - some basic messages (default)\n");
+	fprintf(stderr, " 2 - debug\n");
+}
+
+void parse_args(Ghandles * g, int argc, char **argv)
+{
+	int opt;
+
+	// defaults
+	g->log_level = 1;
+	while ((opt = getopt(argc, argv, "qvh")) != -1) {
+		switch (opt) {
+		case 'q':
+			g->log_level--;
+			break;
+		case 'v':
+			g->log_level++;
+			break;
+		case 'h':
+			usage();
+			exit(0);
+		default:
+			usage();
+			exit(1);
+		}
+	}
 }
 
 int main(int argc, char **argv)
@@ -1126,7 +1187,9 @@ int main(int argc, char **argv)
 		ev.display = g.display;
 		XSendEvent(ev.display, ev.window, False, NoEventMask,
 			   (XEvent *) & ev);
-		fprintf(stderr, "Acquired MANAGER selection for tray\n");
+		if (g.log_level > 0)
+			fprintf(stderr,
+				"Acquired MANAGER selection for tray\n");
 	}
 	xfd = ConnectionNumber(g.display);
 	for (;;) {
