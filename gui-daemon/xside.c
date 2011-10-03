@@ -2065,7 +2065,7 @@ int main(int argc, char **argv)
 
 	close(0);
 	snprintf(dbg_log, sizeof(dbg_log),
-		 "/var/log/qubes/qubes.%d.log", ghandles.domid);
+		 "/var/log/qubes/guid.%d.log", ghandles.domid);
 	umask(0007);
 	logfd = open(dbg_log, O_WRONLY | O_CREAT | O_TRUNC, 0640);
 	umask(0077);
