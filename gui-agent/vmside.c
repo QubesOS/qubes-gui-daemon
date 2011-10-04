@@ -1023,6 +1023,8 @@ void handle_message(Ghandles * g)
 {
 	struct msghdr hdr;
 	read_data((char *) &hdr, sizeof(hdr));
+	if (g->log_level > 1)
+		fprintf(stderr, "received message type %d\n", hdr.type);
 	switch (hdr.type) {
 	case MSG_KEYPRESS:
 		handle_keypress(g, hdr.window);
