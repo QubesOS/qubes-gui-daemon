@@ -745,6 +745,14 @@ void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
+	if (ev->type == EnterNotify) {
+		struct msghdr hdr;
+		char keys[32];
+		XQueryKeymap(g->display, keys);
+		hdr.type = MSG_KEYMAP_NOTIFY;
+		hdr.window = 0;
+		write_message(hdr, keys);
+	}
 	/* move tray to correct position in VM */
 	if (fix_docked_xy(g, vm_window, "process_xevent_crossing")) {
 		send_configure(vm_window, vm_window->x, vm_window->y,
@@ -778,12 +786,6 @@ void process_xevent_focus(Ghandles * g, XFocusChangeEvent * ev)
 	struct msghdr hdr;
 	struct msg_focus k;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
-	hdr.type = MSG_FOCUS;
-	hdr.window = vm_window->remote_winid;
-	k.type = ev->type;
-	k.mode = ev->mode;
-	k.detail = ev->detail;
-	write_message(hdr, k);
 	if (ev->type == FocusIn) {
 		char keys[32];
 		XQueryKeymap(g->display, keys);
@@ -791,6 +793,12 @@ void process_xevent_focus(Ghandles * g, XFocusChangeEvent * ev)
 		hdr.window = 0;
 		write_message(hdr, keys);
 	}
+	hdr.type = MSG_FOCUS;
+	hdr.window = vm_window->remote_winid;
+	k.type = ev->type;
+	k.mode = ev->mode;
+	k.detail = ev->detail;
+	write_message(hdr, k);
 }
 
 /* update given fragment of window image
