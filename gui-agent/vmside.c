@@ -57,7 +57,7 @@ struct _global_handles {
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
 	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
 	int xserver_fd;
-	Window clipboard_win;
+	Window stub_win;    /* window for clipboard operations and to simulate LeaveNotify events */
 	unsigned char *clipboard_data;
 	unsigned int clipboard_data_len;
 	int log_level;
@@ -381,7 +381,7 @@ void handle_targets_list(Ghandles * g, Atom Qprop, unsigned char *data,
 	}
 	XConvertSelection(g->display, Clp,
 			  have_utf8 ? Utf8_string_atom : XA_STRING, Qprop,
-			  g->clipboard_win, CurrentTime);
+			  g->stub_win, CurrentTime);
 }
 
 
@@ -401,7 +401,7 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 	if (g->log_level > 0)
 		fprintf(stderr, "selection event, target=%s\n",
 			XGetAtomName(g->display, ev->target));
-	if (ev->requestor != g->clipboard_win || ev->property != Qprop)
+	if (ev->requestor != g->stub_win || ev->property != Qprop)
 		return;
 	XGetWindowProperty(g->display, ev->requestor, Qprop, 0, 0, 0,
 			   AnyPropertyType, &type, &format, &len,
@@ -426,7 +426,7 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 		 *((int *) data) == Targets)
 		XConvertSelection(g->display, Clp,
 				  Utf8_string_atom, Qprop,
-				  g->clipboard_win, CurrentTime);
+				  g->stub_win, CurrentTime);
 	else
 		send_clipboard_data((char *) data, len);
 	/* even if the clipboard owner does not support UTF8 and we requested
@@ -646,7 +646,7 @@ void mkghandles(Ghandles * g)
 	g->wmDeleteMessage =
 	    XInternAtom(g->display, "WM_DELETE_WINDOW", False);
 	g->wmProtocols = XInternAtom(g->display, "WM_PROTOCOLS", False);
-	g->clipboard_win = XCreateSimpleWindow(g->display, g->root_win,
+	g->stub_win = XCreateSimpleWindow(g->display, g->root_win,
 					       0, 0, 1, 1,
 					       0, BlackPixel(g->display,
 							     g->screen),
@@ -802,7 +802,7 @@ void handle_crossing(Ghandles * g, XID winid)
 
 	if (key.type == EnterNotify) {
 		// hide stub window
-		XUnmapWindow(g->display, g->clipboard_win);
+		XUnmapWindow(g->display, g->stub_win);
 	} else if (key.type == LeaveNotify) {
 		XID window_under_pointer, root_returned;
 		int root_x, root_y, win_x, win_y;
@@ -821,10 +821,10 @@ void handle_crossing(Ghandles * g, XID winid)
 		// if pointer is still on the same window - place some stub window
 		// just under it
 		if (window_under_pointer == winid) {
-			XMoveResizeWindow(g->display, g->clipboard_win,
+			XMoveResizeWindow(g->display, g->stub_win,
 					  root_x, root_y, 1, 1);
-			XMapWindow(g->display, g->clipboard_win);
-			XRaiseWindow(g->display, g->clipboard_win);
+			XMapWindow(g->display, g->stub_win);
+			XRaiseWindow(g->display, g->stub_win);
 		}
 	} else {
 		fprintf(stderr, "Invalid crossing event: %d\n", key.type);
@@ -994,7 +994,7 @@ void handle_clipboard_req(Ghandles * g, XID winid)
 		return;
 	}
 	XConvertSelection(g->display, Clp, Targets, QProp,
-			  g->clipboard_win, CurrentTime);
+			  g->stub_win, CurrentTime);
 }
 
 void handle_clipboard_data(Ghandles * g, int len)
@@ -1012,9 +1012,9 @@ void handle_clipboard_data(Ghandles * g, int len)
 	g->clipboard_data_len = len;
 	read_data((char *) g->clipboard_data, len);
 	g->clipboard_data[len] = 0;
-	XSetSelectionOwner(g->display, XA_PRIMARY, g->clipboard_win,
+	XSetSelectionOwner(g->display, XA_PRIMARY, g->stub_win,
 			   CurrentTime);
-	XSetSelectionOwner(g->display, Clp, g->clipboard_win, CurrentTime);
+	XSetSelectionOwner(g->display, Clp, g->stub_win, CurrentTime);
 #ifndef CLIPBOARD_4WAY
 	XSync(g->display, False);
 	feed_xdriver(g, 'B', 2, 1);
@@ -1176,9 +1176,9 @@ int main(int argc, char **argv)
 	windows_list = list_new();
 	XSetErrorHandler(dummy_handler);
 	XSetSelectionOwner(g.display, g.tray_selection,
-			   g.clipboard_win, CurrentTime);
+			   g.stub_win, CurrentTime);
 	if (XGetSelectionOwner(g.display, g.tray_selection) ==
-	    g.clipboard_win) {
+	    g.stub_win) {
 		XClientMessageEvent ev;
 		memset(&ev, 0, sizeof(ev));
 		ev.type = ClientMessage;
@@ -1188,7 +1188,7 @@ int main(int argc, char **argv)
 		ev.format = 32;
 		ev.data.l[0] = CurrentTime;
 		ev.data.l[1] = g.tray_selection;
-		ev.data.l[2] = g.clipboard_win;
+		ev.data.l[2] = g.stub_win;
 		ev.display = g.display;
 		XSendEvent(ev.display, ev.window, False, NoEventMask,
 			   (XEvent *) & ev);
