@@ -97,7 +97,7 @@ struct msg_motion {
 	uint32_t state;
 	uint32_t is_hint;
 };
-/* Dom0 -> VM, obsolete */
+/* Dom0 -> VM */
 struct msg_crossing {
 	uint32_t type;
 	uint32_t x;
