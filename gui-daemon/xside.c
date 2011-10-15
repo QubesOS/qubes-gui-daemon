@@ -230,7 +230,7 @@ Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 	(void) XSelectInput(g->display, child_win,
 			    ExposureMask | KeyPressMask | KeyReleaseMask |
 			    ButtonPressMask | ButtonReleaseMask |
-			    PointerMotionMask | EnterWindowMask |
+			    PointerMotionMask | EnterWindowMask | LeaveWindowMask |
 			    FocusChangeMask | StructureNotifyMask);
 	XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
 	if (g->cmdline_icon) {
@@ -739,14 +739,15 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 }
 
 /* handle local Xserver event: EnterNotify, LeaveNotify
- * gui-agent currently not process this event, but we use it to fix docked
+ * send it to VM, but alwo we use it to fix docked
  * window position */
 void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
 {
+	struct msghdr hdr;
+	struct msg_crossing k;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
 	if (ev->type == EnterNotify) {
-		struct msghdr hdr;
 		char keys[32];
 		XQueryKeymap(g->display, keys);
 		hdr.type = MSG_KEYMAP_NOTIFY;
@@ -759,6 +760,16 @@ void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
 			       vm_window->width, vm_window->height);
 	}
 
+	hdr.type = MSG_CROSSING;
+	hdr.window = vm_window->remote_winid;
+	k.type = ev->type;
+	k.x = ev->x;
+	k.y = ev->y;
+	k.state = ev->state;
+	k.mode = ev->mode;
+	k.detail = ev->detail;
+	k.focus = ev->focus;
+	write_message(hdr, k);
 }
 
 /* handle local Xserver event: XMotionEvent
