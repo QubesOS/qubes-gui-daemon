@@ -781,7 +781,8 @@ void handle_motion(Ghandles * g, XID winid)
 	feed_xdriver(g, 'M', attr.x + key.x, attr.y + key.y);
 }
 
-// msg_crossing is not processed currently; just eat the message and return
+// ensure that LeaveNotify is delivered to the window - if pointer is still
+// above this window, place stub window between pointer and the window
 void handle_crossing(Ghandles * g, XID winid)
 {
 	struct msg_crossing key;
@@ -790,42 +791,45 @@ void handle_crossing(Ghandles * g, XID winid)
 	int ret;
 
 	read_data((char *) &key, sizeof(key));
-	return;
 
 	ret = XGetWindowAttributes(g->display, winid, &attr);
 	if (ret != 1) {
 		fprintf(stderr,
 			"XGetWindowAttributes for 0x%x failed in "
-			"do_button, ret=0x%x\n", (int) winid, ret);
+			"handle_crossing, ret=0x%x\n", (int) winid, ret);
 		return;
 	};
 
-//XGetInputFocus(g->display, &focus_return, &revert_to_return);
-//      fprintf(stderr, "vmside: type=%d keycode=%d currfoc=0x%x\n", key.type,
-//              key.keycode, (int)focus_return);
+	if (key.type == EnterNotify) {
+		// hide stub window
+		XUnmapWindow(g->display, g->clipboard_win);
+	} else if (key.type == LeaveNotify) {
+		XID window_under_pointer, root_returned;
+		int root_x, root_y, win_x, win_y;
+		unsigned int mask_return;
+		ret =
+		    XQueryPointer(g->display, g->root_win, &root_returned,
+				  &window_under_pointer, &root_x, &root_y,
+				  &win_x, &win_y, &mask_return);
+		if (ret != 1) {
+			fprintf(stderr,
+				"XQueryPointer for 0x%x failed in "
+				"handle_crossing, ret=0x%x\n", (int) winid,
+				ret);
+			return;
+		}
+		// if pointer is still on the same window - place some stub window
+		// just under it
+		if (window_under_pointer == winid) {
+			XMoveResizeWindow(g->display, g->clipboard_win,
+					  root_x, root_y, 1, 1);
+			XMapWindow(g->display, g->clipboard_win);
+			XRaiseWindow(g->display, g->clipboard_win);
+		}
+	} else {
+		fprintf(stderr, "Invalid crossing event: %d\n", key.type);
+	}
 
-//      XSetInputFocus(g->display, winid, RevertToParent, CurrentTime);
-	event.display = g->display;
-	event.window = winid;
-	event.root = g->root_win;
-	event.subwindow = None;
-	event.time = CurrentTime;
-	event.x = key.x;
-	event.y = key.y;
-	event.x_root = attr.x + key.x;
-	event.y_root = attr.y + key.y;
-	event.type = key.type;
-	event.same_screen = TRUE;
-	event.mode = key.mode;
-	event.detail = key.detail;
-	event.focus = key.focus;
-	event.state = key.state;
-
-//      fprintf(stderr, "motion notify for 0x%x\n", (int)winid);
-	XSendEvent(event.display, event.window, TRUE,
-//                 event.type==KeyPress?KeyPressMask:KeyReleaseMask, 
-		   0, (XEvent *) & event);
-//      XSync(g->display, 0);
 }
 
 void handle_focus(Ghandles * g, XID winid)
