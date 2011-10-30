@@ -23,16 +23,8 @@
 # Switch user to 'user'
 [[ "$USER" != "user" ]] && exec su user -c $0
 
-# Save user environment for later
-umask 0077
-rm -f /tmp/qubes-session-env
-env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
-
 # Set desktop background
 xsetroot -solid white
-
-# Wake waiting for environment processes
-[ -s /tmp/qubes-session-waiter ] && kill -KILL `cat /tmp/qubes-session-waiter` 
 
 # Get VM type from XenStore
 VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
@@ -40,6 +32,7 @@ VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
 if [[ -n "$VMTYPE" ]] && [[ "$VMTYPE" != "DisposableVM" ]]; then
 # Process XDG Autostart files
 shopt -s nullglob
+set -a
 for D in /etc/xdg/autostart/*.desktop; do
 	UPDTYPE=`/usr/bin/xenstore-read qubes_vm_updateable`
 	[[ $UPDTYPE == 'True' ]] && UPDTYPE="UpdateableVM" || UPDTYPE="NonUpdateableVM"
@@ -51,9 +44,23 @@ for D in /etc/xdg/autostart/*.desktop; do
 	# Extract Exec= line
 	EXEC="`sed -n '/^Exec[ \t=]/s/^[^=]\+=[ \t]*//p' $D | tail -n1`"
 	[[ -z "$EXEC" ]] && continue
-	$EXEC &
+	if grep -qiL ^Terminal=false $D; then
+		$EXEC &
+	else
+		eval `$EXEC`
+	fi
 done
 fi # VMTYPE
+
+unset EXEC MATCH UPDTYPE D USER_AUTOSTART
+
+# Save user environment
+umask 0077
+rm -f /tmp/qubes-session-env
+env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
+
+# Wake waiting for environment processes
+[ -s /tmp/qubes-session-waiter ] && kill -KILL `cat /tmp/qubes-session-waiter`
 
 # Wait some time to pick up zombie children
 sleep 1m
