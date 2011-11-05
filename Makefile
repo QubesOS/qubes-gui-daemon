@@ -116,4 +116,3 @@ update-repo-unstable:
 
 update-repo-installer:
 	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../installer/yum/qubes-dom0/rpm/
-	cd ../installer/yum && ./update_repo.sh
