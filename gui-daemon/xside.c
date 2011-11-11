@@ -1944,7 +1944,7 @@ void parse_config(Ghandles * g)
 	char buf[128];
 
 	config_init(&config);
-#if (((LIBCONFIG_VER_MAJOR == 1) && (LIBCONFIG_VER_MINOR >= 4)) \
+#if (((LIBCONFIG_VER_MAJOR == 1) && (LIBCONFIG_VER_MINOR > 5)) \
 		|| (LIBCONFIG_VER_MAJOR > 1))
 	config_set_include_dir(&config, GUID_CONFIG_DIR);
 #endif
