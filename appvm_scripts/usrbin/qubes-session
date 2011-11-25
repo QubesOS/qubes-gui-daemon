@@ -29,6 +29,11 @@ xsetroot -solid white
 # Get VM type from XenStore
 VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
 
+# Save user environment
+umask 0077
+rm -f /tmp/qubes-session-env
+env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
+
 if [[ -n "$VMTYPE" ]] && [[ "$VMTYPE" != "DisposableVM" ]]; then
 # Process XDG Autostart files
 shopt -s nullglob
@@ -47,17 +52,13 @@ for D in /etc/xdg/autostart/*.desktop; do
 	if grep -qiL ^Terminal=false $D; then
 		$EXEC &
 	else
-		eval `$EXEC`
+		# Append variables to qubes-session-env
+		$EXEC | grep '^[^ ]*=[^ ]*$' >> /tmp/qubes-session-env &
 	fi
 done
 fi # VMTYPE
 
 unset EXEC MATCH UPDTYPE D USER_AUTOSTART
-
-# Save user environment
-umask 0077
-rm -f /tmp/qubes-session-env
-env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
 
 # Wake waiting for environment processes
 [ -s /tmp/qubes-session-waiter ] && kill -KILL `cat /tmp/qubes-session-waiter`
