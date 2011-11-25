@@ -64,7 +64,7 @@ unset EXEC MATCH UPDTYPE D USER_AUTOSTART
 [ -s /tmp/qubes-session-waiter ] && kill -KILL `cat /tmp/qubes-session-waiter`
 
 # Wait some time to pick up zombie children
-sleep 1m
+wait
 
 # Now hang myself so Xorg may live :'(
 # ____
