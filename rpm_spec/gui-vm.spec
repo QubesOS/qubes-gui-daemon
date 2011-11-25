@@ -94,6 +94,7 @@ install -D appvm_scripts/etc/profile.d/qubes-session.sh $RPM_BUILD_ROOT/etc/prof
 install -D appvm_scripts/etc/sysconfig/desktop $RPM_BUILD_ROOT/etc/sysconfig/desktop
 install -D appvm_scripts/etc/sysconfig/modules/qubes_u2mfn.modules $RPM_BUILD_ROOT/etc/sysconfig/modules/qubes_u2mfn.modules
 install -D appvm_scripts/etc/X11/xinit/xinitrc.d/qubes_keymap.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/qubes_keymap.sh
+install -D appvm_scripts/etc/xdgautostart/qubes-polkit-gnome-authentication-agent-1.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/qubes-polkit-gnome-authentication-agent-1.desktop
 install -d $RPM_BUILD_ROOT/var/log/qubes
 
 %post
@@ -135,5 +136,6 @@ rm -rf $RPM_BUILD_ROOT
 /etc/profile.d/qubes-session.sh
 /etc/X11/xinit/xinitrc.d/qubes_keymap.sh
 %config /etc/sysconfig/desktop
+/etc/xdg/autostart/qubes-polkit-gnome-authentication-agent-1.desktop
 /etc/sysconfig/modules/qubes_u2mfn.modules
 %dir /var/log/qubes
