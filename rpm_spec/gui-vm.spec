@@ -59,7 +59,7 @@ Requires:	qubes-core-vm xen-qubes-vm-essentials
 # possible to change across version. They are copied to gui git. 
 # It is possible that our code will work fine with any later pulseaudio
 # version; but this needs to be verified for each pulseaudio version.
-Requires:	pulseaudio = 0.9.21
+Requires:	pulseaudio >= 0.9.21, pulseaudio <= 0.9.22
 AutoReq: 0
 
 %define _builddir %(pwd)
@@ -69,6 +69,9 @@ The Qubes GUI agent that needs to be installed in VM in order to provide the Qub
 
 %prep
 # we operate on the current directory, so no need to unpack anything
+
+rm -f pulse/pulsecore
+ln -s pulsecore-%{pa_ver} pulse/pulsecore
 
 %build
 #make clean

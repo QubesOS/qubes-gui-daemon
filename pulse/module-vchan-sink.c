@@ -403,7 +403,11 @@ int pa__init(pa_module * m)
 	pollfd->events = POLLIN;
 	pollfd->revents = 0;
 
+#if PA_CHECK_VERSION(0,9,22)
+	if (!(u->thread = pa_thread_new("vchan-sink", thread_func, u))) {
+#else
 	if (!(u->thread = pa_thread_new(thread_func, u))) {
+#endif
 		pa_log("Failed to create thread.");
 		goto fail;
 	}
