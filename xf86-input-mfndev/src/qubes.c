@@ -342,8 +342,10 @@ static int _qubes_init_axes(DeviceIntPtr device)
 #if GET_ABI_MAJOR(ABI_XINPUT_VERSION) < 12
 	pInfo->dev->valuator->mode = Relative;
 #endif
+#if GET_ABI_MAJOR(ABI_XINPUT_VERSION) < 13
 	if (!InitAbsoluteClassDeviceStruct(device))
 		return BadAlloc;
+#endif
 
 	for (i = 0; i < pQubes->axes; i++) {
 		xf86InitValuatorAxisStruct(device, i, *pQubes->labels, -1,
