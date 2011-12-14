@@ -114,6 +114,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	setuid(getuid());
+pa_connect:
 	/* Create a new playback stream */
 	if (!
 	    (s =
@@ -144,6 +145,11 @@ int main(int argc, char *argv[])
 				__FILE__
 				": pa_simple_write() failed: %s\n",
 				pa_strerror(error));
+			if (error == PA_ERR_CONNECTIONTERMINATED) {
+				fprintf(stderr, __FILE__ ": trying reconnect; sorry, some samples will be lost\n");
+				pa_simple_free(s);
+				goto pa_connect;
+			}
 			goto finish;
 		}
 	}
