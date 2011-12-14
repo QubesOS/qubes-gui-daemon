@@ -46,7 +46,7 @@ BuildRequires:	libXdamage-devel
 BuildRequires:	libXt-devel
 BuildRequires:	libtool-ltdl-devel
 BuildRequires:	libtool-ltdl-devel
-BuildRequires:	pulseaudio-libs-devel
+BuildRequires:	pulseaudio-libs-devel >= 0.9.21, pulseaudio-libs-devel <= 0.9.23
 BuildRequires:	xen-devel
 BuildRequires:	xorg-x11-server-devel
 BuildRequires:	qubes-core-appvm-devel >= 1.6.1
@@ -59,7 +59,7 @@ Requires:	qubes-core-vm xen-qubes-vm-essentials
 # possible to change across version. They are copied to gui git. 
 # It is possible that our code will work fine with any later pulseaudio
 # version; but this needs to be verified for each pulseaudio version.
-Requires:	pulseaudio >= 0.9.21, pulseaudio <= 0.9.23
+Requires:	pulseaudio = %{pa_ver}
 AutoReq: 0
 
 %define _builddir %(pwd)
