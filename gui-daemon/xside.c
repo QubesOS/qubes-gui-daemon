@@ -55,8 +55,6 @@
 /* default width of forced colorful border */
 #define BORDER_WIDTH 2
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes_clipboard.bin"
-/* limit of created windows - after exceed, warning the user */
-#define WINDOWS_COUNT_LIMIT 100
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
 
@@ -119,6 +117,7 @@ struct _global_handles {
 	int clipboard_requested;	/* if clippoard content was requested by dom0 */
 	int windows_count;	/* created window count */
 	int windows_count_limit;	/* current window limit; ask user what to do when exceeded */
+	int windows_count_limit_param; /* initial limit of created windows - after exceed, warning the user */
 	struct windowdata *last_input_window;
 	/* signal was caught */
 	int volatile signal_caught;
@@ -287,7 +286,7 @@ void mkghandles(Ghandles * g)
 	get_frame_gc(g, g->cmdline_color ? : "red");
 	get_tray_gc(g);
 	/* initialize windows limit */
-	g->windows_count_limit = WINDOWS_COUNT_LIMIT;
+	g->windows_count_limit = g->windows_count_limit_param;
 	/* init window lists */
 	g->remote2local = list_new();
 	g->wid2windowdata = list_new();
@@ -1152,7 +1151,7 @@ void ask_whether_flooding(Ghandles * g)
 		case 1:	/* NO */
 			exit(1);
 		case 0:	/*YES */
-			g->windows_count_limit += WINDOWS_COUNT_LIMIT;
+			g->windows_count_limit += g->windows_count_limit_param;
 			break;
 		default:
 			fprintf(stderr, "Problems executing kdialog ?\n");
@@ -1868,6 +1867,7 @@ void load_default_config_values(Ghandles * g)
 	g->copy_seq_key = XK_c;
 	g->paste_seq_mask = ControlMask | ShiftMask;
 	g->paste_seq_key = XK_v;
+	g->windows_count_limit_param = 500;
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
@@ -1934,6 +1934,11 @@ void parse_vm_config(Ghandles * g, config_setting_t * group)
 	if ((setting =
 	     config_setting_get_member(group, "allow_utf8_titles"))) {
 		g->allow_utf8_titles = config_setting_get_bool(setting);
+	}
+
+	if ((setting =
+	     config_setting_get_member(group, "windows_count_limit"))) {
+		g->windows_count_limit_param = config_setting_get_int(setting);
 	}
 }
 
