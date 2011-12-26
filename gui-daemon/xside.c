@@ -1940,6 +1940,11 @@ void parse_vm_config(Ghandles * g, config_setting_t * group)
 	     config_setting_get_member(group, "windows_count_limit"))) {
 		g->windows_count_limit_param = config_setting_get_int(setting);
 	}
+
+	if ((setting =
+	     config_setting_get_member(group, "log_level"))) {
+		g->log_level = config_setting_get_int(setting);
+	}
 }
 
 void parse_config(Ghandles * g)
