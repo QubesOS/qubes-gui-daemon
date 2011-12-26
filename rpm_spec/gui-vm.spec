@@ -106,6 +106,9 @@ chkconfig qubes_gui on
 # use qubes-specific consolekit plugin
 sed -i 's#/usr/bin/ck-xinit-session\([^-]\)#/usr/bin/ck-xinit-session-qubes\1#' /etc/X11/xinit/xinitrc-common
 
+sed -i '/^autospawn/d' /etc/pulse/client.conf
+echo autospawn=no >> /etc/pulse/client.conf
+
 %preun
 if [ "$1" = 0 ] ; then
 	chkconfig qubes_gui off
@@ -115,6 +118,11 @@ fi
 
 # use qubes-specific consolekit plugin
 sed -i 's#/usr/bin/ck-xinit-session\([^-]\)#/usr/bin/ck-xinit-session-qubes\1#' /etc/X11/xinit/xinitrc-common
+
+%triggerin -- pulseaudio-libs
+
+sed -i '/^autospawn/d' /etc/pulse/client.conf
+echo autospawn=no >> /etc/pulse/client.conf
 
 %clean
 rm -rf $RPM_BUILD_ROOT
