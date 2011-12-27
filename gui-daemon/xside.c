@@ -121,6 +121,7 @@ struct _global_handles {
 	struct windowdata *last_input_window;
 	/* signal was caught */
 	int volatile signal_caught;
+	pid_t pulseaudio_pid;
 	/* configuration */
 	int log_level;		/* log level */
 	int allow_utf8_titles;	/* allow UTF-8 chars in window title */
@@ -1702,15 +1703,16 @@ void release_all_mapped_mfns()
 }
 
 /* start pulseaudio Dom0 proxy */
-void exec_pacat(int domid)
+void exec_pacat(Ghandles * g)
 {
 	int i, fd;
+	pid_t pid;
 	char domid_txt[20];
 	char logname[80];
-	snprintf(domid_txt, sizeof domid_txt, "%d", domid);
+	snprintf(domid_txt, sizeof domid_txt, "%d", g->domid);
 	snprintf(logname, sizeof logname, "/var/log/qubes/pacat.%d.log",
-		 domid);
-	switch (fork()) {
+		 g->domid);
+	switch (pid=fork()) {
 	case -1:
 		perror("fork pacat");
 		exit(1);
@@ -1727,7 +1729,8 @@ void exec_pacat(int domid)
 		      domid_txt, NULL);
 		perror("execl");
 		exit(1);
-	default:;
+	default:
+		g->pulseaudio_pid = pid;
 	}
 }
 
@@ -2023,6 +2026,27 @@ void unset_alive_flag()
 	unlink(guid_fs_flag("running", ghandles.domid));
 }
 
+void kill_pacat() {
+	pid_t pid = ghandles.pulseaudio_pid;
+	if (pid > 0) {
+		kill(pid, SIGTERM);
+	}
+}
+
+void wait_for_pacat(int signum) {
+	int status;
+
+	if (ghandles.pulseaudio_pid > 0) {
+		if (waitpid(ghandles.pulseaudio_pid, &status, WNOHANG) > 0) {
+			ghandles.pulseaudio_pid = -1;
+			if (status != 0 && ghandles.log_level > 0) {
+				fprintf(stderr, "pacat exited with %d status\n", status);
+			}
+		}
+	}
+}
+
+
 void get_boot_lock(int domid)
 {
 	struct stat st;
@@ -2110,7 +2134,9 @@ int main(int argc, char **argv)
 	XSetErrorHandler(dummy_handler);
 	vmname = peer_client_init(ghandles.domid, 6000);
 	atexit(vchan_close);
-	exec_pacat(ghandles.domid);
+	signal(SIGCHLD, wait_for_pacat);
+	exec_pacat(&ghandles);
+	atexit(kill_pacat);
 	/* drop root privileges */
 	setuid(getuid());
 	set_alive_flag(ghandles.domid);
