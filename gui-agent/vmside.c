@@ -73,16 +73,8 @@ void process_xevent_damage(Ghandles * g, XID window,
 {
 	struct msg_shmimage mx;
 	struct msghdr hdr;
-	static int cnt = 0;
 	SKIP_NONMANAGED_WINDOW;
 
-	cnt++;
-	if (g->log_level > 1 && (0 || cnt == 50)) {
-		fprintf(stderr, "update_pixmap (one in 50) for 0x%x "
-			"x=%d y=%d w=%d h=%d\n",
-			(int) window, x, y, width, height);
-		cnt = 0;
-	}
 	hdr.type = MSG_SHMIMAGE;
 	hdr.window = window;
 	mx.x = x;
@@ -331,7 +323,7 @@ void process_xevent_configure(Ghandles * g, XID window,
 	struct msghdr hdr;
 	struct msg_configure conf;
 	SKIP_NONMANAGED_WINDOW;
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr,
 			"handle configure event 0x%x w=%d h=%d ovr=%d\n",
 			(int) window, ev->width, ev->height,
@@ -494,7 +486,7 @@ void process_xevent_selection_req(Ghandles * g,
 void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 {
 	SKIP_NONMANAGED_WINDOW;
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr, "handle property %s for window 0x%x\n",
 			XGetAtomName(g->display, ev->atom),
 			(int) ev->window);
@@ -507,7 +499,7 @@ void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 
 void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 {
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr, "handle message %s to window 0x%x\n",
 			XGetAtomName(g->display, ev->message_type),
 			(int) ev->window);
@@ -735,7 +727,7 @@ void handle_button(Ghandles * g, XID winid)
 		   ButtonPressMask, (XEvent *) & event);
 //      XSync(g->display, 0);
 #endif
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr,
 			"send buttonevent, win 0x%x type=%d button=%d\n",
 			(int) winid, key.type, key.button);
@@ -855,14 +847,14 @@ void handle_focus(Ghandles * g, XID winid)
 		XRaiseWindow(g->display, winid);
 		XSetInputFocus(g->display, winid, RevertToParent,
 			       CurrentTime);
-		if (g->log_level > 0)
+		if (g->log_level > 1)
 			fprintf(stderr, "0x%x raised\n", (int) winid);
 	} else if (key.type == FocusOut
 		   && (key.mode == NotifyNormal
 		       || key.mode == NotifyUngrab)) {
 		XSetInputFocus(g->display, None, RevertToParent,
 			       CurrentTime);
-		if (g->log_level > 0)
+		if (g->log_level > 1)
 			fprintf(stderr, "0x%x lost focus\n", (int) winid);
 	}
 }
@@ -881,7 +873,7 @@ void handle_keymap_notify(Ghandles * g)
 	for (i = 0; i < 256; i++) {
 		if (!bitset(remote_keys, i) && bitset(local_keys, i)) {
 			feed_xdriver(g, 'K', i, 0);
-			if (g->log_level > 0)
+			if (g->log_level > 1)
 				fprintf(stderr,
 					"handle_keymap_notify: unsetting key %d\n",
 					i);
@@ -913,7 +905,7 @@ void handle_map(Ghandles * g, XID winid)
 	XChangeWindowAttributes(g->display, winid,
 				CWOverrideRedirect, &attr);
 	XMapWindow(g->display, winid);
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr, "map msg for 0x%x\n", (int) winid);
 }
 
