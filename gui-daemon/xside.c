@@ -490,7 +490,7 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 	hdr.type = MSG_BUTTON;
 	hdr.window = vm_window->remote_winid;
 	write_message(hdr, k);
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr,
 			"xside: win 0x%x(0x%x) type=%d button=%d x=%d, y=%d\n",
 			(int) ev->window, hdr.window, k.type, k.button,
@@ -628,7 +628,7 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr,
 			"process_xevent_configure local 0x%x remote 0x%x, %d/%d, was "
 			"%d/%d, xy %d/%d was %d/%d\n",
@@ -665,7 +665,7 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	int conf_changed;
 
 	read_struct(untrusted_conf);
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr,
 			"handle_configure_from_vm, local 0x%x remote 0x%x, %d/%d, was"
 			" %d/%d, ovr=%d, xy %d/%d, was %d/%d\n",
@@ -1387,7 +1387,7 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 	if (size_hints.flags == 0)
 		return;
 
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr,
 			"set WM_NORMAL_HINTS for window 0x%x to min=%d/%d, max=%d/%d, base=%d/%d, inc=%d/%d (flags 0x%x)\n",
 			(int) vm_window->local_winid, size_hints.min_width,
