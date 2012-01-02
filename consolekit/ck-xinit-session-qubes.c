@@ -109,6 +109,7 @@ main(int argc, char **argv)
 	pid_t pid;
 	int status;
 
+	openlog("ck-xinit-session-qubes", LOG_PID, LOG_USER);
 	ckc = ck_connector_new();
 	if (ckc != NULL) {
         int v_true = 1;
