@@ -21,26 +21,29 @@
 #
 
 # Switch user to 'user'
-[[ "$USER" != "user" ]] && exec su user -c $0
+[[ ! -f /etc/this_is_dvm && "$USER" != "user" ]] && exec su user -c $0
 
 # Set desktop background
 xsetroot -solid white
-
-# Get VM type from XenStore
-VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
 
 # Save user environment
 umask 0077
 rm -f /tmp/qubes-session-env
 env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
 
-if [[ -n "$VMTYPE" ]] && [[ "$VMTYPE" != "DisposableVM" ]]; then
+if [ ! -f /etc/this_is_dvm ]; then
+
 # Process XDG Autostart files
 shopt -s nullglob
 set -a
+
+# Get VM type from XenStore
+VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
+
+UPDTYPE=`/usr/bin/xenstore-read qubes_vm_updateable`
+[[ $UPDTYPE == 'True' ]] && UPDTYPE="UpdateableVM" || UPDTYPE="NonUpdateableVM"
+
 for D in /etc/xdg/autostart/*.desktop; do
-	UPDTYPE=`/usr/bin/xenstore-read qubes_vm_updateable`
-	[[ $UPDTYPE == 'True' ]] && UPDTYPE="UpdateableVM" || UPDTYPE="NonUpdateableVM"
 	MATCH="\(QUBES\|$VMTYPE\|$UPDTYPE\)"
 	[[ -n "$XDG_CONFIG_DIRS" ]] && [[ -d "$XDG_CONFIG_DIRS/autostart" ]] && USER_AUTOSTART="$XDG_CONFIG_DIRS/autostart" || USER_AUTOSTART="$HOME/.config/autostart"
 	[[ -r "$USER_AUTOSTART/${D##*/}" ]] && D="$D $USER_AUTOSTART/${D##*/}"
@@ -56,7 +59,7 @@ for D in /etc/xdg/autostart/*.desktop; do
 		$EXEC | grep '^[^ ]*=[^ ]*$' >> /tmp/qubes-session-env &
 	fi
 done
-fi # VMTYPE
+fi # ! DispVM
 
 unset EXEC MATCH UPDTYPE D USER_AUTOSTART
 
