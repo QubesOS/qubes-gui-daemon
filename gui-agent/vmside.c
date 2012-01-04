@@ -1147,6 +1147,7 @@ int main(int argc, char **argv)
 	send_protocol_version();
 	get_xconf_and_run_x();
 	mkghandles(&g);
+	parse_args(&g, argc, argv);
 	for (i = 0; i < ScreenCount(g.display); i++)
 		XCompositeRedirectSubwindows(g.display,
 					     RootWindow(g.display, i),
