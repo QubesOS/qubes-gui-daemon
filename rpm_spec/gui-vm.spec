@@ -49,8 +49,8 @@ BuildRequires:	libtool-ltdl-devel
 BuildRequires:	pulseaudio-libs-devel >= 0.9.21, pulseaudio-libs-devel <= 0.9.23
 BuildRequires:	xen-devel
 BuildRequires:	xorg-x11-server-devel
-BuildRequires:	qubes-core-appvm-devel >= 1.6.1
-BuildRequires:	qubes-core-appvm-libs
+BuildRequires:	qubes-core-vm-devel >= 1.6.1
+BuildRequires:	qubes-core-vm-libs
 BuildRequires:	ConsoleKit-devel
 Requires:	qubes-core-vm xen-qubes-vm-essentials
 
