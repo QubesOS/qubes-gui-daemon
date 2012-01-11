@@ -45,6 +45,10 @@
 #include <unistd.h>
 #include <ck-connector.h>
 #include <dbus/dbus.h>
+#include <X11/Xlib.h>
+#include <sys/select.h>
+#include <stdio.h>
+#include <fcntl.h>
 
 static void
 setbusenv(const char *var, const char *val)
@@ -105,49 +109,99 @@ main(int argc, char **argv)
 {
 	CkConnector *ckc = NULL;
 	DBusError error;
-	const char *shell, *cookie;
+	const char *shell, *cookie = NULL;
 	pid_t pid;
 	int status;
+	int exit_with_session = 0;
 
 	openlog("ck-xinit-session-qubes", LOG_PID, LOG_USER);
-	ckc = ck_connector_new();
-	if (ckc != NULL) {
-        int v_true = 1;
-        uid_t v_uid = 500;
-        const char *v_display = ":0";
-        const char *v_device = "/dev/tty1";
-        dbus_error_init (&error);
-        if (ck_connector_open_session_with_parameters(ckc, &error,
-                    "is-local", &v_true,
-                    "unix-user", &v_uid,
-                    "x11-display", &v_display,
-                    "x11-display-device", &v_device,
-                    "display-device", &v_device,
-                    /* "active", &v_true, */
-                    NULL)) {
-			pid = fork();
-			switch (pid) {
-			case -1:
-				syslog(LOG_ERR, "error forking child");
-				break;
-			case 0:
-				cookie = ck_connector_get_cookie(ckc);
-				setenv("XDG_SESSION_COOKIE", cookie, 1);
-				setbusenv("XDG_SESSION_COOKIE", cookie);
-				break;
-			default:
-				waitpid(pid, &status, 0);
-				exit(status);
-				break;
+
+	if (argc > 1 && !strcmp(argv[1], "--exit-with-session")) {
+		exit_with_session = 1;
+	}
+	if (!(cookie = getenv("XDG_SESSION_COOKIE"))) {
+		// only get session cookie if we haven't it already
+		ckc = ck_connector_new();
+		if (ckc != NULL) {
+			int v_true = 1;
+			uid_t v_uid = 500;
+			const char *v_display = ":0";
+			const char *v_device = "/dev/tty1";
+			dbus_error_init (&error);
+			if (ck_connector_open_session_with_parameters(ckc, &error,
+						"is-local", &v_true,
+						"unix-user", &v_uid,
+						"x11-display", &v_display,
+						"x11-display-device", &v_device,
+						"display-device", &v_device,
+						/* "active", &v_true, */
+						NULL)) {
+				pid = fork();
+				switch (pid) {
+				case -1:
+					syslog(LOG_ERR, "error forking child");
+					break;
+				case 0:
+					// this process will hold dbus connection when --exit-with-session specified
+					// otherwise - will exec, the other one will keep connection
+					cookie = ck_connector_get_cookie(ckc);
+					break;
+				default:
+					if (exit_with_session) {
+						cookie = ck_connector_get_cookie(ckc);
+						printf("XDG_SESSION_COOKIE='%s'; export XDG_SESSION_COOKIE;\n", cookie);
+						return 0;
+					}
+					waitpid(pid, &status, 0);
+					exit(status);
+					break;
+				}
+			} else {
+				syslog(LOG_ERR, "error connecting to console-kit (%s: %s)", error.name, error.message);
 			}
 		} else {
-			syslog(LOG_ERR, "error connecting to console-kit (%s: %s)", error.name, error.message);
+			syslog(LOG_ERR, "error setting up to connect to console-kit");
 		}
-	} else {
-		syslog(LOG_ERR, "error setting up to connect to console-kit");
 	}
 	/* drop root privileges */
 	setuid(getuid());
+	if (exit_with_session) {
+		Display *display;
+		int xfd, fd;
+		fd_set select_set;
+		XEvent event;
+
+		fd = open("/dev/null", O_RDWR);
+		dup2(fd, 0);
+		dup2(fd, 1);
+		dup2(fd, 2);
+		close(fd);
+		display = XOpenDisplay(NULL);
+		xfd = ConnectionNumber(display);
+		syslog(LOG_DEBUG, "display fd: %d", xfd);
+		FD_ZERO(&select_set);
+		FD_SET(xfd, &select_set);
+		// wait for Xorg to die
+		while (select(xfd+1, &select_set, NULL, &select_set, NULL)) {
+			if (!XNoOp(display)) {
+				// assume that if NoOp failed - Xorg died, so we also
+				syslog(LOG_INFO, "X connection terminated, exiting");
+				// BTW Xlib should kill client process in case of I/O error
+				// when no custom error handler (or error handler returns). So
+				// thic code basically ahoulsn't be needed.
+				return 0;
+			}
+			// empty the event queue
+			while (XPending(display)) XNextEvent(display, &event);
+			FD_ZERO(&select_set);
+			FD_SET(xfd, &select_set);
+		}
+	} else {
+		// set environment, even when session was already started (then - make
+		// sure that also is present in dbus
+		setenv("XDG_SESSION_COOKIE", cookie, 1);
+		setbusenv("XDG_SESSION_COOKIE", cookie);
+	}
 	if (argc > 1) {
 		execvp(argv[1], argv + 1);
 	} else {
