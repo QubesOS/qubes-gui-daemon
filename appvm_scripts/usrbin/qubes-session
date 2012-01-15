@@ -43,6 +43,9 @@ VMTYPE=`/usr/bin/xenstore-read qubes_vm_type`
 UPDTYPE=`/usr/bin/xenstore-read qubes_vm_updateable`
 [[ $UPDTYPE == 'True' ]] && UPDTYPE="UpdateableVM" || UPDTYPE="NonUpdateableVM"
 
+# Gnome keyring is special case, as its env needed by nm-applet
+eval `/usr/bin/gnome-keyring-daemon --start | tee -a /tmp/qubes-session-env`
+
 for D in /etc/xdg/autostart/*.desktop; do
 	MATCH="\(QUBES\|$VMTYPE\|$UPDTYPE\)"
 	[[ -n "$XDG_CONFIG_DIRS" ]] && [[ -d "$XDG_CONFIG_DIRS/autostart" ]] && USER_AUTOSTART="$XDG_CONFIG_DIRS/autostart" || USER_AUTOSTART="$HOME/.config/autostart"
