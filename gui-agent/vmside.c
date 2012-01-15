@@ -622,6 +622,9 @@ extern void wait_for_unix_socket(int *fd);
 void mkghandles(Ghandles * g)
 {
 	char tray_sel_atom_name[64];
+	Atom net_wm_name, net_supporting_wm_check, net_supported;
+	Atom supported[3];
+
 	wait_for_unix_socket(&g->xserver_fd);	// wait for Xorg qubes_drv to connect to us
 	g->display = XOpenDisplay(NULL);
 	if (!g->display) {
@@ -644,6 +647,23 @@ void mkghandles(Ghandles * g)
 							     g->screen),
 					       WhitePixel(g->display,
 							  g->screen));
+	/* pretend that GUI agent is window manager */
+	net_wm_name = XInternAtom(g->display, "_NET_WM_NAME", False);
+	net_supporting_wm_check = XInternAtom(g->display, "_NET_SUPPORTING_WM_CHECK", False);
+	net_supported = XInternAtom(g->display, "_NET_SUPPORTED", False);
+	supported[0] = net_supported;
+	supported[1] = net_supporting_wm_check;
+	/* _NET_WM_MOVERESIZE required to disable broken GTK+ move/resize fallback */
+	supported[2] = XInternAtom(g->display, "_NET_WM_MOVERESIZE", False);
+	XChangeProperty(g->display, g->stub_win, net_wm_name, g->utf8_string_atom,
+			8, PropModeReplace, (unsigned char*)"Qubes", 5);
+	XChangeProperty(g->display, g->stub_win, net_supporting_wm_check, XA_WINDOW,
+			32, PropModeReplace, (unsigned char*)&g->stub_win, 1);
+	XChangeProperty(g->display, g->root_win, net_supporting_wm_check, XA_WINDOW,
+			32, PropModeReplace, (unsigned char*)&g->stub_win, 1);
+	XChangeProperty(g->display, g->root_win, net_supported, XA_ATOM,
+			32, PropModeReplace, (unsigned char*)supported, 3);
+
 	g->clipboard_data = NULL;
 	g->clipboard_data_len = 0;
 	snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
