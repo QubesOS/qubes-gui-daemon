@@ -56,6 +56,7 @@ struct _global_handles {
 	Atom wmProtocols;
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
 	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
+	Atom utf8_string_atom; /* Atom: UTF8_STRING */
 	int xserver_fd;
 	Window stub_win;    /* window for clipboard operations and to simulate LeaveNotify events */
 	unsigned char *clipboard_data;
@@ -356,15 +357,13 @@ void handle_targets_list(Ghandles * g, Atom Qprop, unsigned char *data,
 			 int len)
 {
 	Atom Clp = XInternAtom(g->display, "CLIPBOARD", False);
-	Atom Utf8_string_atom =
-	    XInternAtom(g->display, "UTF8_STRING", False);
 	Atom *atoms = (Atom *) data;
 	int i;
 	int have_utf8 = 0;
 	if (g->log_level > 1)
 		fprintf(stderr, "target list data size %d\n", len);
 	for (i = 0; i < len; i++) {
-		if (atoms[i] == Utf8_string_atom)
+		if (atoms[i] == g->utf8_string_atom)
 			have_utf8 = 1;
 		if (g->log_level > 1)
 			fprintf(stderr, "supported 0x%x %s\n",
@@ -372,7 +371,7 @@ void handle_targets_list(Ghandles * g, Atom Qprop, unsigned char *data,
 							     atoms[i]));
 	}
 	XConvertSelection(g->display, Clp,
-			  have_utf8 ? Utf8_string_atom : XA_STRING, Qprop,
+			  have_utf8 ? g->utf8_string_atom : XA_STRING, Qprop,
 			  g->stub_win, CurrentTime);
 }
 
@@ -638,6 +637,7 @@ void mkghandles(Ghandles * g)
 	g->wmDeleteMessage =
 	    XInternAtom(g->display, "WM_DELETE_WINDOW", False);
 	g->wmProtocols = XInternAtom(g->display, "WM_PROTOCOLS", False);
+	g->utf8_string_atom = XInternAtom(g->display, "UTF8_STRING", False);
 	g->stub_win = XCreateSimpleWindow(g->display, g->root_win,
 					       0, 0, 1, 1,
 					       0, BlackPixel(g->display,
