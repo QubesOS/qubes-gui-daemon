@@ -22,7 +22,7 @@
 CC=gcc
 
 CFLAGS+=`pkg-config --cflags dbus-1` `pkg-config --cflags ck-connector`
-LDFLAGS+=`pkg-config --libs dbus-1` `pkg-config --libs ck-connector`
+LDFLAGS+=`pkg-config --libs dbus-1` `pkg-config --libs ck-connector` -lX11
 
 all: ck-xinit-session-qubes
 ck-xinit-session-qubes: ck-xinit-session-qubes.c

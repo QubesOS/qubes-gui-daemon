@@ -56,6 +56,7 @@ struct _global_handles {
 	Atom wmProtocols;
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
 	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
+	Atom utf8_string_atom; /* Atom: UTF8_STRING */
 	int xserver_fd;
 	Window stub_win;    /* window for clipboard operations and to simulate LeaveNotify events */
 	unsigned char *clipboard_data;
@@ -356,15 +357,13 @@ void handle_targets_list(Ghandles * g, Atom Qprop, unsigned char *data,
 			 int len)
 {
 	Atom Clp = XInternAtom(g->display, "CLIPBOARD", False);
-	Atom Utf8_string_atom =
-	    XInternAtom(g->display, "UTF8_STRING", False);
 	Atom *atoms = (Atom *) data;
 	int i;
 	int have_utf8 = 0;
 	if (g->log_level > 1)
 		fprintf(stderr, "target list data size %d\n", len);
 	for (i = 0; i < len; i++) {
-		if (atoms[i] == Utf8_string_atom)
+		if (atoms[i] == g->utf8_string_atom)
 			have_utf8 = 1;
 		if (g->log_level > 1)
 			fprintf(stderr, "supported 0x%x %s\n",
@@ -372,7 +371,7 @@ void handle_targets_list(Ghandles * g, Atom Qprop, unsigned char *data,
 							     atoms[i]));
 	}
 	XConvertSelection(g->display, Clp,
-			  have_utf8 ? Utf8_string_atom : XA_STRING, Qprop,
+			  have_utf8 ? g->utf8_string_atom : XA_STRING, Qprop,
 			  g->stub_win, CurrentTime);
 }
 
@@ -623,6 +622,9 @@ extern void wait_for_unix_socket(int *fd);
 void mkghandles(Ghandles * g)
 {
 	char tray_sel_atom_name[64];
+	Atom net_wm_name, net_supporting_wm_check, net_supported;
+	Atom supported[3];
+
 	wait_for_unix_socket(&g->xserver_fd);	// wait for Xorg qubes_drv to connect to us
 	g->display = XOpenDisplay(NULL);
 	if (!g->display) {
@@ -638,12 +640,30 @@ void mkghandles(Ghandles * g)
 	g->wmDeleteMessage =
 	    XInternAtom(g->display, "WM_DELETE_WINDOW", False);
 	g->wmProtocols = XInternAtom(g->display, "WM_PROTOCOLS", False);
+	g->utf8_string_atom = XInternAtom(g->display, "UTF8_STRING", False);
 	g->stub_win = XCreateSimpleWindow(g->display, g->root_win,
 					       0, 0, 1, 1,
 					       0, BlackPixel(g->display,
 							     g->screen),
 					       WhitePixel(g->display,
 							  g->screen));
+	/* pretend that GUI agent is window manager */
+	net_wm_name = XInternAtom(g->display, "_NET_WM_NAME", False);
+	net_supporting_wm_check = XInternAtom(g->display, "_NET_SUPPORTING_WM_CHECK", False);
+	net_supported = XInternAtom(g->display, "_NET_SUPPORTED", False);
+	supported[0] = net_supported;
+	supported[1] = net_supporting_wm_check;
+	/* _NET_WM_MOVERESIZE required to disable broken GTK+ move/resize fallback */
+	supported[2] = XInternAtom(g->display, "_NET_WM_MOVERESIZE", False);
+	XChangeProperty(g->display, g->stub_win, net_wm_name, g->utf8_string_atom,
+			8, PropModeReplace, (unsigned char*)"Qubes", 5);
+	XChangeProperty(g->display, g->stub_win, net_supporting_wm_check, XA_WINDOW,
+			32, PropModeReplace, (unsigned char*)&g->stub_win, 1);
+	XChangeProperty(g->display, g->root_win, net_supporting_wm_check, XA_WINDOW,
+			32, PropModeReplace, (unsigned char*)&g->stub_win, 1);
+	XChangeProperty(g->display, g->root_win, net_supported, XA_ATOM,
+			32, PropModeReplace, (unsigned char*)supported, 3);
+
 	g->clipboard_data = NULL;
 	g->clipboard_data_len = 0;
 	snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
@@ -1147,6 +1167,7 @@ int main(int argc, char **argv)
 	send_protocol_version();
 	get_xconf_and_run_x();
 	mkghandles(&g);
+	parse_args(&g, argc, argv);
 	for (i = 0; i < ScreenCount(g.display); i++)
 		XCompositeRedirectSubwindows(g.display,
 					     RootWindow(g.display, i),

@@ -48,8 +48,8 @@ BuildRequires:  libXt-devel
 BuildRequires:  libXext-devel
 BuildRequires:	libconfig-devel
 BuildRequires:	gcc
-BuildRequires:	qubes-core-appvm-devel >= 1.6.1
-BuildRequires:	qubes-core-appvm-libs
+BuildRequires:	qubes-core-vm-devel >= 1.6.1
+BuildRequires:	qubes-core-vm-libs
 
 %define _builddir %(pwd)
 

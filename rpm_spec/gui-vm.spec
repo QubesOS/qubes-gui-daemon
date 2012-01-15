@@ -49,8 +49,8 @@ BuildRequires:	libtool-ltdl-devel
 BuildRequires:	pulseaudio-libs-devel >= 0.9.21, pulseaudio-libs-devel <= 0.9.23
 BuildRequires:	xen-devel
 BuildRequires:	xorg-x11-server-devel
-BuildRequires:	qubes-core-appvm-devel >= 1.6.1
-BuildRequires:	qubes-core-appvm-libs
+BuildRequires:	qubes-core-vm-devel >= 1.6.1
+BuildRequires:	qubes-core-vm-libs
 BuildRequires:	ConsoleKit-devel
 Requires:	qubes-core-vm xen-qubes-vm-essentials
 
@@ -97,11 +97,20 @@ install -D appvm_scripts/etc/profile.d/qubes-session.sh $RPM_BUILD_ROOT/etc/prof
 install -D appvm_scripts/etc/sysconfig/desktop $RPM_BUILD_ROOT/etc/sysconfig/desktop
 install -D appvm_scripts/etc/sysconfig/modules/qubes_u2mfn.modules $RPM_BUILD_ROOT/etc/sysconfig/modules/qubes_u2mfn.modules
 install -D appvm_scripts/etc/X11/xinit/xinitrc.d/qubes_keymap.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/qubes_keymap.sh
+install -D appvm_scripts/etc/X11/xinit/xinitrc.d/00-ck-xinit-session.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/00-ck-xinit-session.sh
+install -D appvm_scripts/etc/X11/xinit/xinitrc.d/10-ck-register-session.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/10-ck-register-session.sh
 install -D appvm_scripts/etc/xdgautostart/qubes-polkit-gnome-authentication-agent-1.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/qubes-polkit-gnome-authentication-agent-1.desktop
+install -D appvm_scripts/qubes-gui-agent.service $RPM_BUILD_ROOT/lib/systemd/system/qubes-gui-agent.service
 install -d $RPM_BUILD_ROOT/var/log/qubes
 
 %post
-chkconfig qubes_gui on
+if [ -x /bin/systemctl ]; then
+    /bin/systemctl enable qubes-gui-agent.service
+    # For clean upgrades
+    chkconfig qubes_gui off
+else
+    chkconfig qubes_gui on
+fi
 
 sed -i '/^autospawn/d' /etc/pulse/client.conf
 echo autospawn=no >> /etc/pulse/client.conf
@@ -109,6 +118,7 @@ echo autospawn=no >> /etc/pulse/client.conf
 %preun
 if [ "$1" = 0 ] ; then
 	chkconfig qubes_gui off
+    [ -x /bin/systemctl ] && /bin/systemctl disable qubes-gui-agent.service
 fi
 
 %triggerin -- pulseaudio-libs
@@ -138,7 +148,10 @@ rm -rf $RPM_BUILD_ROOT
 /etc/profile.d/qubes_gui.csh
 /etc/profile.d/qubes-session.sh
 /etc/X11/xinit/xinitrc.d/qubes_keymap.sh
+/etc/X11/xinit/xinitrc.d/00-ck-xinit-session.sh
+/etc/X11/xinit/xinitrc.d/10-ck-register-session.sh
 %config /etc/sysconfig/desktop
 /etc/xdg/autostart/qubes-polkit-gnome-authentication-agent-1.desktop
 /etc/sysconfig/modules/qubes_u2mfn.modules
+/lib/systemd/system/qubes-gui-agent.service
 %dir /var/log/qubes

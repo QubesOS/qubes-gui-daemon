@@ -1,0 +1,16 @@
+[Unit]
+Description=Qubes GUI Agent
+After=qubes-meminfo-writer.service console-kit-daemon.service qubes-dvm.service
+Wants=console-kit-daemon.service
+
+[Service]
+# pretend tha user is at local console
+ExecStartPre=/bin/touch /var/run/console/user
+# clean env
+ExecStartPre=/bin/rm -f /tmp/qubes-session-env /tmp/qubes-session-waiter
+ExecStart=/usr/bin/qubes_gui
+StandardOutput=syslog
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=multi-user.target
