@@ -162,6 +162,16 @@ main(int argc, char **argv)
 		} else {
 			syslog(LOG_ERR, "error setting up to connect to console-kit");
 		}
+	} else {
+		syslog(LOG_INFO, "cookie already present");
+		// when got here, we haven't forked, so just do what parent process
+		// should do with --exit-with-session -> return
+		if (exit_with_session) {
+			// set environment, even when session was already started (then - make
+			// sure that also is present in dbus
+			setbusenv("XDG_SESSION_COOKIE", cookie);
+			return 0;
+		}
 	}
 	/* drop root privileges */
 	setuid(getuid());
