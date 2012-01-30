@@ -104,7 +104,7 @@ install -D appvm_scripts/qubes-gui-agent.service $RPM_BUILD_ROOT/lib/systemd/sys
 install -d $RPM_BUILD_ROOT/var/log/qubes
 
 %post
-if [ -x /bin/systemctl ]; then
+if [ -x /bin/systemctl ] && readlink /sbin/init | grep -q systemd; then
     /bin/systemctl enable qubes-gui-agent.service
     # For clean upgrades
     chkconfig qubes_gui off
