@@ -1831,7 +1831,7 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 	/* defaults */
 	g->log_level = 1;
 
-	while ((opt = getopt(argc, argv, "d:e:c:l:i:")) != -1) {
+	while ((opt = getopt(argc, argv, "d:e:c:l:i:vq")) != -1) {
 		switch (opt) {
 		case 'd':
 			g->domid = atoi(optarg);
