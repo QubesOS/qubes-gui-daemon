@@ -35,5 +35,12 @@ int peer_server_init(int port);
 char *peer_client_init(int dom, int port);
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void));
 void vchan_close();
+int vchan_fd();
+
+/* used only in stubdom */
+int vchan_handle_connected();
+void vchan_handler_called();
+void vchan_unmask_channel();
+
 
 #endif /* _QUBES_TXRX_H */

@@ -253,3 +253,24 @@ void vchan_close()
 		libvchan_close(ctrl);
 	vchan_is_closed = 1;
 }
+
+int vchan_fd()
+{
+	return libvchan_fd_for_select(ctrl);
+}
+
+int vchan_handle_connected()
+{
+	return libvchan_server_handle_connected(ctrl);
+}
+
+void vchan_handler_called()
+{
+	// clear the pending flag, will never block if called as name suggest
+	libvchan_wait(ctrl);
+}
+
+void vchan_unmask_channel()
+{
+	libvchan_prepare_to_select(ctrl);
+}
