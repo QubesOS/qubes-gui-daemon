@@ -19,6 +19,9 @@
  *
  */
 
+#ifndef _QUBES_TXRX_H
+#define _QUBES_TXRX_H
+
 #include <sys/select.h>
 int write_data(char *buf, int size);
 int real_write_message(char *hdr, int size, char *data, int datasize);
@@ -32,3 +35,5 @@ int peer_server_init(int port);
 char *peer_client_init(int dom, int port);
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void));
 void vchan_close();
+
+#endif /* _QUBES_TXRX_H */
