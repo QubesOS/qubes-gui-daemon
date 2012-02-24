@@ -180,7 +180,12 @@ void wait_for_vchan_or_argfd(int nfd, int *fd, fd_set * retset)
 
 int peer_server_init(int port)
 {
+#ifdef CONFIG_STUBDOM
+	double_buffer_init();
+	double_buffered = 1;
+#else
 	double_buffered = 0; // writes to vchan may block
+#endif
 	is_server = 1;
 	ctrl = libvchan_server_init(port);
 	if (!ctrl) {
