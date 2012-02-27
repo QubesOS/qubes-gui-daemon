@@ -25,6 +25,7 @@
 #include <libvchan.h>
 #include <xs.h>
 #include <xenctrl.h>
+#include <sys/select.h>
 #include "double_buffer.h"
 
 struct libvchan *ctrl;
@@ -179,7 +180,12 @@ void wait_for_vchan_or_argfd(int nfd, int *fd, fd_set * retset)
 
 int peer_server_init(int port)
 {
+#ifdef CONFIG_STUBDOM
+	double_buffer_init();
+	double_buffered = 1;
+#else
 	double_buffered = 0; // writes to vchan may block
+#endif
 	is_server = 1;
 	ctrl = libvchan_server_init(port);
 	if (!ctrl) {
@@ -251,4 +257,25 @@ void vchan_close()
 	if (!vchan_is_closed)
 		libvchan_close(ctrl);
 	vchan_is_closed = 1;
+}
+
+int vchan_fd()
+{
+	return libvchan_fd_for_select(ctrl);
+}
+
+int vchan_handle_connected()
+{
+	return libvchan_server_handle_connected(ctrl);
+}
+
+void vchan_handler_called()
+{
+	// clear the pending flag, will never block if called as name suggest
+	libvchan_wait(ctrl);
+}
+
+void vchan_unmask_channel()
+{
+	libvchan_prepare_to_select(ctrl);
 }
