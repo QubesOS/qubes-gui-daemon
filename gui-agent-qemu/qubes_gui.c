@@ -216,6 +216,7 @@ void handle_button(QubesGuiState *qs)
 {
 	struct msg_button key;
 	int button = 0;
+	int z = 0;
 
 	read_data((char *) &key, sizeof(key));
 	if (qs->log_level > 1)
@@ -229,8 +230,12 @@ void handle_button(QubesGuiState *qs)
 		button = MOUSE_EVENT_RBUTTON;
 	else if (key.button == Button2)
 		button = MOUSE_EVENT_MBUTTON;
+	else if (key.button == Button4)
+		z = -1;
+	else if (key.button == Button5)
+		z = 1;
 
-	if (button) {
+	if (button || z) {
 		if (key.type == ButtonPress)
 			qs->buttons |=  button;
 		else
@@ -239,7 +244,7 @@ void handle_button(QubesGuiState *qs)
 			kbd_mouse_event(
 					qs->x * 0x7FFF / (ds_get_width(qs->ds) - 1),
 					qs->y * 0x7FFF / (ds_get_height(qs->ds) - 1),
-					0,
+					z,
 					qs->buttons);
 		else
 			kbd_mouse_event(0, 0, 0, qs->buttons);
