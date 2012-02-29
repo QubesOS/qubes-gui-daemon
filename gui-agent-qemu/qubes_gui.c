@@ -19,7 +19,6 @@
 #include <shm_cmd.h>
 #include <libvchan.h>
 #include <txrx.h>
-#include <double_buffer.h>
 #include <qlimits.h>
 
 struct QubesGuiState *qs;
@@ -30,8 +29,6 @@ static void *vga_vram;
 
 static unsigned char linux2scancode[KEY_MAX + 1];
 static DisplayChangeListener *dcl;
-
-extern int double_buffered;
 
 extern uint32_t vga_ram_size;
 
@@ -75,7 +72,6 @@ void send_pixmap_mfns(QubesGuiState *qs)
 {
 	struct shm_cmd shmcmd;
 	struct msghdr hdr;
-	int ret, rcvd = 0;
 	uint32_t *mfns;
     int n = vga_ram_size / XC_PAGE_SIZE;
 	int i;
@@ -119,7 +115,6 @@ void send_wmhints(QubesGuiState *qs)
 {
 	struct msghdr hdr;
 	struct msg_window_hints msg;
-	long supplied_hints;
 
 	// pass only some hints
 	msg.flags = (PMinSize | PMaxSize);
@@ -193,30 +188,34 @@ void send_clipboard_data(char *data, int len)
 void handle_keypress(QubesGuiState *qs)
 {
 	struct msg_keypress key;
-	int scancode;
+	uint32_t scancode;
 	
 	read_data((char *) &key, sizeof(key));
 
-	scancode = key.keycode;
-	scancode = linux2scancode[key.keycode];
-	fprintf(stderr, "Received keycode %d(0x%x), converted to %d(0x%x)\n", key.keycode, key.keycode, scancode, scancode);
+	scancode = qubes_keycode2scancode[key.keycode];
+	if (qs->log_level > 1)
+		fprintf(stderr, "Received keycode %d(0x%x), converted to %d(0x%x)\n", key.keycode, key.keycode, scancode, scancode);
 	if (!scancode) {
 		fprintf(stderr, "Can't convert keycode %x to scancode\n", key.keycode);
 		return;
 	}
-	if (scancode & 0x80) {
-		kbd_put_keycode(0xe0);
-		scancode &= 0x7f;
-	}
+	if (key.type != KeyPress && (scancode & 0x80))
+		// if scancode already have 0x80 bit set do not output key release
+		return;
+	if (scancode & 0xff000000)
+		kbd_put_keycode((scancode & 0xff000000) >> 24);
+	if (scancode & 0xff0000)
+		kbd_put_keycode((scancode & 0xff0000) >> 16);
+	if (scancode & 0xff00)
+		kbd_put_keycode((scancode & 0xff00) >> 8);
 	if (key.type != KeyPress)
 		scancode |= 0x80;
-	kbd_put_keycode(scancode);
+	kbd_put_keycode(scancode & 0xff);
 }
 
 void handle_button(QubesGuiState *qs)
 {
 	struct msg_button key;
-	int ret;
 	int button = 0;
 
 	read_data((char *) &key, sizeof(key));
@@ -253,7 +252,6 @@ void handle_button(QubesGuiState *qs)
 void handle_motion(QubesGuiState *qs)
 {
 	struct msg_motion key;
-	int ret;
 	int new_x, new_y;
 
 	read_data((char *) &key, sizeof(key));
@@ -344,12 +342,7 @@ static void qubesgui_pv_refresh(DisplayState *ds)
 static void qubesgui_message_handler(void *opaque)
 {
 #define KBD_NUM_BATCH 64
-    union xenkbd_in_event buf[KBD_NUM_BATCH];
-    int n, i;
     QubesGuiState *qs = opaque;
-    DisplayState *s = qs->ds;
-    static int buttons;
-    static int x, y;
 	struct msghdr hdr;
 	char discard[256];
 
@@ -512,7 +505,6 @@ static void qubesgui_pv_display_allocator(void)
 
 int qubesgui_pv_display_init(DisplayState *ds)
 {
-    int i;
 
 	fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
     qs = qemu_mallocz(sizeof(QubesGuiState));
