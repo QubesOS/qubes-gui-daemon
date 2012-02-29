@@ -541,7 +541,7 @@ int qubesgui_pv_display_init(DisplayState *ds)
 	fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
     register_displaychangelistener(ds, dcl);
 
-	libvchan_server_init(6000);
+    peer_server_init(6000);
     qemu_set_fd_handler(vchan_fd(), qubesgui_message_handler, NULL, qs);
 
     return 0;
