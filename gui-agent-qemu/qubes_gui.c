@@ -27,7 +27,6 @@ struct QubesGuiState *qs;
 
 static void *vga_vram;
 
-static unsigned char linux2scancode[KEY_MAX + 1];
 static DisplayChangeListener *dcl;
 
 extern uint32_t vga_ram_size;
@@ -411,27 +410,6 @@ out:
 	vchan_unmask_channel();
 }
 
-static void kbd_init_scancodes()
-{
-    int scancode, keycode;
-#if 0
-	// original version
-    for (scancode = 0; scancode < 128; scancode++) {
-        keycode = atkbd_set2_keycode[atkbd_unxlate_table[scancode]];
-        linux2scancode[keycode] = scancode;
-        keycode = atkbd_set2_keycode[atkbd_unxlate_table[scancode] | 0x80];
-        linux2scancode[keycode] = scancode | 0x80;
-    }
-#else
-	// magic XXX
-    for (keycode = 0; keycode < 128; keycode++) {
-		linux2scancode[keycode] = keycode-8;
-    }
-#endif
-
-}
-
-
 static DisplaySurface* qubesgui_create_displaysurface(int width, int height)
 {
     DisplaySurface *surface = (DisplaySurface*) qemu_mallocz(sizeof(DisplaySurface));
@@ -517,9 +495,6 @@ int qubesgui_pv_display_init(DisplayState *ds)
 
 	fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
     qubesgui_pv_display_allocator();
-
-	fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
-	kbd_init_scancodes();
 
 	fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
     dcl = qemu_mallocz(sizeof(DisplayChangeListener));

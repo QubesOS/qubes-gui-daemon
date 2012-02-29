@@ -70,4 +70,6 @@ typedef struct QubesGuiState {
 int qubesgui_pv_display_init(struct DisplayState *ds);
 void qubesgui_init_connection(QubesGuiState *qs);
 
+extern uint32_t qubes_keycode2scancode[256];
+
 #endif /* _QUBES_GUI_QEMU_H */
