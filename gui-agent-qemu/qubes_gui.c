@@ -184,21 +184,32 @@ void send_clipboard_data(char *data, int len)
 	write_data((char *) data, len);
 }
 
-void handle_keypress(QubesGuiState *qs)
+int is_bitset(unsigned char *keys, int num)
 {
-	struct msg_keypress key;
-	uint32_t scancode;
-	
-	read_data((char *) &key, sizeof(key));
+	return (keys[num / 8] >> (num % 8)) & 1;
+}
 
-	scancode = qubes_keycode2scancode[key.keycode];
+void setbit(unsigned char *keys, int num, int value)
+{
+	if (value)
+		keys[num / 8] |= 1<<(num % 8);
+	else
+		keys[num / 8] &= ~(1<<(num % 8));
+}
+
+void send_keycode(QubesGuiState *qs, int keycode, int release)
+{
+	uint32_t scancode = qubes_keycode2scancode[keycode];
+
+	setbit(qs->local_keys, keycode, !release);
+
 	if (qs->log_level > 1)
-		fprintf(stderr, "Received keycode %d(0x%x), converted to %d(0x%x)\n", key.keycode, key.keycode, scancode, scancode);
+		fprintf(stderr, "Received keycode %d(0x%x), converted to %d(0x%x)\n", keycode, keycode, scancode, scancode);
 	if (!scancode) {
-		fprintf(stderr, "Can't convert keycode %x to scancode\n", key.keycode);
+		fprintf(stderr, "Can't convert keycode %x to scancode\n", keycode);
 		return;
 	}
-	if (key.type != KeyPress && (scancode & 0x80))
+	if (release && (scancode & 0x80))
 		// if scancode already have 0x80 bit set do not output key release
 		return;
 	if (scancode & 0xff000000)
@@ -207,9 +218,19 @@ void handle_keypress(QubesGuiState *qs)
 		kbd_put_keycode((scancode & 0xff0000) >> 16);
 	if (scancode & 0xff00)
 		kbd_put_keycode((scancode & 0xff00) >> 8);
-	if (key.type != KeyPress)
+	if (release)
 		scancode |= 0x80;
 	kbd_put_keycode(scancode & 0xff);
+}
+
+void handle_keypress(QubesGuiState *qs)
+{
+	struct msg_keypress key;
+	uint32_t scancode;
+
+	read_data((char *) &key, sizeof(key));
+
+	send_keycode(qs, key.keycode, key.type != KeyPress);
 }
 
 void handle_button(QubesGuiState *qs)
@@ -301,6 +322,21 @@ void handle_clipboard_data(QubesGuiState *qs, int len)
 	qs->clipboard_data[len] = 0;
 }
 
+void handle_keymap_notify(QubesGuiState *qs)
+{
+	int i;
+	unsigned char remote_keys[32];
+	read_struct(remote_keys);
+	for (i = 0; i < 256; i++) {
+		if (!is_bitset(remote_keys, i) && is_bitset(qs->local_keys, i)) {
+			send_keycode(qs, i, 1);
+			if (qs->log_level > 1)
+				fprintf(stderr,
+					"handle_keymap_notify: unsetting key %d\n",
+					i);
+		}
+	}
+}
 void send_protocol_version()
 {   
 	uint32_t version = QUBES_GUID_PROTOCOL_VERSION;
@@ -399,9 +435,7 @@ static void qubesgui_message_handler(void *opaque)
 			handle_clipboard_data(qs, hdr.window);
 			break;
 		case MSG_KEYMAP_NOTIFY:
-			// TODO ?
-			//ignore
-			read_data(discard, sizeof(struct msg_keymap_notify));
+			handle_keymap_notify(qs);
 			break;
 		case MSG_CONFIGURE:
 			handle_configure(qs);
