@@ -264,6 +264,7 @@ int vchan_fd()
 	return libvchan_fd_for_select(ctrl);
 }
 
+#ifdef CONFIG_STUBDOM
 int vchan_handle_connected()
 {
 	return libvchan_server_handle_connected(ctrl);
@@ -279,3 +280,4 @@ void vchan_unmask_channel()
 {
 	libvchan_prepare_to_select(ctrl);
 }
+#endif

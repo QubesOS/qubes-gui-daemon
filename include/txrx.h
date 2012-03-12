@@ -38,9 +38,11 @@ void vchan_close();
 int vchan_fd();
 
 /* used only in stubdom */
+#ifdef CONFIG_STUBDOM
 int vchan_handle_connected();
 void vchan_handler_called();
 void vchan_unmask_channel();
+#endif
 
 
 #endif /* _QUBES_TXRX_H */
