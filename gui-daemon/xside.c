@@ -136,10 +136,8 @@ Ghandles ghandles;
 
 /* macro used to verify data from VM */
 #define VERIFY(x) if (!(x)) { \
-		fprintf(stderr, \
-			"%s:%d: Received values doesn't pass verification: %s\nAborting\n", \
-				__FILE__, __LINE__, __STRING(x)); \
-		exit(1); \
+		ask_whether_verify_failed(g, __STRING(x)); \
+		return; \
 	}
 
 /* calculate virtual width */
@@ -161,6 +159,35 @@ Ghandles ghandles;
 
 void inter_appviewer_lock(int mode);
 void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
+
+/* ask user when VM sent invalid message */
+void ask_whether_verify_failed(Ghandles * g, const char *cond)
+{
+	char text[1024];
+	int ret;
+	snprintf(text, sizeof(text),
+		 "kdialog --yesnocancel "
+		 "'VMapp \"%s\" has sent invalid message, it shouldn't normally happend. Condition: %s. Do you want to terminate this VM immediately? "
+		 "\"No\" will terminate only GUI daemon, cancel will just ignore this message'",
+		 g->vmname, cond);
+	do {
+		ret = system(text);
+		ret = WEXITSTATUS(ret);
+//              fprintf(stderr, "ret=%d\n", ret);
+		switch (ret) {
+		case 2:	/*cancel */
+			break;
+		case 1:	/* NO */
+			exit(1);
+		case 0:	/*YES */
+			execl("/usr/sbin/xl", "xl", "destroy", g->vmname, (char*)NULL);
+			break;
+		default:
+			fprintf(stderr, "Problems executing kdialog ?\n");
+			exit(1);
+		}
+	} while (ret == 2);
+}
 
 /* prepare graphic context for painting colorful frame */
 void get_frame_gc(Ghandles * g, char *name)
