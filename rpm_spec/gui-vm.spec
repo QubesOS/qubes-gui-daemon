@@ -84,7 +84,6 @@ install -D appvm_scripts/usrbin/qubes-session $RPM_BUILD_ROOT/usr/bin/qubes-sess
 install -D appvm_scripts/usrbin/qubes_run_xorg.sh $RPM_BUILD_ROOT/usr/bin/qubes_run_xorg.sh
 install -D appvm_scripts/usrbin/qubes_xorg_wrapper.sh $RPM_BUILD_ROOT/usr/bin/qubes_xorg_wrapper.sh
 install -D appvm_scripts/usrbin/qubes-change-keyboard-layout $RPM_BUILD_ROOT/usr/bin/qubes-change-keyboard-layout
-install -D appvm_scripts/usrbin/qubes-restore-keyboard-layout $RPM_BUILD_ROOT/usr/bin/qubes-restore-keyboard-layout
 install -D consolekit/ck-xinit-session-qubes $RPM_BUILD_ROOT/usr/bin/ck-xinit-session-qubes
 install -D pulse/start-pulseaudio-with-vchan $RPM_BUILD_ROOT/usr/bin/start-pulseaudio-with-vchan
 install -D pulse/libsetup-vchan-early.so $RPM_BUILD_ROOT/%{_libdir}/libsetup-vchan-early.so
@@ -102,7 +101,6 @@ install -D appvm_scripts/etc/X11/xinit/xinitrc.d/qubes_keymap.sh $RPM_BUILD_ROOT
 install -D appvm_scripts/etc/X11/xinit/xinitrc.d/00-ck-xinit-session.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/00-ck-xinit-session.sh
 install -D appvm_scripts/etc/X11/xinit/xinitrc.d/10-ck-register-session.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/10-ck-register-session.sh
 install -D appvm_scripts/etc/xdgautostart/qubes-polkit-gnome-authentication-agent-1.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/qubes-polkit-gnome-authentication-agent-1.desktop
-install -D appvm_scripts/etc/xdgautostart/qubes-keyboard-layout.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/qubes-keyboard-layout.desktop
 install -D appvm_scripts/qubes-gui-agent.service $RPM_BUILD_ROOT/lib/systemd/system/qubes-gui-agent.service
 install -d $RPM_BUILD_ROOT/var/log/qubes
 
@@ -140,7 +138,6 @@ rm -rf $RPM_BUILD_ROOT
 /usr/bin/qubes_run_xorg.sh
 /usr/bin/qubes_xorg_wrapper.sh
 /usr/bin/qubes-change-keyboard-layout
-/usr/bin/qubes-restore-keyboard-layout
 %attr(4755,root,root)/usr/bin/ck-xinit-session-qubes
 /usr/bin/start-pulseaudio-with-vchan
 %{_libdir}/libsetup-vchan-early.so
@@ -157,7 +154,6 @@ rm -rf $RPM_BUILD_ROOT
 /etc/X11/xinit/xinitrc.d/10-ck-register-session.sh
 %config /etc/sysconfig/desktop
 /etc/xdg/autostart/qubes-polkit-gnome-authentication-agent-1.desktop
-/etc/xdg/autostart/qubes-keyboard-layout.desktop
 /etc/sysconfig/modules/qubes_u2mfn.modules
 /lib/systemd/system/qubes-gui-agent.service
 %dir /var/log/qubes
