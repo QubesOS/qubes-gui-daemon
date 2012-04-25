@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Qubes keyboard layout
+Comment=Qubes keyboard layout
+Exec=/usr/bin/qubes-restore-keyboard-layout
+Terminal=false
+Type=Application
+Categories=
+OnlyShowIn=QUBES;
