@@ -164,29 +164,35 @@ void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 void ask_whether_verify_failed(Ghandles * g, const char *cond)
 {
 	char text[1024];
-	int ret;
+	int ret = 1;
+	pid_t pid;
 	snprintf(text, sizeof(text),
-		 "kdialog --yesnocancel "
-		 "'VMapp \"%s\" has sent invalid message, it shouldn't normally happend. Condition: %s. Do you want to terminate this VM immediately? "
-		 "\"No\" will terminate only GUI daemon, cancel will just ignore this message'",
+		 "VMapp \"%s\" has sent invalid message, it shouldn't normally happend. Condition: %s. Do you want to terminate this VM immediately? "
+		 "\"No\" will terminate only GUI daemon, cancel will just ignore this message",
 		 g->vmname, cond);
-	do {
-		ret = system(text);
-		ret = WEXITSTATUS(ret);
-//              fprintf(stderr, "ret=%d\n", ret);
-		switch (ret) {
-		case 2:	/*cancel */
-			break;
-		case 1:	/* NO */
+	pid = fork();
+	switch (pid) {
+		case 0:
+			execlp("kdialog", "kdialog", "--yesnocancel", text, (char*)NULL);
+		case -1:
+			perror("fork");
 			exit(1);
-		case 0:	/*YES */
-			execl("/usr/sbin/xl", "xl", "destroy", g->vmname, (char*)NULL);
-			break;
 		default:
-			fprintf(stderr, "Problems executing kdialog ?\n");
-			exit(1);
-		}
-	} while (ret == 2);
+			waitpid(pid, &ret, 0);
+			ret = WEXITSTATUS(ret);
+	}
+	switch (ret) {
+	case 2:	/*cancel */
+		break;
+	case 1:	/* NO */
+		exit(1);
+	case 0:	/*YES */
+		execl("/usr/sbin/xl", "xl", "destroy", g->vmname, (char*)NULL);
+		break;
+	default:
+		fprintf(stderr, "Problems executing kdialog ?\n");
+		exit(1);
+	}
 }
 
 /* prepare graphic context for painting colorful frame */
