@@ -136,8 +136,8 @@ Ghandles ghandles;
 
 /* macro used to verify data from VM */
 #define VERIFY(x) if (!(x)) { \
-		ask_whether_verify_failed(g, __STRING(x)); \
-		return; \
+		if (ask_whether_verify_failed(g, __STRING(x))) \
+			return; \
 	}
 
 /* calculate virtual width */
@@ -161,19 +161,27 @@ void inter_appviewer_lock(int mode);
 void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 
 /* ask user when VM sent invalid message */
-void ask_whether_verify_failed(Ghandles * g, const char *cond)
+int ask_whether_verify_failed(Ghandles * g, const char *cond)
 {
 	char text[1024];
 	int ret = 1;
 	pid_t pid;
+	fprintf(stderr, "Verify failed: %s\n", cond);
 	snprintf(text, sizeof(text),
-		 "VMapp \"%s\" has sent invalid message, it shouldn't normally happend. Condition: %s. Do you want to terminate this VM immediately? "
-		 "\"No\" will terminate only GUI daemon, cancel will just ignore this message",
-		 g->vmname, cond);
+			"The domain %s attempted to perform an invalid or suspicious GUI "
+			"request. This might be a sign that the domain has been compromised "
+			"and is attempting to compromise the GUI daemon (Dom0 domain). In "
+			"rare cases, however, it might be possible that a legitimate "
+			"application trigger such condition (check the guid logs for more "
+			"information). <br/><br/>"
+			"Click \"Terminate\" to terminate this domain immediately, or "
+			"\"Ignore\" to ignore this condition check and allow the GUI request "
+			"to proceed.",
+		 g->vmname);
 	pid = fork();
 	switch (pid) {
 		case 0:
-			execlp("kdialog", "kdialog", "--yesnocancel", text, (char*)NULL);
+			execlp("kdialog", "kdialog", "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
 		case -1:
 			perror("fork");
 			exit(1);
@@ -182,17 +190,20 @@ void ask_whether_verify_failed(Ghandles * g, const char *cond)
 			ret = WEXITSTATUS(ret);
 	}
 	switch (ret) {
-	case 2:	/*cancel */
-		break;
+//	case 2:	/*cancel */
+//		break;
+	case 0:	/* YES */
+		return 0;
 	case 1:	/* NO */
-		exit(1);
-	case 0:	/*YES */
 		execl("/usr/sbin/xl", "xl", "destroy", g->vmname, (char*)NULL);
-		break;
+		perror("Problems executing xl");
+		exit(1);
 	default:
 		fprintf(stderr, "Problems executing kdialog ?\n");
 		exit(1);
 	}
+	/* should never happend */
+	return 1;
 }
 
 /* prepare graphic context for painting colorful frame */
