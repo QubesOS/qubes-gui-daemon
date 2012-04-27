@@ -732,10 +732,8 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 		override_redirect = 1;
 	else
 		override_redirect = 0;
-	VERIFY((int) untrusted_conf.x >= -g->root_width
-	       && (int) untrusted_conf.x <= 2 * g->root_width);
-	VERIFY((int) untrusted_conf.y >= -g->root_height
-	       && (int) untrusted_conf.y <= 2 * g->root_height);
+	/* there is no really good limits for x/y, so pass them to Xorg and hope
+	 * that everything will be ok... */
 	x = untrusted_conf.x;
 	y = untrusted_conf.y;
 	/* sanitize end */
@@ -1237,10 +1235,8 @@ void handle_create(Ghandles * g, XID window)
 	    min((int) untrusted_crt.width, MAX_WINDOW_WIDTH);
 	vm_window->height =
 	    min((int) untrusted_crt.height, MAX_WINDOW_HEIGHT);
-	VERIFY((int) untrusted_crt.x >= -g->root_width
-	       && (int) untrusted_crt.x <= 2 * g->root_width);
-	VERIFY((int) untrusted_crt.y >= -g->root_height
-	       && (int) untrusted_crt.y <= 2 * g->root_height);
+	/* there is no really good limits for x/y, so pass them to Xorg and hope
+	 * that everything will be ok... */
 	vm_window->x = untrusted_crt.x;
 	vm_window->y = untrusted_crt.y;
 	if (untrusted_crt.override_redirect)
