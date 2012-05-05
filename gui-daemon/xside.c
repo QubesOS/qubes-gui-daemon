@@ -519,12 +519,6 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 	struct msg_button k;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
-// for debugging only, inactive
-	if (g->log_level > 1 && ev->button == 4) {
-		dump_mapped(g);
-		return;
-	}
-
 	g->last_input_window = vm_window;
 	k.type = ev->type;
 
