@@ -351,6 +351,9 @@ static void qubesgui_pv_update(DisplayState *ds, int x, int y, int w, int h)
     QubesGuiState *qs = ds->opaque;
 	if (!qs->init_done)
 		return;
+	// ignore one-line updates, Windows send them constantly at no reason
+	if (h == 1)
+		return;
     process_pv_update(qs, x, y, w, h);
 }
 
