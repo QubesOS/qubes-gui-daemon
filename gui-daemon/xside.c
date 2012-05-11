@@ -164,6 +164,7 @@ void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 int ask_whether_verify_failed(Ghandles * g, const char *cond)
 {
 	char text[1024];
+	char dontagain_param[128];
 	int ret = 1;
 	pid_t pid;
 	fprintf(stderr, "Verify failed: %s\n", cond);
@@ -192,14 +193,15 @@ int ask_whether_verify_failed(Ghandles * g, const char *cond)
 			"Do you allow this VM to continue running?",
 		 g->vmname);
 #endif
+	snprintf(dontagain_param, sizeof(dontagain_param), "qubes-quid-%s:%s", g->vmname, cond);
 
 	pid = fork();
 	switch (pid) {
 		case 0:
 #ifdef NEW_KDIALOG
-			execlp("kdialog", "kdialog", "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
+			execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
 #else
-			execlp("kdialog", "kdialog", "--warningyesno", text, (char*)NULL);
+			execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--warningyesno", text, (char*)NULL);
 #endif
 		case -1:
 			perror("fork");
