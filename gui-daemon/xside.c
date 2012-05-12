@@ -164,9 +164,13 @@ void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 int ask_whether_verify_failed(Ghandles * g, const char *cond)
 {
 	char text[1024];
+	char dontagain_param[128];
 	int ret = 1;
 	pid_t pid;
 	fprintf(stderr, "Verify failed: %s\n", cond);
+	/* to be enabled with KDE >= 4.6 in dom0 */
+	//#define NEW_KDIALOG
+#ifdef NEW_KDIALOG
 	snprintf(text, sizeof(text),
 			"The domain %s attempted to perform an invalid or suspicious GUI "
 			"request. This might be a sign that the domain has been compromised "
@@ -178,10 +182,27 @@ int ask_whether_verify_failed(Ghandles * g, const char *cond)
 			"\"Ignore\" to ignore this condition check and allow the GUI request "
 			"to proceed.",
 		 g->vmname);
+#else
+	snprintf(text, sizeof(text),
+			"The domain %s attempted to perform an invalid or suspicious GUI "
+			"request. This might be a sign that the domain has been compromised "
+			"and is attempting to compromise the GUI daemon (Dom0 domain). In "
+			"rare cases, however, it might be possible that a legitimate "
+			"application trigger such condition (check the guid logs for more "
+			"information). <br/><br/>"
+			"Do you allow this VM to continue running?",
+		 g->vmname);
+#endif
+	snprintf(dontagain_param, sizeof(dontagain_param), "qubes-quid-%s:%s", g->vmname, cond);
+
 	pid = fork();
 	switch (pid) {
 		case 0:
-			execlp("kdialog", "kdialog", "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
+#ifdef NEW_KDIALOG
+			execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
+#else
+			execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--warningyesno", text, (char*)NULL);
+#endif
 		case -1:
 			perror("fork");
 			exit(1);
