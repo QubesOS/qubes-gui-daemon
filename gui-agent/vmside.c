@@ -1136,7 +1136,7 @@ void parse_args(Ghandles * g, int argc, char **argv)
 	int opt;
 
 	// defaults
-	g->log_level = 1;
+	g->log_level = 0;
 	while ((opt = getopt(argc, argv, "qvh")) != -1) {
 		switch (opt) {
 		case 'q':
