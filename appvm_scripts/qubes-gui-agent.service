@@ -8,9 +8,10 @@ Wants=console-kit-daemon.service
 ExecStartPre=/bin/touch /var/run/console/user
 # clean env
 ExecStartPre=/bin/rm -f /tmp/qubes-session-env /tmp/qubes-session-waiter
-ExecStart=/usr/bin/qubes_gui
+ExecStart=/usr/bin/qubes_gui $GUI_OPTS
 StandardOutput=syslog
 Environment=DISPLAY=:0
+EnvironmentFile=-/var/run/qubes-service-environment
 
 [Install]
 WantedBy=multi-user.target
