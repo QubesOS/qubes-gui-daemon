@@ -909,10 +909,11 @@ void handle_configure(Ghandles * g, XID winid)
 	XGetWindowAttributes(g->display, winid, &attr);
 	read_data((char *) &r, sizeof(r));
 	XMoveResizeWindow(g->display, winid, r.x, r.y, r.width, r.height);
-	fprintf(stderr,
-		"configure msg, x/y %d %d (was %d %d), w/h %d %d (was %d %d)\n",
-		r.x, r.y, attr.x, attr.y, r.width, r.height, attr.width,
-		attr.height);
+	if (g->log_level > 0)
+		fprintf(stderr,
+			"configure msg, x/y %d %d (was %d %d), w/h %d %d (was %d %d)\n",
+			r.x, r.y, attr.x, attr.y, r.width, r.height, attr.width,
+			attr.height);
 
 }
 
@@ -1136,7 +1137,7 @@ void parse_args(Ghandles * g, int argc, char **argv)
 	int opt;
 
 	// defaults
-	g->log_level = 1;
+	g->log_level = 0;
 	while ((opt = getopt(argc, argv, "qvh")) != -1) {
 		switch (opt) {
 		case 'q':
