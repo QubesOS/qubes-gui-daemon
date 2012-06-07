@@ -506,13 +506,11 @@ static WindowPtr id2winptr(unsigned int xid)
 static void process_request(int fd, InputInfoPtr pInfo)
 {
 	WindowPtr w1;
-	unsigned int arg1, arg2;
-	char cmd;
 	int ret;
-	char buf[100];
+	struct xdriver_cmd cmd;
 
 
-	ret = read(fd, buf, sizeof(buf));
+	ret = read(fd, &cmd, sizeof(cmd));
 	if (ret == 0) {
 		xf86Msg(X_INFO, "randdev: unix closed\n");
 		close(fd);
@@ -523,44 +521,36 @@ static void process_request(int fd, InputInfoPtr pInfo)
 		close(fd);
 		return;
 	}
-	buf[ret] = 0;
 
-//	xf86Msg(X_INFO, "randdev: received %s\n", buf);
+	// xf86Msg(X_INFO, "randdev: received %c 0x%x 0x%x\n", cmd.type, cmd.arg1, cmd.arg2);
 
-	ret = sscanf(buf, "%c 0x%x 0x%x\n", &cmd, &arg1, &arg2);
-	if (ret != 3) {
-		xf86Msg(X_INFO, "randdev: ret=%d, cannot parse %s\n", ret,
-			buf);
-		return;
-	}
-	
 	write_exact(fd, "0", 1); // acknowledge the request has been received
 
-	switch (cmd) {
+	switch (cmd.type) {
 	case 'W':
-            w1 = id2winptr(arg1);
+            w1 = id2winptr(cmd.arg1);
             if (!w1) {
                     // This error condition (window not found) can happen when
                     // the window is destroyed before the driver sees the req
                     struct shm_cmd shmcmd;
-                    // xf86Msg(X_INFO, "randdev: w1=%p, xid1: 0x%x\n", w1, arg1);
+                    // xf86Msg(X_INFO, "randdev: w1=%p, xid1: 0x%x\n", w1, cmd.arg1);
                     shmcmd.num_mfn = 0;
                     write_exact(fd, &shmcmd, sizeof(shmcmd));
                     return;
             }
-            dump_window_mfns(w1, arg1, fd);
+            dump_window_mfns(w1, cmd.arg1, fd);
             break;
 	case 'B':
-	    xf86PostButtonEvent(pInfo->dev, 0, arg1, arg2, 0,0);
+	    xf86PostButtonEvent(pInfo->dev, 0, cmd.arg1, cmd.arg2, 0,0);
 	    break;
         case 'M':
-            xf86PostMotionEvent(pInfo->dev, 1, 0, 2, arg1, arg2);
+            xf86PostMotionEvent(pInfo->dev, 1, 0, 2, cmd.arg1, cmd.arg2);
             break;
         case 'K':
-            xf86PostKeyboardEvent(pInfo->dev, arg1, arg2);
+            xf86PostKeyboardEvent(pInfo->dev, cmd.arg1, cmd.arg2);
             break;
         default:
-            xf86Msg(X_INFO, "randdev: unknown command %c\n", cmd);
+            xf86Msg(X_INFO, "randdev: unknown command %c\n", cmd.type);
         }
 }
 

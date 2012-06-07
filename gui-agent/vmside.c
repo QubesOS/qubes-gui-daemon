@@ -128,20 +128,23 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 
 void feed_xdriver(Ghandles * g, int type, int arg1, int arg2)
 {
-	char buf[256];
+	char ans;
 	int ret;
-	snprintf(buf, sizeof(buf), "%c 0x%x 0x%x\n", (char) type, arg1,
-		 arg2);
-	if (write(g->xserver_fd, buf, strlen(buf)) != strlen(buf)) {
+	struct xdriver_cmd cmd;
+
+	cmd.type = type;
+	cmd.arg1 = arg1;
+	cmd.arg2 = arg2;
+	if (write(g->xserver_fd, &cmd, sizeof(cmd)) != sizeof(cmd)) {
 		perror("unix write");
 		exit(1);
 	}
-	buf[0] = '1';
-	ret = read(g->xserver_fd, buf, 1);
-	if (ret != 1 || buf[0] != '0') {
+	ans = '1';
+	ret = read(g->xserver_fd, &ans, 1);
+	if (ret != 1 || ans != '0') {
 		perror("unix read");
 		fprintf(stderr, "read returned %d, char read=0x%x\n", ret,
-			(int) buf[0]);
+			(int) ans);
 		exit(1);
 	}
 }
