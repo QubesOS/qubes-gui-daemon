@@ -38,4 +38,11 @@ struct shm_cmd {
 	uint32_t domid;
 	uint32_t mfns[0];
 };
+
+/* VM: gui-agent -> xdriver(xf86-input-mfndev( */
+struct xdriver_cmd {
+	uint32_t type;
+	uint32_t arg1;
+	uint32_t arg2;
+};
 #endif

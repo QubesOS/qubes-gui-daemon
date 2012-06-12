@@ -46,12 +46,11 @@ BuildRequires:	libXdamage-devel
 BuildRequires:	libXt-devel
 BuildRequires:	libtool-ltdl-devel
 BuildRequires:	libtool-ltdl-devel
-BuildRequires:	pulseaudio-libs-devel >= 0.9.21, pulseaudio-libs-devel <= 0.9.23
+BuildRequires:	pulseaudio-libs-devel >= 0.9.21, pulseaudio-libs-devel <= 1.1
 BuildRequires:	xen-devel
 BuildRequires:	xorg-x11-server-devel
 BuildRequires:	qubes-core-vm-devel >= 1.6.1
 BuildRequires:	qubes-core-vm-libs
-BuildRequires:	ConsoleKit-devel
 Requires:	qubes-core-vm xen-qubes-vm-essentials
 
 # The vchan sink needs .h files from pulseaudio sources
@@ -84,7 +83,6 @@ install -D appvm_scripts/usrbin/qubes-session $RPM_BUILD_ROOT/usr/bin/qubes-sess
 install -D appvm_scripts/usrbin/qubes_run_xorg.sh $RPM_BUILD_ROOT/usr/bin/qubes_run_xorg.sh
 install -D appvm_scripts/usrbin/qubes_xorg_wrapper.sh $RPM_BUILD_ROOT/usr/bin/qubes_xorg_wrapper.sh
 install -D appvm_scripts/usrbin/qubes-change-keyboard-layout $RPM_BUILD_ROOT/usr/bin/qubes-change-keyboard-layout
-install -D consolekit/ck-xinit-session-qubes $RPM_BUILD_ROOT/usr/bin/ck-xinit-session-qubes
 install -D pulse/start-pulseaudio-with-vchan $RPM_BUILD_ROOT/usr/bin/start-pulseaudio-with-vchan
 install -D pulse/libsetup-vchan-early.so $RPM_BUILD_ROOT/%{_libdir}/libsetup-vchan-early.so
 install -D pulse/module-vchan-sink.so $RPM_BUILD_ROOT/%{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
@@ -92,15 +90,13 @@ install -D xf86-input-mfndev/src/.libs/qubes_drv.so $RPM_BUILD_ROOT/%{_libdir}/x
 install -D relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so $RPM_BUILD_ROOT/%{_libdir}/relaxed_xf86ValidateModes.so
 install -D appvm_scripts/etc/X11/xorg-qubes.conf.template $RPM_BUILD_ROOT/etc/X11/xorg-qubes.conf.template
 install -D appvm_scripts/etc/init.d/qubes_gui $RPM_BUILD_ROOT/etc/init.d/qubes_gui
+install -D appvm_scripts/etc/polkit-1-qubes-allow-all.pkla $RPM_BUILD_ROOT/etc/polkit-1/localauthority/50-local.d/qubes-allow-all.pkla
 install -D appvm_scripts/etc/profile.d/qubes_gui.sh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.sh
 install -D appvm_scripts/etc/profile.d/qubes_gui.csh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.csh
 install -D appvm_scripts/etc/profile.d/qubes-session.sh $RPM_BUILD_ROOT/etc/profile.d/qubes-session.sh
 install -D appvm_scripts/etc/sysconfig/desktop $RPM_BUILD_ROOT/etc/sysconfig/desktop
 install -D appvm_scripts/etc/sysconfig/modules/qubes_u2mfn.modules $RPM_BUILD_ROOT/etc/sysconfig/modules/qubes_u2mfn.modules
 install -D appvm_scripts/etc/X11/xinit/xinitrc.d/qubes_keymap.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/qubes_keymap.sh
-install -D appvm_scripts/etc/X11/xinit/xinitrc.d/00-ck-xinit-session.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/00-ck-xinit-session.sh
-install -D appvm_scripts/etc/X11/xinit/xinitrc.d/10-ck-register-session.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/10-ck-register-session.sh
-install -D appvm_scripts/etc/xdgautostart/qubes-polkit-gnome-authentication-agent-1.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/qubes-polkit-gnome-authentication-agent-1.desktop
 install -D appvm_scripts/qubes-gui-agent.service $RPM_BUILD_ROOT/lib/systemd/system/qubes-gui-agent.service
 install -d $RPM_BUILD_ROOT/var/log/qubes
 
@@ -138,7 +134,6 @@ rm -rf $RPM_BUILD_ROOT
 /usr/bin/qubes_run_xorg.sh
 /usr/bin/qubes_xorg_wrapper.sh
 /usr/bin/qubes-change-keyboard-layout
-%attr(4755,root,root)/usr/bin/ck-xinit-session-qubes
 /usr/bin/start-pulseaudio-with-vchan
 %{_libdir}/libsetup-vchan-early.so
 %{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
@@ -146,14 +141,12 @@ rm -rf $RPM_BUILD_ROOT
 %attr(4755,root,root) %{_libdir}/relaxed_xf86ValidateModes.so
 %attr(0644,root,root) /etc/X11/xorg-qubes.conf.template
 /etc/init.d/qubes_gui
+/etc/polkit-1/localauthority/50-local.d/qubes-allow-all.pkla
 /etc/profile.d/qubes_gui.sh
 /etc/profile.d/qubes_gui.csh
 /etc/profile.d/qubes-session.sh
 /etc/X11/xinit/xinitrc.d/qubes_keymap.sh
-/etc/X11/xinit/xinitrc.d/00-ck-xinit-session.sh
-/etc/X11/xinit/xinitrc.d/10-ck-register-session.sh
 %config /etc/sysconfig/desktop
-/etc/xdg/autostart/qubes-polkit-gnome-authentication-agent-1.desktop
 /etc/sysconfig/modules/qubes_u2mfn.modules
 /lib/systemd/system/qubes-gui-agent.service
 %dir /var/log/qubes

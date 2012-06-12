@@ -37,7 +37,7 @@ help:
 
 dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
 
-appvm: gui-agent/qubes-gui xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so consolekit/ck-xinit-session-qubes
+appvm: gui-agent/qubes-gui xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so
 
 gui-daemon/qubes-guid:
 	(cd gui-daemon; $(MAKE))
@@ -63,9 +63,6 @@ xf86-input-mfndev/src/.libs/qubes_drv.so:
 pulse/module-vchan-sink.so:
 	$(MAKE) -C pulse module-vchan-sink.so
 
-consolekit/ck-xinit-session-qubes:
-	(cd consolekit; $(MAKE))
-
 make rpms:
 	@make rpms_dom0
 	@make rpms_appvm
@@ -88,7 +85,6 @@ clean:
 	(cd gui-common; $(MAKE) clean)
 	(cd gui-daemon; $(MAKE) clean)
 	(cd shmoverride; $(MAKE) clean)
-	(cd consolekit; $(MAKE) clean)
 	$(MAKE) -C pulse clean
 	(cd xf86-input-mfndev; if [ -e Makefile ] ; then $(MAKE) distclean; fi; ./bootstrap --clean || echo )
 	$(MAKE) -C relaxed_xf86ValidateModes clean
