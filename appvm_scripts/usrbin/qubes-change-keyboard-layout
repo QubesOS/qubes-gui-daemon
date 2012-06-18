@@ -62,9 +62,9 @@ choice = p.communicate()[0]
 
 vm_layout = "%s/.config/qubes-keyboard-layout.rc" % os.getenv("HOME")
 if choice != "":
-	subprocess.check_call(['setxkbmap', choice])
+    subprocess.check_call(['setxkbmap', choice])
     try:
-        subprocess.check_call(['gsettings', 'set', 'org.gnome.libgnomekbd.keyboard', 'layouts', "['%s']" % choice]):
+        subprocess.check_call(['gsettings', 'set', 'org.gnome.libgnomekbd.keyboard', 'layouts', "['%s']" % choice])
     except:
         # fallback to config file
         file = open(vm_layout, 'w+')
