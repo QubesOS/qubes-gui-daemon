@@ -57,6 +57,7 @@ for l in layouts:
 	
 p = subprocess.Popen(zenity_cmd, stdout=subprocess.PIPE)
 choice = p.communicate()[0]
+choice = choice.strip()
 
 #apply the choice
 
