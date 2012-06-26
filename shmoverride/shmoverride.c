@@ -19,6 +19,8 @@
  *
  */
 
+// #define DEBUG
+
 #define _GNU_SOURCE 1
 #include <dlfcn.h>
 #include <stdlib.h>
@@ -61,16 +63,20 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
 	    || cmd_pages->num_mfn == 0)
 		return MAP_FAILED;
 	pfntable = alloca(sizeof(xen_pfn_t) * cmd_pages->num_mfn);
+#ifdef DEBUG
 	fprintf(stderr, "size=%d table=%p\n", cmd_pages->num_mfn,
 		pfntable);
+#endif
 	for (i = 0; i < cmd_pages->num_mfn; i++)
 		pfntable[i] = cmd_pages->mfns[i];
 	fakeaddr =
 	    xc_map_foreign_pages(xc_hnd, cmd_pages->domid, PROT_READ,
 				 pfntable, cmd_pages->num_mfn);
 	fakesize = 4096 * cmd_pages->num_mfn;
+#ifdef DEBUG
 	fprintf(stderr, "num=%d, addr=%p, len=%d\n",
 		cmd_pages->num_mfn, fakeaddr, list_len);
+#endif
 	if (fakeaddr && fakeaddr != MAP_FAILED) {
 		list_insert(addr_list, (long) fakeaddr, (void *) fakesize);
 		list_len++;
