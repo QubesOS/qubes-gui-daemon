@@ -56,6 +56,7 @@ struct _global_handles {
 	Atom wmProtocols;
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
 	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
+	Atom xembed_info;	/* Atom: _XEMBED_INFO */
 	Atom utf8_string_atom; /* Atom: UTF8_STRING */
 	int xserver_fd;
 	Window stub_win;    /* window for clipboard operations and to simulate LeaveNotify events */
@@ -565,6 +566,28 @@ void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 	else if (ev->atom ==
 		 XInternAtom(g->display, "WM_NORMAL_HINTS", False))
 		send_wmhints(g, window);
+	else if (ev->atom == g->xembed_info) {
+		struct genlist *l = list_lookup(windows_list, window);
+		Atom act_type;
+		unsigned long nitems, bytesafter;
+		unsigned char *data;
+		int ret, act_fmt;
+
+		if (!l->data || !((struct window_data*)l->data)->is_docked)
+			/* ignore _XEMBED_INFO change on non-docked windows */
+			return;
+		ret = XGetWindowProperty(g->display, window, g->xembed_info, 0, 2, False,
+				g->xembed_info, &act_type, &act_fmt, &nitems, &bytesafter,
+				&data);
+		if (ret && act_type == g->xembed_info && nitems == 2) {
+			if (((int*)data)[1] & XEMBED_MAPPED)
+				XMapWindow(g->display, window);
+			else
+				XUnmapWindow(g->display, window);
+		}
+		if (ret == Success && nitems > 0)
+			XFree(data);
+	}
 }
 
 void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
@@ -580,6 +603,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 		struct msghdr hdr;
 		Atom act_type;
 		int act_fmt;
+		int mapwindow = 0;
 		unsigned long nitems, bytesafter;
 		unsigned char *data;
 		struct genlist *l;
@@ -596,6 +620,24 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 				fprintf(stderr,
 					"tray request dock for window 0x%x\n",
 					(int) w);
+			ret = XGetWindowProperty(g->display, w, g->xembed_info, 0, 2,
+					False, g->xembed_info, &act_type, &act_fmt, &nitems,
+					&bytesafter, &data);
+			if (ret != Success) {
+				fprintf(stderr, "failed to get window property, probably window doesn't longer exists\n");
+				return;
+			}
+			if (act_type != g->xembed_info) {
+				fprintf(stderr, "window havn't proper _XEMBED_INFO property, aborting dock\n");
+				return;
+			}
+			if (act_type == g->xembed_info && nitems == 2) {
+				mapwindow = ((int*)data)[1] & XEMBED_MAPPED;
+				/* TODO: handle version */
+			}
+			if (ret == Success && nitems > 0)
+				Xfree(data);
+
 			wd = (struct window_data*)malloc(sizeof(struct window_data));
 			if (!wd) {
 				fprintf(stderr, "OUT OF MEMORY\n");
@@ -646,6 +688,8 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 			XSendEvent(resp.display, resp.window, False,
 				   NoEventMask, (XEvent *) & ev);
 			XRaiseWindow(g->display, w);
+			if (mapwindow)
+				XMapRaised(g->display, resp.window);
 			XMapWindow(g->display, wd->embeder);
 			XLowerWindow(g->display, wd->embeder);
 			XMoveWindow(g->display, w, 0, 0);
@@ -782,6 +826,7 @@ void mkghandles(Ghandles * g)
 	    XInternAtom(g->display, tray_sel_atom_name, False);
 	g->tray_opcode =
 	    XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
+	g->xembed_info = XInternAtom(g->display, "_XEMBED_INFO", False);
 }
 
 void handle_keypress(Ghandles * g, XID winid)

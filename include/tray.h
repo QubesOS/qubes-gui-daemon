@@ -31,3 +31,5 @@
 #define XEMBED_FOCUS_OUT                5
 #define XEMBED_FOCUS_NEXT               6
 #define XEMBED_FOCUS_PREV               7
+
+#define XEMBED_MAPPED                   (1 << 0)
