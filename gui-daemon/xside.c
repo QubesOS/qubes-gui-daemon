@@ -57,6 +57,9 @@
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes_clipboard.bin"
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
+/* this feature was used to fill icon bg with VM color, later changed to white;
+ * discussion: http://wiki.qubes-os.org/trac/ticket/127 */
+// #define FILL_TRAY_BG
 
 #define SPECAL_KEYS_MASK (Mod1Mask | Mod2Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
 
@@ -92,7 +95,9 @@ struct _global_handles {
 	int root_height;
 	GC context;		/* context for pixmap operations */
 	GC frame_gc;		/* graphic context to paint window frame */
+#ifdef FILL_TRAY_BG
 	GC tray_gc;		/* graphic context to paint tray background */
+#endif
 	/* atoms for comunitating with xserver */
 	Atom wmDeleteMessage;	/* Atom: WM_DELETE_WINDOW */
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
@@ -251,6 +256,7 @@ void get_frame_gc(Ghandles * g, char *name)
 	    XCreateGC(g->display, g->root_win, GCForeground, &values);
 }
 
+#ifdef FILL_TRAY_BG
 /* prepare graphic context for tray background */
 void get_tray_gc(Ghandles * g)
 {
@@ -259,7 +265,7 @@ void get_tray_gc(Ghandles * g)
 	g->tray_gc =
 	    XCreateGC(g->display, g->root_win, GCForeground, &values);
 }
-
+#endif
 
 /* create local window - on VM request.
  * parameters are sanitized already
@@ -350,7 +356,9 @@ void mkghandles(Ghandles * g)
 	g->xembed_info = XInternAtom(g->display, "_XEMBED_INFO", False);
 	/* create graphical contexts */
 	get_frame_gc(g, g->cmdline_color ? : "red");
+#ifdef FILL_TRAY_BG
 	get_tray_gc(g);
+#endif
 	/* initialize windows limit */
 	g->windows_count_limit = g->windows_count_limit_param;
 	/* init window lists */
@@ -952,6 +960,7 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 	if (w <= 0 || h <= 0)
 		return;
 
+#ifdef FILL_TRAY_BG
 	if (vm_window->is_docked) {
 		char *data, *datap;
 		size_t data_sz;
@@ -1031,6 +1040,7 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		free(data);
 		return;
 	} else
+#endif
 		XShmPutImage(g->display, vm_window->local_winid,
 			     g->context, vm_window->image, x + woff,
 			     y + hoff, x, y, w, h, 0);
