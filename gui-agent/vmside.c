@@ -958,11 +958,16 @@ void handle_motion(Ghandles * g, XID winid)
 void handle_crossing(Ghandles * g, XID winid)
 {
 	struct msg_crossing key;
-	XCrossingEvent event;
 	XWindowAttributes attr;
+	XEvent xe;
 	int ret;
 
 	read_data((char *) &key, sizeof(key));
+
+	if (key.type != EnterNotify && key.type != LeaveNotify) {
+		fprintf(stderr, "Invalid crossing event: %d\n", key.type);
+		return;
+	}
 
 	ret = XGetWindowAttributes(g->display, winid, &attr);
 	if (ret != 1) {
@@ -971,37 +976,19 @@ void handle_crossing(Ghandles * g, XID winid)
 			"handle_crossing, ret=0x%x\n", (int) winid, ret);
 		return;
 	};
-
-	if (key.type == EnterNotify) {
-		// hide stub window
-		XUnmapWindow(g->display, g->stub_win);
-	} else if (key.type == LeaveNotify) {
-		XID window_under_pointer, root_returned;
-		int root_x, root_y, win_x, win_y;
-		unsigned int mask_return;
-		ret =
-		    XQueryPointer(g->display, g->root_win, &root_returned,
-				  &window_under_pointer, &root_x, &root_y,
-				  &win_x, &win_y, &mask_return);
-		if (ret != 1) {
-			fprintf(stderr,
-				"XQueryPointer for 0x%x failed in "
-				"handle_crossing, ret=0x%x\n", (int) winid,
-				ret);
-			return;
-		}
-		// if pointer is still on the same window - place some stub window
-		// just under it
-		if (window_under_pointer == winid) {
-			XMoveResizeWindow(g->display, g->stub_win,
-					  root_x, root_y, 1, 1);
-			XMapWindow(g->display, g->stub_win);
-			XRaiseWindow(g->display, g->stub_win);
-		}
-	} else {
-		fprintf(stderr, "Invalid crossing event: %d\n", key.type);
-	}
-
+	xe.type = key.type;
+	xe.xcrossing.type = key.type;
+	xe.xcrossing.window = winid;
+	xe.xcrossing.mode = NotifyNormal;
+	xe.xcrossing.root = g->root_win;
+	xe.xcrossing.detail = NotifyNonlinear;
+	xe.xcrossing.same_screen = True;
+	xe.xcrossing.x = 0;
+	xe.xcrossing.y = 0;
+	/* FIXME: this is always 0,0 for embeded window... */
+	xe.xcrossing.x_root = attr.x;
+	xe.xcrossing.y_root = attr.y;
+	XSendEvent(g->display, winid, True, NoEventMask, &xe);
 }
 
 void handle_focus(Ghandles * g, XID winid)
