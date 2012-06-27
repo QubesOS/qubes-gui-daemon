@@ -902,6 +902,10 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		border_width = 0;
 	}
 
+	if (vm_window->is_docked) {
+		border_width = 1;
+	}
+
 	int do_border = 0;
 	int hoff = 0, woff = 0, delta, i;
 	if (!vm_window->image)
@@ -1020,12 +1024,6 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 			  g->context, image, 0, 0, 0, 0, w, h);
 		/* Remove clipping */
 		XSetClipMask(g->display, g->context, None);
-		/* Draw VM color frame in case VM tries to cheat
-		 * and puts its own background color */
-		XDrawRectangle(g->display, vm_window->local_winid,
-			       g->frame_gc, 0, 0,
-			       vm_window->width - 1,
-			       vm_window->height - 1);
 
 		XFreePixmap(g->display, mask);
 		XDestroyImage(image);
