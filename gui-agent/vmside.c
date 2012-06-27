@@ -64,7 +64,17 @@ struct _global_handles {
 	int log_level;
 };
 
+struct window_data {
+	int is_docked; /* is it docked icon window */
+	XID embeder;   /* for docked icon points embeder window */
+};
+
+struct embeder_data {
+	XID icon_window;
+};
+
 struct genlist *windows_list;
+struct genlist *embeder_list;
 typedef struct _global_handles Ghandles;
 
 #define SKIP_NONMANAGED_WINDOW if (!list_lookup(windows_list, window)) return
@@ -107,6 +117,14 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 			(int) ev->window);
 		return;
 	}
+	if (list_lookup(embeder_list, ev->window)) {
+		/* ignore CreateNotify for embeder window */
+		if (g->log_level > 1)
+			fprintf(stderr, "CREATE for embeder 0x%x\n",
+					(int) ev->window);
+		return;
+	}
+
 	list_insert(windows_list, ev->window, 0);
 	if (attr.class != InputOnly)
 		XDamageCreate(g->display, ev->window,
@@ -311,6 +329,14 @@ void process_xevent_destroy(Ghandles * g, XID window)
 {
 	struct msghdr hdr;
 	struct genlist *l;
+	/* embeders are not manged windows, so must be handled before SKIP_NONMANAGED_WINDOW */
+	if ((l = list_lookup(embeder_list, window))) {
+		if (l->data) {
+			free(l->data);
+		}
+		list_remove(l);
+	}
+
 	SKIP_NONMANAGED_WINDOW;
 	if (g->log_level > 0)
 		fprintf(stderr, "handle destroy 0x%x\n", (int) window);
@@ -318,6 +344,12 @@ void process_xevent_destroy(Ghandles * g, XID window)
 	hdr.window = window;
 	write_struct(hdr);
 	l = list_lookup(windows_list, window);
+	if (l->data) {
+		if (((struct window_data*)l->data)->is_docked) {
+			XDestroyWindow(g->display, ((struct window_data*)l->data)->embeder);
+		}
+		free(l->data);
+	}
 	list_remove(l);
 }
 
@@ -326,12 +358,48 @@ void process_xevent_configure(Ghandles * g, XID window,
 {
 	struct msghdr hdr;
 	struct msg_configure conf;
-	SKIP_NONMANAGED_WINDOW;
+	struct genlist *l;
+	/* SKIP_NONMANAGED_WINDOW; */
+	if (!(l=list_lookup(windows_list, window))) {
+		/* if not real managed window, check if this is embeder for another window */
+		struct genlist *e;
+		if ((e=list_lookup(embeder_list, window))) {
+			window = ((struct embeder_data*)e->data)->icon_window;
+			if (!list_lookup(windows_list, window))
+				/* probably icon window have just destroyed, so ignore message */
+				/* "l" not updated intentionally - when configure notify comes
+				 * from the embeder, it should be passed to dom0 (in most cases as
+				 * ACK for earlier configure request) */
+				return;
+		} else {
+			/* ignore not managed windows */
+			return;
+		}
+	}
+
 	if (g->log_level > 1)
 		fprintf(stderr,
 			"handle configure event 0x%x w=%d h=%d ovr=%d\n",
 			(int) window, ev->width, ev->height,
 			(int) ev->override_redirect);
+	if (l && l->data && ((struct window_data*)l->data)->is_docked) {
+		/* for docked icon, ensure that it fills embeder window; don't send any
+		 * message to dom0 - it will be done for embeder itself*/
+		XWindowAttributes attr;
+		int ret;
+
+		ret = XGetWindowAttributes(g->display, ((struct window_data*)l->data)->embeder, &attr);
+		if (ret != 1) {
+			fprintf(stderr,
+					"XGetWindowAttributes for 0x%x failed in "
+					"handle_xevent_configure, ret=0x%x\n", (int) ((struct window_data*)l->data)->embeder, ret);
+			return;
+		};
+		if (ev->x != 0 || ev->y != 0 || ev->width != attr.width || ev->height != attr.height) {
+			XMoveResizeWindow(g->display, window, 0, 0, attr.width, attr.height);
+		}
+		return;
+	}
 	hdr.type = MSG_CONFIGURE;
 	hdr.window = window;
 	conf.x = ev->x;
@@ -510,20 +578,52 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 		Window w;
 		int ret;
 		struct msghdr hdr;
+		Atom act_type;
+		int act_fmt;
+		unsigned long nitems, bytesafter;
+		unsigned char *data;
+		struct genlist *l;
+		struct window_data *wd;
+		struct embeder_data *ed;
 
 		switch (ev->data.l[1]) {
 		case SYSTEM_TRAY_REQUEST_DOCK:
 			w = ev->data.l[2];
 
-			if (!list_lookup(windows_list, w))
+			if (!(l=list_lookup(windows_list, w)))
 				return;
 			if (g->log_level > 0)
 				fprintf(stderr,
 					"tray request dock for window 0x%x\n",
 					(int) w);
-			ret =
-			    XReparentWindow(g->display, w, g->root_win, 0,
-					    0);
+			wd = (struct window_data*)malloc(sizeof(struct window_data));
+			if (!wd) {
+				fprintf(stderr, "OUT OF MEMORY\n");
+				return;
+			}
+			l->data = wd;
+			/* TODO: error checking */
+			wd->embeder = XCreateSimpleWindow(g->display, g->root_win,
+					0, 0, 32, 32, /* default icon size, will be changed by dom0 */
+					0, BlackPixel(g->display,
+						g->screen),
+					WhitePixel(g->display,
+						g->screen));
+			wd->is_docked=1;
+			if (g->log_level > 1)
+				fprintf(stderr,
+					" created embeder 0x%x\n",
+					(int) wd->embeder);
+			XSelectInput(g->display, wd->embeder, SubstructureNotifyMask);
+			ed = (struct embeder_data*)malloc(sizeof(struct embeder_data));
+			if (!ed) {
+				fprintf(stderr, "OUT OF MEMORY\n");
+				return;
+			}
+			ed->icon_window = w;
+			list_insert(embeder_list, wd->embeder, ed);
+
+			ret = XReparentWindow(g->display, w, wd->embeder, 0, 0);
 			if (ret != 1) {
 				fprintf(stderr,
 					"XReparentWindow for 0x%x failed in "
@@ -541,10 +641,17 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 			resp.data.l[0] = ev->data.l[0];
 			resp.data.l[1] = XEMBED_EMBEDDED_NOTIFY;
 			resp.data.l[3] = ev->window;
-			resp.data.l[4] = 0;
+			resp.data.l[4] = 0; /* TODO: handle version; GTK+ uses version 1, but spec says the latest is 0 */
 			resp.display = g->display;
 			XSendEvent(resp.display, resp.window, False,
 				   NoEventMask, (XEvent *) & ev);
+			XRaiseWindow(g->display, w);
+			XMapWindow(g->display, wd->embeder);
+			XLowerWindow(g->display, wd->embeder);
+			XMoveWindow(g->display, w, 0, 0);
+			/* force refresh of window content */
+			XClearWindow(g->display, wd->embeder);
+			XClearArea(g->display, w, 0, 0, 32, 32, True); /* XXX defult size once again */
 			XSync(g->display, False);
 
 			hdr.type = MSG_DOCK;
@@ -763,8 +870,13 @@ void handle_motion(Ghandles * g, XID winid)
 //      XMotionEvent event;
 	XWindowAttributes attr;
 	int ret;
+	struct genlist *l = list_lookup(windows_list, winid);
 
 	read_data((char *) &key, sizeof(key));
+	if (l && l->data && ((struct window_data*)l->data)->is_docked) {
+		/* get position of embeder, not icon itself*/
+		winid = ((struct window_data*)l->data)->embeder;
+	}
 	ret = XGetWindowAttributes(g->display, winid, &attr);
 	if (ret != 1) {
 		fprintf(stderr,
@@ -908,10 +1020,16 @@ void handle_keymap_notify(Ghandles * g)
 void handle_configure(Ghandles * g, XID winid)
 {
 	struct msg_configure r;
+	struct genlist *l = list_lookup(windows_list, winid);
 	XWindowAttributes attr;
 	XGetWindowAttributes(g->display, winid, &attr);
 	read_data((char *) &r, sizeof(r));
-	XMoveResizeWindow(g->display, winid, r.x, r.y, r.width, r.height);
+	if (l && l->data && ((struct window_data*)l->data)->is_docked) {
+		XMoveResizeWindow(g->display, ((struct window_data*)l->data)->embeder, r.x, r.y, r.width, r.height);
+		XMoveResizeWindow(g->display, winid, 0, 0, r.width, r.height);
+	} else {
+		XMoveResizeWindow(g->display, winid, r.x, r.y, r.width, r.height);
+	}
 	if (g->log_level > 0)
 		fprintf(stderr,
 			"configure msg, x/y %d %d (was %d %d), w/h %d %d (was %d %d)\n",
@@ -1191,6 +1309,7 @@ int main(int argc, char **argv)
 	signal(SIGCHLD, SIG_IGN);
 	do_execute(NULL, "/usr/bin/start-pulseaudio-with-vchan");
 	windows_list = list_new();
+	embeder_list = list_new();
 	XSetErrorHandler(dummy_handler);
 	XSetSelectionOwner(g.display, g.tray_selection,
 			   g.stub_win, CurrentTime);
