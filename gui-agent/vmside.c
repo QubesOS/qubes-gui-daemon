@@ -961,6 +961,14 @@ void handle_crossing(Ghandles * g, XID winid)
 	XCrossingEvent event;
 	XWindowAttributes attr;
 	int ret;
+	struct genlist *l = list_lookup(windows_list, winid);
+
+	/* we want to always get root window child (as this we get from
+	 * XQueryPointer and can compare to window_under_pointer), so for embeded
+	 * window get the embeder */
+	if (l && l->data && ((struct window_data*)l->data)->is_docked) {
+		winid = ((struct window_data*)l->data)->embeder;
+	}
 
 	read_data((char *) &key, sizeof(key));
 
