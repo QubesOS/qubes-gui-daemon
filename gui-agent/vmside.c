@@ -58,6 +58,9 @@ struct _global_handles {
 	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
 	Atom xembed_info;	/* Atom: _XEMBED_INFO */
 	Atom utf8_string_atom; /* Atom: UTF8_STRING */
+	Atom wm_state;         /* Atom: _NET_WM_STATE */
+	Atom wm_state_fullscreen; /* Atom: _NET_WM_STATE_FULLSCREEN */
+	Atom wm_state_demands_attention; /* Atom: _NET_WM_STATE_DEMANDS_ATTENTION */
 	int xserver_fd;
 	Window stub_win;    /* window for clipboard operations and to simulate LeaveNotify events */
 	unsigned char *clipboard_data;
@@ -294,6 +297,44 @@ void send_wmhints(Ghandles * g, XID window)
 	write_message(hdr, msg);
 }
 
+static inline uint32_t flags_from_atom(Ghandles * g, Atom a) {
+	if (a == g->wm_state_fullscreen)
+		return WINDOW_FLAG_FULLSCREEN;
+	else if (a == g->wm_state_demands_attention)
+		return WINDOW_FLAG_DEMANDS_ATTENTION;
+	else {
+		/* ignore unsupported states */
+	}
+	return 0;
+}
+
+void send_window_state(Ghandles * g, XID window)
+{
+	int ret, i;
+	Atom *state_list;
+	Atom act_type;
+	int act_fmt;
+	unsigned long nitems, bytesleft;
+	struct msghdr hdr;
+	struct msg_window_flags flags;
+
+	/* FIXME: only first 10 elements are parsed */
+	ret = XGetWindowProperty(g->display, window, g->wm_state, 0, 10,
+			False, XA_ATOM, &act_type, &act_fmt, &nitems, &bytesleft, (unsigned char**)&state_list);
+	if (ret != Success)
+		return;
+
+	flags.flags_set = 0;
+	flags.flags_unset = 0;
+	for (i=0; i < nitems; i++) {
+		flags.flags_set |= flags_from_atom(g, state_list[i]);
+	}
+	hdr.window = window;
+	hdr.type = MSG_WINDOW_FLAGS;
+	write_message(hdr, flags);
+	XFree(state_list);
+}
+
 void process_xevent_map(Ghandles * g, XID window)
 {
 	XWindowAttributes attr;
@@ -303,6 +344,7 @@ void process_xevent_map(Ghandles * g, XID window)
 	SKIP_NONMANAGED_WINDOW;
 
 	send_pixmap_mfns(g, window);
+	send_window_state(g, window);
 	XGetWindowAttributes(g->display, window, &attr);
 	if (XGetTransientForHint(g->display, window, &transient))
 		map_info.transient_for = transient;
@@ -324,6 +366,7 @@ void process_xevent_unmap(Ghandles * g, XID window)
 	SKIP_NONMANAGED_WINDOW;
 	hdr.window = window;
 	write_struct(hdr);
+	XDeleteProperty(g->display, window, g->wm_state);
 }
 
 void process_xevent_destroy(Ghandles * g, XID window)
@@ -706,6 +749,32 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 			fprintf(stderr, "unhandled tray opcode: %ld\n",
 				ev->data.l[1]);
 		}
+	} else if (ev->message_type == g->wm_state) {
+		struct msghdr hdr;
+		struct msg_window_flags msg;
+
+		/* SKIP_NONMANAGED_WINDOW */
+		if (!list_lookup(windows_list, ev->window)) return;
+
+		msg.flags_set = 0;
+		msg.flags_unset = 0;
+		if (ev->data.l[0] == 0) { /* remove/unset property */
+			msg.flags_unset |= flags_from_atom(g, ev->data.l[1]);
+			msg.flags_unset |= flags_from_atom(g, ev->data.l[2]);
+		} else if (ev->data.l[0] == 1) { /* add/set property */
+			msg.flags_set |= flags_from_atom(g, ev->data.l[1]);
+			msg.flags_set |= flags_from_atom(g, ev->data.l[2]);
+		} else if (ev->data.l[0] == 2) { /* toggle property */
+			fprintf(stderr, "toggle window 0x%x property %s not supported, "
+					"please report it with the application name\n", (int) ev->window,
+					XGetAtomName(g->display, ev->data.l[1]));
+		} else {
+			fprintf(stderr, "invalid window state command (%ld) for window 0x%x"
+					"report with application name\n", ev->data.l[0], (int) ev->window);
+		}
+		hdr.window = ev->window;
+		hdr.type = MSG_WINDOW_FLAGS;
+		write_message(hdr, msg);
 	}
 }
 
@@ -777,7 +846,7 @@ void mkghandles(Ghandles * g)
 {
 	char tray_sel_atom_name[64];
 	Atom net_wm_name, net_supporting_wm_check, net_supported;
-	Atom supported[3];
+	Atom supported[6];
 
 	wait_for_unix_socket(&g->xserver_fd);	// wait for Xorg qubes_drv to connect to us
 	g->display = XOpenDisplay(NULL);
@@ -809,6 +878,9 @@ void mkghandles(Ghandles * g)
 	supported[1] = net_supporting_wm_check;
 	/* _NET_WM_MOVERESIZE required to disable broken GTK+ move/resize fallback */
 	supported[2] = XInternAtom(g->display, "_NET_WM_MOVERESIZE", False);
+	supported[3] = XInternAtom(g->display, "_NET_WM_STATE", False);
+	supported[4] = XInternAtom(g->display, "_NET_WM_STATE_FULLSCREEN", False);
+	supported[5] = XInternAtom(g->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
 	XChangeProperty(g->display, g->stub_win, net_wm_name, g->utf8_string_atom,
 			8, PropModeReplace, (unsigned char*)"Qubes", 5);
 	XChangeProperty(g->display, g->stub_win, net_supporting_wm_check, XA_WINDOW,
@@ -816,7 +888,7 @@ void mkghandles(Ghandles * g)
 	XChangeProperty(g->display, g->root_win, net_supporting_wm_check, XA_WINDOW,
 			32, PropModeReplace, (unsigned char*)&g->stub_win, 1);
 	XChangeProperty(g->display, g->root_win, net_supported, XA_ATOM,
-			32, PropModeReplace, (unsigned char*)supported, 3);
+			32, PropModeReplace, (unsigned char*)supported, sizeof(supported)/sizeof(supported[0]));
 
 	g->clipboard_data = NULL;
 	g->clipboard_data_len = 0;
@@ -827,6 +899,9 @@ void mkghandles(Ghandles * g)
 	g->tray_opcode =
 	    XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
 	g->xembed_info = XInternAtom(g->display, "_XEMBED_INFO", False);
+	g->wm_state = XInternAtom(g->display, "_NET_WM_STATE", False);
+	g->wm_state_fullscreen = XInternAtom(g->display, "_NET_WM_STATE_FULLSCREEN", False);
+	g->wm_state_demands_attention = XInternAtom(g->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
 }
 
 void handle_keypress(Ghandles * g, XID winid)
@@ -1209,6 +1284,54 @@ void handle_clipboard_data(Ghandles * g, int len)
 #endif
 }
 
+void handle_window_flags(Ghandles *g, XID winid)
+{
+	int ret, i, j, changed;
+	Atom *state_list;
+	Atom new_state_list[12];
+	Atom act_type;
+	int act_fmt;
+	uint32_t tmp_flag;
+	unsigned long nitems, bytesleft;
+	struct msg_window_flags msg_flags;
+	read_data((char *) &msg_flags, sizeof(msg_flags));
+
+	/* FIXME: only first 10 elements are parsed */
+	ret = XGetWindowProperty(g->display, winid, g->wm_state, 0, 10,
+			False, XA_ATOM, &act_type, &act_fmt, &nitems, &bytesleft, (unsigned char**)&state_list);
+	if (ret != Success)
+		return;
+
+	j = 0;
+	changed = 0;
+	for (i=0; i < nitems; i++) {
+		tmp_flag = flags_from_atom(g, state_list[i]);
+		if (tmp_flag && tmp_flag & msg_flags.flags_set) {
+			/* leave flag set, mark as processed */
+			msg_flags.flags_set &= ~tmp_flag;
+		} else if (tmp_flag && tmp_flag & msg_flags.flags_unset) {
+			/* skip this flag (remove) */
+			changed = 1;
+			continue;
+		}
+		/* copy flag to new set */
+		new_state_list[j++] = state_list[i];
+	}
+	XFree(state_list);
+	/* set new elements */
+	if (msg_flags.flags_set & WINDOW_FLAG_FULLSCREEN)
+		new_state_list[j++] = g->wm_state_fullscreen;
+	if (msg_flags.flags_set & WINDOW_FLAG_DEMANDS_ATTENTION)
+		new_state_list[j++] = g->wm_state_demands_attention;
+
+	if (msg_flags.flags_set)
+		changed = 1;
+
+	if (!changed)
+		return;
+
+	XChangeProperty(g->display, winid, g->wm_state, XA_ATOM, 32, PropModeReplace, (unsigned char *)new_state_list, j);
+}
 
 void handle_message(Ghandles * g)
 {
@@ -1252,6 +1375,9 @@ void handle_message(Ghandles * g)
 		break;
 	case MSG_KEYMAP_NOTIFY:
 		handle_keymap_notify(g);
+		break;
+	case MSG_WINDOW_FLAGS:
+		handle_window_flags(g, hdr.window);
 		break;
 	default:
 		fprintf(stderr, "got unknown msg type %d\n", hdr.type);

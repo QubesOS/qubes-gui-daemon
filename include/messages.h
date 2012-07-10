@@ -52,6 +52,7 @@ enum {
 	MSG_KEYMAP_NOTIFY,
 	MSG_DOCK,
 	MSG_WINDOW_HINTS,
+	MSG_WINDOW_FLAGS,
 	MSG_MAX
 };
 /* VM -> Dom0, Dom0 -> VM */
@@ -159,3 +160,10 @@ struct msg_window_hints {
 	uint32_t base_width;
 	uint32_t base_height;
 };
+/* VM -> Dom0, Dom0 -> VM */
+struct msg_window_flags {
+	uint32_t flags_set;
+	uint32_t flags_unset;
+};
+#define WINDOW_FLAG_FULLSCREEN			(1<<0)
+#define WINDOW_FLAG_DEMANDS_ATTENTION	(1<<1)
