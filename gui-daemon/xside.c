@@ -36,6 +36,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <execinfo.h>
+#include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Intrinsic.h>
 #include <X11/Xutil.h>
@@ -81,6 +82,7 @@ struct windowdata {
 	int image_height;	/* size of window content, not always the same as window in dom0! */
 	int image_width;
 	int have_queued_configure;	/* have configure request been sent to VM - waiting for confirmation */
+	uint32_t flags_set;	/* window flags acked to gui-agent */
 };
 
 /* global variables
@@ -104,6 +106,9 @@ struct _global_handles {
 	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
 	Atom xembed_message;	/* Atom: _XEMBED */
 	Atom xembed_info;	/* Atom: _XEMBED_INFO */
+	Atom wm_state;         /* Atom: _NET_WM_STATE */
+	Atom wm_state_fullscreen; /* Atom: _NET_WM_STATE_FULLSCREEN */
+	Atom wm_state_demands_attention; /* Atom: _NET_WM_STATE_DEMANDS_ATTENTION */
 	/* shared memory handling */
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
 	int cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
@@ -130,6 +135,7 @@ struct _global_handles {
 	/* configuration */
 	int log_level;		/* log level */
 	int allow_utf8_titles;	/* allow UTF-8 chars in window title */
+	int allow_fullscreen;   /* allow fullscreen windows without decoration */
 	int copy_seq_mask;	/* modifiers mask for secure-copy key sequence */
 	KeySym copy_seq_key;	/* key for secure-copy key sequence */
 	int paste_seq_mask;	/* modifiers mask for secure-paste key sequence */
@@ -302,7 +308,7 @@ Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 			    ExposureMask | KeyPressMask | KeyReleaseMask |
 			    ButtonPressMask | ButtonReleaseMask |
 			    PointerMotionMask | EnterWindowMask | LeaveWindowMask |
-			    FocusChangeMask | StructureNotifyMask);
+			    FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
 	XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
 	if (g->cmdline_icon) {
 		XClassHint class_hint =
@@ -321,7 +327,6 @@ Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 			8 /* 8 bit is enough */ , PropModeReplace,
 			(const unsigned char *) g->vmname,
 			strlen(g->vmname));
-
 
 	return child_win;
 }
@@ -354,6 +359,9 @@ void mkghandles(Ghandles * g)
 	    XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
 	g->xembed_message = XInternAtom(g->display, "_XEMBED", False);
 	g->xembed_info = XInternAtom(g->display, "_XEMBED_INFO", False);
+	g->wm_state = XInternAtom(g->display, "_NET_WM_STATE", False);
+	g->wm_state_fullscreen = XInternAtom(g->display, "_NET_WM_STATE_FULLSCREEN", False);
+	g->wm_state_demands_attention = XInternAtom(g->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
 	/* create graphical contexts */
 	get_frame_gc(g, g->cmdline_color ? : "red");
 #ifdef FILL_TRAY_BG
@@ -1099,6 +1107,63 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 	}
 }
 
+static inline uint32_t flags_from_atom(Ghandles * g, Atom a) {
+	if (a == g->wm_state_fullscreen)
+		return WINDOW_FLAG_FULLSCREEN;
+	else if (a == g->wm_state_demands_attention)
+		return WINDOW_FLAG_DEMANDS_ATTENTION;
+	else {
+		/* ignore unsupported states */
+	}
+	return 0;
+}
+
+/* handle local Xserver event: XPropertyEvent
+ * currently only _NET_WM_STATE is examined */
+void process_xevent_propertynotify(Ghandles *g, XPropertyEvent * ev)
+{
+	Atom act_type;
+	Atom *state_list;
+	unsigned long nitems, bytesleft;
+	int ret, act_fmt, i;
+	uint32_t flags;
+	struct msghdr hdr;
+	struct msg_window_flags msg;
+
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
+	if (ev->atom == g->wm_state) {
+		if (!vm_window->is_mapped)
+			return;
+		if (ev->state == PropertyNewValue) {
+			ret = XGetWindowProperty(g->display, vm_window->local_winid, g->wm_state, 0, 10,
+					False, XA_ATOM, &act_type, &act_fmt, &nitems, &bytesleft, (unsigned char**)&state_list);
+			if (ret != Success) {
+				if (g->log_level > 0) {
+					fprintf(stderr, "Failed to get 0x%x window state details\n", (int)ev->window);
+					return;
+				}
+			}
+			flags = 0;
+			for (i = 0; i < nitems; i++) {
+				flags |= flags_from_atom(g, state_list[i]);
+			}
+			XFree(state_list);
+		} else { /* PropertyDelete */
+			flags = 0;
+		}
+		if (flags == vm_window->flags_set) {
+			/* no change */
+			return;
+		}
+		hdr.type = MSG_WINDOW_FLAGS;
+		hdr.window = vm_window->remote_winid;
+		msg.flags_set = flags & ~vm_window->flags_set;
+		msg.flags_unset = ~flags & vm_window->flags_set;
+		write_message(hdr, msg);
+		vm_window->flags_set = flags;
+	}
+}
+
 /* handle local Xserver event: _XEMBED
  * if window isn't mapped already - map it now */
 void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
@@ -1159,6 +1224,9 @@ void process_xevent(Ghandles * g)
 		break;
 	case MapNotify:
 		process_xevent_mapnotify(g, (XMapEvent *) & event_buffer);
+		break;
+	case PropertyNotify:
+		process_xevent_propertynotify(g, (XPropertyEvent *) & event_buffer);
 		break;
 	case ClientMessage:
 //              fprintf(stderr, "xclient, atom=%s\n",
@@ -1462,6 +1530,92 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 	XSetWMNormalHints(g->display, vm_window->local_winid, &size_hints);
 }
 
+/* handle VM message: MSG_WINDOW_FLAGS
+ * Pass window state flags for window manager to local X server */
+void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
+{
+	struct msg_window_flags untrusted_msg;
+	struct msg_window_flags msg;
+
+	read_struct(untrusted_msg);
+
+	/* sanitize start */
+	VERIFY((untrusted_msg.flags_set & untrusted_msg.flags_unset) == 0);
+	msg.flags_set = untrusted_msg.flags_set & (WINDOW_FLAG_FULLSCREEN | WINDOW_FLAG_DEMANDS_ATTENTION);
+	msg.flags_unset = untrusted_msg.flags_unset & (WINDOW_FLAG_FULLSCREEN | WINDOW_FLAG_DEMANDS_ATTENTION);
+	/* sanitize end */
+
+	if (!vm_window->is_mapped) {
+		/* for unmapped windows, set property directly; only "set" list is
+		 * processed (will override property) */
+		Atom state_list[10];
+		int i = 0;
+
+		vm_window->flags_set = 0;
+		if (msg.flags_set & WINDOW_FLAG_FULLSCREEN) {
+			if (g->allow_fullscreen) {
+				vm_window->flags_set |= WINDOW_FLAG_FULLSCREEN;
+				state_list[i++] = g->wm_state_fullscreen;
+			} else {
+				/* if fullscreen not allowed, substitute request with maximize */
+				state_list[i++] = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+				state_list[i++] = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+			}
+		}
+		if (msg.flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) {
+			vm_window->flags_set |= WINDOW_FLAG_DEMANDS_ATTENTION;
+			state_list[i++] = g->wm_state_demands_attention;
+		}
+		if (i > 0) {
+			/* FIXME: error checking? */
+			XChangeProperty(g->display, vm_window->local_winid, g->wm_state,
+					XA_ATOM, 32, PropModeReplace, (unsigned char*)state_list,
+					i);
+		} else
+			/* just in case */
+			XDeleteProperty(g->display, vm_window->local_winid, g->wm_state);
+	} else {
+		/* for mapped windows, send message to window manager (via root window) */
+		XClientMessageEvent ev;
+		uint32_t flags_all = msg.flags_set | msg.flags_unset;
+
+		if (!flags_all)
+			/* no change requested */
+			return;
+
+		memset(&ev, 0, sizeof(ev));
+		ev.type = ClientMessage;
+		ev.display = g->display;
+		ev.window = vm_window->local_winid;
+		ev.message_type = g->wm_state;
+		ev.format = 32;
+		ev.data.l[3] = 1; /* source indication: normal application */
+
+		/* ev.data.l[0]: 1 - add/set property, 0 - remove/unset property */
+		if (flags_all & WINDOW_FLAG_FULLSCREEN) {
+			ev.data.l[0] = (msg.flags_set & WINDOW_FLAG_FULLSCREEN) ? 1 : 0;
+			if (g->allow_fullscreen) {
+				ev.data.l[1] = g->wm_state_fullscreen;
+				ev.data.l[2] = 0;
+			} else {
+				ev.data.l[1] = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+				ev.data.l[2] = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+			}
+			XSendEvent(g->display, g->root_win, False,
+					(SubstructureNotifyMask|SubstructureRedirectMask),
+					(XEvent*) &ev);
+		}
+		if (msg.flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) {
+			ev.data.l[0] = (msg.flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) ? 1 : 0;
+			ev.data.l[1] = g->wm_state_demands_attention;
+			ev.data.l[2] = 0;
+			XSendEvent(g->display, g->root_win, False,
+					(SubstructureNotifyMask|SubstructureRedirectMask),
+					(XEvent*) &ev);
+		}
+	}
+}
+
 /* handle VM message: MSG_MAP
  * Map a window with given parameters */
 void handle_map(Ghandles * g, struct windowdata *vm_window)
@@ -1715,6 +1869,9 @@ void handle_message(Ghandles * g)
 	case MSG_WINDOW_HINTS:
 		handle_wmhints(g, vm_window);
 		break;
+	case MSG_WINDOW_FLAGS:
+		handle_wmflags(g, vm_window);
+		break;
 	default:
 		fprintf(stderr, "got unknown msg type %d\n", type);
 		exit(1);
@@ -1934,6 +2091,7 @@ void load_default_config_values(Ghandles * g)
 	g->paste_seq_mask = ControlMask | ShiftMask;
 	g->paste_seq_key = XK_v;
 	g->windows_count_limit_param = 500;
+	g->allow_fullscreen = 0;
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
@@ -2010,6 +2168,11 @@ void parse_vm_config(Ghandles * g, config_setting_t * group)
 	if ((setting =
 	     config_setting_get_member(group, "log_level"))) {
 		g->log_level = config_setting_get_int(setting);
+	}
+
+	if ((setting =
+	     config_setting_get_member(group, "allow_fullscreen"))) {
+		g->allow_fullscreen = config_setting_get_bool(setting);
 	}
 }
 
