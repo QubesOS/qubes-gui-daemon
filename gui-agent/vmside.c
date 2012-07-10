@@ -505,7 +505,6 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 	Atom Clp = XInternAtom(g->display, "CLIPBOARD", False);
 	Atom Qprop = XInternAtom(g->display, "QUBES_SELECTION", False);
 	Atom Targets = XInternAtom(g->display, "TARGETS", False);
-	Atom Atom_atom = XInternAtom(g->display, "ATOM", False);
 	Atom Utf8_string_atom =
 	    XInternAtom(g->display, "UTF8_STRING", False);
 
@@ -532,7 +531,7 @@ void process_xevent_selection(Ghandles * g, XSelectionEvent * ev)
 	// If we receive TARGETS atom in response for TARGETS query, let's assume
 	// that UTF8 is supported.
 	// this is workaround for Opera web browser...
-	else if (ev->target == Atom_atom && len >= 4 && len <= 8 &&
+	else if (ev->target == XA_ATOM && len >= 4 && len <= 8 &&
 		 // compare only first 4 bytes
 		 *((int *) data) == Targets)
 		XConvertSelection(g->display, Clp,
