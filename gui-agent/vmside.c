@@ -343,6 +343,8 @@ void process_xevent_map(Ghandles * g, XID window)
 	Window transient;
 	SKIP_NONMANAGED_WINDOW;
 
+	if (g->log_level > 1)
+		fprintf(stderr, "MAP for window 0x%x\n", (int)window);
 	send_pixmap_mfns(g, window);
 	send_window_state(g, window);
 	XGetWindowAttributes(g->display, window, &attr);
@@ -362,8 +364,11 @@ void process_xevent_map(Ghandles * g, XID window)
 void process_xevent_unmap(Ghandles * g, XID window)
 {
 	struct msghdr hdr;
-	hdr.type = MSG_UNMAP;
 	SKIP_NONMANAGED_WINDOW;
+
+	if (g->log_level > 1)
+		fprintf(stderr, "UNMAP for window 0x%x\n", (int)window);
+	hdr.type = MSG_UNMAP;
 	hdr.window = window;
 	write_struct(hdr);
 	XDeleteProperty(g->display, window, g->wm_state);
