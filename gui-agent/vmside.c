@@ -43,6 +43,8 @@
 #include "u2mfnlib.h"
 #include "tray.h"
 
+#define QUBES_GUI_PROTOCOL_VERSION_LINUX (1 << 16 | 0)
+
 int damage_event, damage_error;
 
 char **saved_argv;
@@ -1413,7 +1415,7 @@ void get_xconf_and_run_x()
 
 void send_protocol_version()
 {
-	uint32_t version = QUBES_GUID_PROTOCOL_VERSION;
+	uint32_t version = QUBES_GUI_PROTOCOL_VERSION_LINUX;
 	write_struct(version);
 }
 

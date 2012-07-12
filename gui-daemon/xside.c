@@ -1975,15 +1975,20 @@ void get_protocol_version()
 {
 	uint32_t untrusted_version;
 	char message[1024];
+	uint32_t version_major, version_minor;
 	read_struct(untrusted_version);
-	if (untrusted_version == QUBES_GUID_PROTOCOL_VERSION)
+	version_major = untrusted_version >> 16;
+	version_minor = untrusted_version & 0xffff;
+
+	if (version_major == QUBES_GUID_PROTOCOL_VERSION_MAJOR &&
+			version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
 		return;
 	snprintf(message, sizeof message, "kdialog --sorry \"The remote "
 		 "protocol version is %d, the local protocol version is %d. Upgrade "
 		 "qubes-gui-dom0 (in dom0) and qubes-gui-vm (in template VM) packages "
-		 "so that they provide compatible/latest software. You can run 'xm console "
+		 "so that they provide compatible/latest software. You can run 'xl console "
 		 "vmname' (as root) to access shell prompt in the VM.\"",
-		 untrusted_version, QUBES_GUID_PROTOCOL_VERSION);
+		 version_major, QUBES_GUID_PROTOCOL_VERSION_MAJOR);
 	system(message);
 	exit(1);
 }
