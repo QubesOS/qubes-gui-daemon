@@ -1337,6 +1337,7 @@ void handle_window_flags(Ghandles *g, XID winid)
 void handle_message(Ghandles * g)
 {
 	struct msghdr hdr;
+	char discard[256];
 	read_data((char *) &hdr, sizeof(hdr));
 	if (g->log_level > 1)
 		fprintf(stderr, "received message type %d for 0x%x\n", hdr.type, hdr.window);
@@ -1381,8 +1382,10 @@ void handle_message(Ghandles * g)
 		handle_window_flags(g, hdr.window);
 		break;
 	default:
-		fprintf(stderr, "got unknown msg type %d\n", hdr.type);
-		exit(1);
+		fprintf(stderr, "got unknown msg type %d, ignoring\n", hdr.type);
+		while (hdr.untrusted_len > 0) {
+			hdr.untrusted_len -= read_data(discard, min(hdr.untrusted_len, sizeof(discard)));
+		}
 	}
 }
 
