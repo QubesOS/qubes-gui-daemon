@@ -26,7 +26,10 @@ int read_data(char *buf, int size);
 int read_ready();
 #define read_struct(x) read_data((char*)&x, sizeof(x))
 #define write_struct(x) write_data((char*)&x, sizeof(x))
-#define write_message(x,y) real_write_message((char*)&x, sizeof(x), (char*)&y, sizeof(y))
+#define write_message(x,y) do {\
+	x.untrusted_len = sizeof(x); \
+	real_write_message((char*)&x, sizeof(x), (char*)&y, sizeof(y)); \
+    } while(0)
 void wait_for_vchan_or_argfd(int nfd, int *fd, fd_set * retset);
 int peer_server_init(int port);
 char *peer_client_init(int dom, int port);

@@ -480,6 +480,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 		g->clipboard_requested = 1;
 		hdr.type = MSG_CLIPBOARD_REQ;
 		hdr.window = remote_winid;
+		hdr.untrusted_len = 0;
 		if (g->log_level > 0)
 			fprintf(stderr, "secure copy\n");
 		write_struct(hdr);
@@ -497,6 +498,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 		get_qubes_clipboard(&data, &len);
 		if (len > 0) {
 			hdr.window = len;
+			hdr.untrusted_len = len;
 			real_write_message((char *) &hdr, sizeof(hdr),
 					   data, len);
 			free(data);
@@ -581,6 +583,7 @@ void process_xevent_close(Ghandles * g, XID window)
 	CHECK_NONMANAGED_WINDOW(g, window);
 	hdr.type = MSG_CLOSE;
 	hdr.window = vm_window->remote_winid;
+	hdr.untrusted_len = 0;
 	write_struct(hdr);
 }
 
