@@ -21,8 +21,11 @@
 #include <txrx.h>
 #include <qlimits.h>
 
+#define QUBES_GUI_PROTOCOL_VERSION_STUBDOM (1 << 16 | 0)
+
 struct QubesGuiState *qs;
 
+#define min(x,y) ((x)>(y)?(y):(x))
 #define QUBES_MAIN_WINDOW 1
 
 static void *vga_vram;
@@ -444,8 +447,11 @@ static void qubesgui_message_handler(void *opaque)
 			handle_configure(qs);
 			break;
 		default:
-			fprintf(stderr, "got unknown msg type %d\n", hdr.type);
-			return;
+			fprintf(stderr, "got unknown msg type %d, ignoring\n", hdr.type);
+			while (hdr.untrusted_len > 0) {
+					hdr.untrusted_len -= read_data(discard, min(hdr.untrusted_len, sizeof(discard)));
+			}
+			goto out;
 	}
 out:
 	// allow the handler to be called again
