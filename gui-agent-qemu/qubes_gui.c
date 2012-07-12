@@ -66,8 +66,7 @@ void qubes_create_window(QubesGuiState *qs, int w, int h)
 	crt.x = 0;
 	crt.y = 0;
 	crt.override_redirect = 0;
-	write_struct(hdr);
-	write_struct(crt);
+	write_message(hdr, crt);
 }
 
 void send_pixmap_mfns(QubesGuiState *qs)
@@ -93,12 +92,14 @@ void send_pixmap_mfns(QubesGuiState *qs)
         mfns[i] = virtual_to_mfn(data + i * XC_PAGE_SIZE);
 	hdr.type = MSG_MFNDUMP;
 	hdr.window = QUBES_MAIN_WINDOW;
+	hdr.untrusted_len = sizeof(shmcmd) + n  * sizeof(*mfns);
 	shmcmd.width = ds_get_width(qs->ds);
 	shmcmd.height = ds_get_height(qs->ds);
 	shmcmd.num_mfn = n;
 	shmcmd.off = offset;
 	shmcmd.bpp = ds_get_bits_per_pixel(qs->ds);
-	write_message(hdr, shmcmd);
+	write_struct(hdr);
+	write_struct(shmcmd);
 	write_data((char *) mfns, n  * sizeof(*mfns));
     free(mfns);
 }
@@ -138,8 +139,7 @@ void send_map(QubesGuiState *qs)
 	map_info.transient_for = 0;
 	hdr.type = MSG_MAP;
 	hdr.window = QUBES_MAIN_WINDOW;
-	write_struct(hdr);
-	write_struct(map_info);
+	write_message(hdr, map_info);
 }
 
 void process_pv_resize(QubesGuiState *qs, int width, int height, int linesize)
@@ -156,8 +156,7 @@ void process_pv_resize(QubesGuiState *qs, int width, int height, int linesize)
 	conf.width = width;
 	conf.height = height;
 	conf.override_redirect = 0;
-	write_struct(hdr);
-	write_struct(conf);
+	write_message(hdr, conf);
 	send_pixmap_mfns(qs);
 	send_wmhints(qs);
 }
@@ -183,6 +182,7 @@ void send_clipboard_data(char *data, int len)
 		hdr.window = MAX_CLIPBOARD_SIZE;
 	else
 		hdr.window = len;
+	hdr.untrusted_len = hdr.window;
 	write_struct(hdr);
 	write_data((char *) data, len);
 }
