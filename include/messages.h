@@ -28,6 +28,12 @@
 struct msghdr {
 	uint32_t type;
 	uint32_t window;
+	/* This field is intended for use by gui_agents to skip unknown
+	 * messages from the (trusted) guid. Guid, on the other hand,
+	 * should never rely on this field to calculate the actual len of
+	 * message to be read, as the (untrusted) agent can put here
+	 * whatever it wants! */
+	uint32_t untrusted_len; // NEVER trust this field!
 };
 enum {
 	MSG_MIN = 123,
