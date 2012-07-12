@@ -1444,8 +1444,8 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 	snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
 	/* sanitize end */
 	if (g->log_level > 0)
-		fprintf(stderr, "set title for window 0x%x to %s\n",
-			(int) vm_window->local_winid, buf);
+		fprintf(stderr, "set title for window 0x%x\n",
+			(int) vm_window->local_winid);
 	Xutf8TextListToTextProperty(g->display, list, 1, XUTF8StringStyle,
 				    &text_prop);
 	XSetWMName(g->display, vm_window->local_winid, &text_prop);
