@@ -229,7 +229,9 @@ void send_pixmap_mfns(Ghandles * g, XID window)
 	}
 	hdr.type = MSG_MFNDUMP;
 	hdr.window = window;
-	write_message(hdr, shmcmd);
+	hdr.untrusted_len = sizeof(shmcmd) + size;
+	write_struct(hdr);
+	write_struct(shmcmd);
 	write_data((char *) mfnbuf, size);
 }
 
@@ -368,6 +370,7 @@ void process_xevent_unmap(Ghandles * g, XID window)
 		fprintf(stderr, "UNMAP for window 0x%x\n", (int)window);
 	hdr.type = MSG_UNMAP;
 	hdr.window = window;
+	hdr.untrusted_len = 0;
 	write_struct(hdr);
 	XDeleteProperty(g->display, window, g->wm_state);
 }
@@ -389,6 +392,7 @@ void process_xevent_destroy(Ghandles * g, XID window)
 		fprintf(stderr, "handle destroy 0x%x\n", (int) window);
 	hdr.type = MSG_DESTROY;
 	hdr.window = window;
+	hdr.untrusted_len = 0;
 	write_struct(hdr);
 	l = list_lookup(windows_list, window);
 	if (l->data) {
@@ -466,6 +470,7 @@ void send_clipboard_data(char *data, int len)
 		hdr.window = MAX_CLIPBOARD_SIZE;
 	else
 		hdr.window = len;
+	hdr.untrusted_len = hdr.window;
 	write_struct(hdr);
 	write_data((char *) data, len);
 }
@@ -744,6 +749,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 
 			hdr.type = MSG_DOCK;
 			hdr.window = w;
+			hdr.untrusted_len = 0;
 			write_struct(hdr);
 			break;
 		default:
