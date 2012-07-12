@@ -144,8 +144,7 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 	crt.x = ev->x;
 	crt.y = ev->y;
 	crt.override_redirect = ev->override_redirect;
-	write_struct(hdr);
-	write_struct(crt);
+	write_message(hdr, crt);
 }
 
 void feed_xdriver(Ghandles * g, int type, int arg1, int arg2)
@@ -355,8 +354,7 @@ void process_xevent_map(Ghandles * g, XID window)
 	map_info.override_redirect = attr.override_redirect;
 	hdr.type = MSG_MAP;
 	hdr.window = window;
-	write_struct(hdr);
-	write_struct(map_info);
+	write_message(hdr, map_info);
 	send_wmname(g, window);
 //      process_xevent_damage(g, window, 0, 0, attr.width, attr.height);
 }
@@ -456,8 +454,7 @@ void process_xevent_configure(Ghandles * g, XID window,
 	conf.width = ev->width;
 	conf.height = ev->height;
 	conf.override_redirect = ev->override_redirect;
-	write_struct(hdr);
-	write_struct(conf);
+	write_message(hdr, conf);
 	send_pixmap_mfns(g, window);
 }
 

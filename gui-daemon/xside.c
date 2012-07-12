@@ -1096,8 +1096,7 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 		map_info.override_redirect = attr.override_redirect;
 		hdr.type = MSG_MAP;
 		hdr.window = vm_window->remote_winid;
-		write_struct(hdr);
-		write_struct(map_info);
+		write_message(hdr, map_info);
 		if (vm_window->is_docked
 		    && fix_docked_xy(g, vm_window,
 				     "process_xevent_mapnotify"))
