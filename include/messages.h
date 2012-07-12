@@ -24,7 +24,11 @@
  */
 
 #include <stdint.h>
-#define QUBES_GUID_PROTOCOL_VERSION 6
+/* version of protocol described in this file, used as gui-daemon protocol
+ * version; specific agent defines own version which them support */
+#define QUBES_GUID_PROTOCOL_VERSION_MAJOR 1
+#define QUBES_GUID_PROTOCOL_VERSION_MINOR 0
+#define QUBES_GUID_PROTOCOL_VERSION (QUBES_GUID_PROTOCOL_VERSION_MAJOR << 16 | QUBES_GUID_PROTOCOL_VERSION_MINOR)
 struct msghdr {
 	uint32_t type;
 	uint32_t window;
