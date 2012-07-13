@@ -43,6 +43,8 @@
 #include "u2mfnlib.h"
 #include "tray.h"
 
+#define QUBES_GUI_PROTOCOL_VERSION_LINUX (1 << 16 | 0)
+
 int damage_event, damage_error;
 
 char **saved_argv;
@@ -144,8 +146,7 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 	crt.x = ev->x;
 	crt.y = ev->y;
 	crt.override_redirect = ev->override_redirect;
-	write_struct(hdr);
-	write_struct(crt);
+	write_message(hdr, crt);
 }
 
 void feed_xdriver(Ghandles * g, int type, int arg1, int arg2)
@@ -230,7 +231,9 @@ void send_pixmap_mfns(Ghandles * g, XID window)
 	}
 	hdr.type = MSG_MFNDUMP;
 	hdr.window = window;
-	write_message(hdr, shmcmd);
+	hdr.untrusted_len = sizeof(shmcmd) + size;
+	write_struct(hdr);
+	write_struct(shmcmd);
 	write_data((char *) mfnbuf, size);
 }
 
@@ -355,8 +358,7 @@ void process_xevent_map(Ghandles * g, XID window)
 	map_info.override_redirect = attr.override_redirect;
 	hdr.type = MSG_MAP;
 	hdr.window = window;
-	write_struct(hdr);
-	write_struct(map_info);
+	write_message(hdr, map_info);
 	send_wmname(g, window);
 //      process_xevent_damage(g, window, 0, 0, attr.width, attr.height);
 }
@@ -370,6 +372,7 @@ void process_xevent_unmap(Ghandles * g, XID window)
 		fprintf(stderr, "UNMAP for window 0x%x\n", (int)window);
 	hdr.type = MSG_UNMAP;
 	hdr.window = window;
+	hdr.untrusted_len = 0;
 	write_struct(hdr);
 	XDeleteProperty(g->display, window, g->wm_state);
 }
@@ -391,6 +394,7 @@ void process_xevent_destroy(Ghandles * g, XID window)
 		fprintf(stderr, "handle destroy 0x%x\n", (int) window);
 	hdr.type = MSG_DESTROY;
 	hdr.window = window;
+	hdr.untrusted_len = 0;
 	write_struct(hdr);
 	l = list_lookup(windows_list, window);
 	if (l->data) {
@@ -456,8 +460,7 @@ void process_xevent_configure(Ghandles * g, XID window,
 	conf.width = ev->width;
 	conf.height = ev->height;
 	conf.override_redirect = ev->override_redirect;
-	write_struct(hdr);
-	write_struct(conf);
+	write_message(hdr, conf);
 	send_pixmap_mfns(g, window);
 }
 
@@ -469,6 +472,7 @@ void send_clipboard_data(char *data, int len)
 		hdr.window = MAX_CLIPBOARD_SIZE;
 	else
 		hdr.window = len;
+	hdr.untrusted_len = hdr.window;
 	write_struct(hdr);
 	write_data((char *) data, len);
 }
@@ -747,6 +751,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 
 			hdr.type = MSG_DOCK;
 			hdr.window = w;
+			hdr.untrusted_len = 0;
 			write_struct(hdr);
 			break;
 		default:
@@ -1340,6 +1345,7 @@ void handle_window_flags(Ghandles *g, XID winid)
 void handle_message(Ghandles * g)
 {
 	struct msghdr hdr;
+	char discard[256];
 	read_data((char *) &hdr, sizeof(hdr));
 	if (g->log_level > 1)
 		fprintf(stderr, "received message type %d for 0x%x\n", hdr.type, hdr.window);
@@ -1384,8 +1390,10 @@ void handle_message(Ghandles * g)
 		handle_window_flags(g, hdr.window);
 		break;
 	default:
-		fprintf(stderr, "got unknown msg type %d\n", hdr.type);
-		exit(1);
+		fprintf(stderr, "got unknown msg type %d, ignoring\n", hdr.type);
+		while (hdr.untrusted_len > 0) {
+			hdr.untrusted_len -= read_data(discard, min(hdr.untrusted_len, sizeof(discard)));
+		}
 	}
 }
 
@@ -1407,7 +1415,7 @@ void get_xconf_and_run_x()
 
 void send_protocol_version()
 {
-	uint32_t version = QUBES_GUID_PROTOCOL_VERSION;
+	uint32_t version = QUBES_GUI_PROTOCOL_VERSION_LINUX;
 	write_struct(version);
 }
 

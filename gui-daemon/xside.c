@@ -480,6 +480,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 		g->clipboard_requested = 1;
 		hdr.type = MSG_CLIPBOARD_REQ;
 		hdr.window = remote_winid;
+		hdr.untrusted_len = 0;
 		if (g->log_level > 0)
 			fprintf(stderr, "secure copy\n");
 		write_struct(hdr);
@@ -497,6 +498,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 		get_qubes_clipboard(&data, &len);
 		if (len > 0) {
 			hdr.window = len;
+			hdr.untrusted_len = len;
 			real_write_message((char *) &hdr, sizeof(hdr),
 					   data, len);
 			free(data);
@@ -581,6 +583,7 @@ void process_xevent_close(Ghandles * g, XID window)
 	CHECK_NONMANAGED_WINDOW(g, window);
 	hdr.type = MSG_CLOSE;
 	hdr.window = vm_window->remote_winid;
+	hdr.untrusted_len = 0;
 	write_struct(hdr);
 }
 
@@ -1096,8 +1099,7 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 		map_info.override_redirect = attr.override_redirect;
 		hdr.type = MSG_MAP;
 		hdr.window = vm_window->remote_winid;
-		write_struct(hdr);
-		write_struct(map_info);
+		write_message(hdr, map_info);
 		if (vm_window->is_docked
 		    && fix_docked_xy(g, vm_window,
 				     "process_xevent_mapnotify"))
@@ -1444,8 +1446,8 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 	snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
 	/* sanitize end */
 	if (g->log_level > 0)
-		fprintf(stderr, "set title for window 0x%x to %s\n",
-			(int) vm_window->local_winid, buf);
+		fprintf(stderr, "set title for window 0x%x\n",
+			(int) vm_window->local_winid);
 	Xutf8TextListToTextProperty(g->display, list, 1, XUTF8StringStyle,
 				    &text_prop);
 	XSetWMName(g->display, vm_window->local_winid, &text_prop);
@@ -1973,15 +1975,20 @@ void get_protocol_version()
 {
 	uint32_t untrusted_version;
 	char message[1024];
+	uint32_t version_major, version_minor;
 	read_struct(untrusted_version);
-	if (untrusted_version == QUBES_GUID_PROTOCOL_VERSION)
+	version_major = untrusted_version >> 16;
+	version_minor = untrusted_version & 0xffff;
+
+	if (version_major == QUBES_GUID_PROTOCOL_VERSION_MAJOR &&
+			version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
 		return;
 	snprintf(message, sizeof message, "kdialog --sorry \"The remote "
 		 "protocol version is %d, the local protocol version is %d. Upgrade "
 		 "qubes-gui-dom0 (in dom0) and qubes-gui-vm (in template VM) packages "
-		 "so that they provide compatible/latest software. You can run 'xm console "
+		 "so that they provide compatible/latest software. You can run 'xl console "
 		 "vmname' (as root) to access shell prompt in the VM.\"",
-		 untrusted_version, QUBES_GUID_PROTOCOL_VERSION);
+		 version_major, QUBES_GUID_PROTOCOL_VERSION_MAJOR);
 	system(message);
 	exit(1);
 }
