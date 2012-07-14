@@ -379,8 +379,9 @@ struct windowdata *check_nonmanged_window(Ghandles * g, XID id)
 {
 	struct genlist *item = list_lookup(g->wid2windowdata, id);
 	if (!item) {
-		fprintf(stderr, "cannot lookup 0x%x in wid2windowdata\n",
-			(int) id);
+		if (g->log_level > 0)
+			fprintf(stderr, "cannot lookup 0x%x in wid2windowdata\n",
+					(int) id);
 		return NULL;
 	}
 	return item->data;
@@ -1445,7 +1446,7 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 				g->allow_utf8_titles);
 	snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
 	/* sanitize end */
-	if (g->log_level > 0)
+	if (g->log_level > 1)
 		fprintf(stderr, "set title for window 0x%x\n",
 			(int) vm_window->local_winid);
 	Xutf8TextListToTextProperty(g->display, list, 1, XUTF8StringStyle,
