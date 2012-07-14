@@ -1972,7 +1972,7 @@ void send_xconf(Ghandles * g)
 
 /* receive from VM and compare protocol version
  * abort if mismatch */
-void get_protocol_version()
+void get_protocol_version(Ghandles * g)
 {
 	uint32_t untrusted_version;
 	char message[1024];
@@ -1984,12 +1984,17 @@ void get_protocol_version()
 	if (version_major == QUBES_GUID_PROTOCOL_VERSION_MAJOR &&
 			version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
 		return;
-	snprintf(message, sizeof message, "kdialog --sorry \"The remote "
-		 "protocol version is %d, the local protocol version is %d. Upgrade "
-		 "qubes-gui-dom0 (in dom0) and qubes-gui-vm (in template VM) packages "
-		 "so that they provide compatible/latest software. You can run 'xl console "
-		 "vmname' (as root) to access shell prompt in the VM.\"",
-		 version_major, QUBES_GUID_PROTOCOL_VERSION_MAJOR);
+	if (version_major < QUBES_GUID_PROTOCOL_VERSION_MAJOR)
+		snprintf(message, sizeof message, "kdialog --sorry \""
+				"The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
+				"To start and access the VM or template without GUI virtualization, use the following commands:\n"
+				"qvm-start --no-guid vmname\n"
+				"sudo xl console vmname\"", g->vmname, version_major, version_minor);
+	else
+		snprintf(message, sizeof message, "kdialog --sorry \""
+				"The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
+				"To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\""
+				version_major, version_minor, g->vmname);
 	system(message);
 	exit(1);
 }
@@ -2398,7 +2403,7 @@ int main(int argc, char **argv)
 		system(cmd_tmp);
 	}
 
-	get_protocol_version();
+	get_protocol_version(&ghandles);
 	send_xconf(&ghandles);
 
 	for (;;) {
