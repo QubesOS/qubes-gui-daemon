@@ -197,11 +197,31 @@ int peer_server_init(int port)
 	return 0;
 }
 
-char *peer_client_init(int dom, int port)
+char *get_vm_name(int dom)
 {
 	struct xs_handle *xs;
 	char buf[64];
 	char *name;
+	unsigned int len = 0;
+
+	xs = xs_daemon_open();
+	if (!xs) {
+		perror("xs_daemon_open");
+		exit(1);
+	}
+	snprintf(buf, sizeof(buf), "/local/domain/%d/name", dom);
+	name = xs_read(xs, 0, buf, &len);
+	if (!name) {
+		perror("xs_read domainname");
+		exit(1);
+	}
+	xs_daemon_close(xs);
+	return name;
+}
+
+void peer_client_init(int dom, int port)
+{
+	struct xs_handle *xs;
 	char *dummy;
 	unsigned int len = 0;
 	char devbuf[128];
@@ -213,12 +233,6 @@ char *peer_client_init(int dom, int port)
 	xs = xs_daemon_open();
 	if (!xs) {
 		perror("xs_daemon_open");
-		exit(1);
-	}
-	snprintf(buf, sizeof(buf), "/local/domain/%d/name", dom);
-	name = xs_read(xs, 0, buf, &len);
-	if (!name) {
-		perror("xs_read domainname");
 		exit(1);
 	}
 	snprintf(devbuf, sizeof(devbuf),
@@ -251,7 +265,6 @@ char *peer_client_init(int dom, int port)
 		perror("xc_interface_open");
 		exit(1);
 	}
-	return name;
 }
 
 void vchan_close()

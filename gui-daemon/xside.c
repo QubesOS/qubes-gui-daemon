@@ -2314,6 +2314,11 @@ int main(int argc, char **argv)
 
 	parse_cmdline(&ghandles, argc, argv);
 	get_boot_lock(ghandles.domid);
+	/* vmname is required to parse config file */
+	vmname = get_vm_name(ghandles.domid);
+	strncpy(ghandles.vmname, vmname, sizeof(ghandles.vmname));
+	ghandles.vmname[sizeof(ghandles.vmname) - 1] = 0;
+	free(vmname);
 	/* load config file */
 	load_default_config_values(&ghandles);
 	parse_config(&ghandles);
@@ -2365,7 +2370,7 @@ int main(int argc, char **argv)
 	}
 	mkghandles(&ghandles);
 	XSetErrorHandler(dummy_handler);
-	vmname = peer_client_init(ghandles.domid, 6000);
+	peer_client_init(ghandles.domid, 6000);
 	atexit(vchan_close);
 	signal(SIGCHLD, wait_for_pacat);
 	exec_pacat(&ghandles);
@@ -2380,8 +2385,6 @@ int main(int argc, char **argv)
 	signal(SIGTERM, dummy_signal_handler);
 	atexit(release_all_mapped_mfns);
 
-	strncpy(ghandles.vmname, vmname, sizeof(ghandles.vmname));
-	ghandles.vmname[sizeof(ghandles.vmname) - 1] = 0;
 	xfd = ConnectionNumber(ghandles.display);
 
 	/* provide keyboard map before VM Xserver starts */
