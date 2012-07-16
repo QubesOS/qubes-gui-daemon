@@ -1993,7 +1993,7 @@ void get_protocol_version(Ghandles * g)
 	else
 		snprintf(message, sizeof message, "kdialog --sorry \""
 				"The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
-				"To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\""
+				"To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
 				version_major, version_minor, g->vmname);
 	system(message);
 	exit(1);
