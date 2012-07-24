@@ -1631,7 +1631,7 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 	} else
 		vm_window->transient_for = NULL;
 	vm_window->override_redirect = 0;
-	if (untrusted_txt.override_redirect || vm_window->is_docked)
+	if (untrusted_txt.override_redirect)
 		fix_menu(g, vm_window);
 	(void) XMapWindow(g->display, vm_window->local_winid);
 }
