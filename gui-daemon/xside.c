@@ -1418,16 +1418,8 @@ void fix_menu(Ghandles * g, struct windowdata *vm_window)
 
 	// do not let menu window hide its color frame by moving outside of the screen
 	// if it is located offscreen, then allow negative x/y
-	// correction - remove this check
-	// MapEvent does not change window dimensions; so if VM sent evil dimensions,
-	// in create or configure_from_vm message, they would have been 
-	// corrected once the mesage has arrived.
-	// Apparently, KDE tray temporarily moves the window without resizing so 
-	// that it is partially offscreen (which is fine:
-	// we allow window manager do to anything, it is trusted), which
-	// triggered the below check and caused tray malfunction.
-	//      if (force_on_screen(g, vm_window, 0, "fix_menu"))
-	//              moveresize_vm_window(g, vm_window);
+	if (force_on_screen(g, vm_window, 0, "fix_menu"))
+		moveresize_vm_window(g, vm_window);
 }
 
 /* handle VM message: MSG_VMNAME
@@ -1638,10 +1630,8 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 				     transdata->local_winid);
 	} else
 		vm_window->transient_for = NULL;
-	// ignore override_redirect attribute from the message
-	// so that we can skip force_on_screen check
-	// vm_window->override_redirect = 0;
-	if (vm_window->override_redirect || vm_window->is_docked)
+	vm_window->override_redirect = 0;
+	if (untrusted_txt.override_redirect)
 		fix_menu(g, vm_window);
 	(void) XMapWindow(g->display, vm_window->local_winid);
 }
@@ -1993,7 +1983,7 @@ void get_protocol_version(Ghandles * g)
 	else
 		snprintf(message, sizeof message, "kdialog --sorry \""
 				"The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
-				"To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\""
+				"To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
 				version_major, version_minor, g->vmname);
 	system(message);
 	exit(1);
