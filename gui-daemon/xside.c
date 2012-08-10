@@ -62,7 +62,8 @@
  * discussion: http://wiki.qubes-os.org/trac/ticket/127 */
 // #define FILL_TRAY_BG
 
-#define SPECAL_KEYS_MASK (Mod1Mask | Mod2Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
+// Mod3 excluded as it is Num_Lock
+#define SPECAL_KEYS_MASK (Mod1Mask | Mod2Mask | Mod4Mask | ShiftMask | ControlMask )
 
 /* per-window data */
 struct windowdata {
