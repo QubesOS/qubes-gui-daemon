@@ -31,6 +31,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/Xcomposite.h>
 #include <X11/extensions/Xdamage.h>
+#include <X11/XKBlib.h>
 #include <X11/Xlibint.h>
 #include <X11/Xatom.h>
 #include "messages.h"
@@ -916,6 +917,7 @@ void mkghandles(Ghandles * g)
 void handle_keypress(Ghandles * g, XID winid)
 {
 	struct msg_keypress key;
+	XkbStateRec state;
 //      XKeyEvent event;
 //        char buf[256];
 	read_data((char *) &key, sizeof(key));
@@ -942,6 +944,56 @@ void handle_keypress(Ghandles * g, XID winid)
 //                 event.type==KeyPress?KeyPressMask:KeyReleaseMask, 
 		   KeyPressMask, (XEvent *) & event);
 #else
+	// sync modifiers state
+	if (XkbGetState(g->display, XkbUseCoreKbd, &state) != Success) {
+		if (g->log_level > 0)
+			fprintf(stderr, "failed to get modifier state\n");
+		state.mods = key.state;
+	}
+	if (state.mods != key.state) {
+		XModifierKeymap *modmap;
+		int mod_index;
+		int mod_mask;
+
+		modmap = XGetModifierMapping(g->display);
+		if (!modmap) {
+			if (g->log_level > 0)
+				fprintf(stderr, "failed to get modifier mapping\n");
+		} else {
+			// from X.h:
+			// #define ShiftMapIndex           0
+			// #define LockMapIndex            1
+			// #define ControlMapIndex         2
+			// #define Mod1MapIndex            3
+			// #define Mod2MapIndex            4
+			// #define Mod3MapIndex            5
+			// #define Mod4MapIndex            6
+			// #define Mod5MapIndex            7
+			for (mod_index = 0; mod_index < 8; mod_index++) {
+				if (modmap->modifiermap[mod_index*modmap->max_keypermod] == 0x00) {
+					if (g->log_level > 1)
+						fprintf(stderr, "ignoring disabled modifier %d\n", mod_index);
+					// no key set for this modifier, ignore
+					continue;
+				}
+				mod_mask = (1<<mod_index);
+				// special case for caps lock switch by press+release
+				if (mod_index == LockMapIndex) {
+					if ((state.mods & mod_mask) ^ (key.state & mod_mask)) {
+						feed_xdriver(g, 'K', modmap->modifiermap[mod_index*modmap->max_keypermod], 1);
+						feed_xdriver(g, 'K', modmap->modifiermap[mod_index*modmap->max_keypermod], 0);
+					}
+				} else {
+					if ((state.mods & mod_mask) && !(key.state & mod_mask))
+						feed_xdriver(g, 'K', modmap->modifiermap[mod_index*modmap->max_keypermod], 0);
+					else if (!(state.mods & mod_mask) && (key.state & mod_mask))
+						feed_xdriver(g, 'K', modmap->modifiermap[mod_index*modmap->max_keypermod], 1);
+				}
+			}
+			XFreeModifiermap(modmap);
+		}
+	}
+
 	feed_xdriver(g, 'K', key.keycode, key.type == KeyPress ? 1 : 0);
 #endif
 //      fprintf(stderr, "win 0x%x type %d keycode %d\n",
