@@ -69,6 +69,7 @@ struct _global_handles {
 	unsigned char *clipboard_data;
 	unsigned int clipboard_data_len;
 	int log_level;
+	int sync_all_modifiers;
 };
 
 struct window_data {
@@ -950,6 +951,11 @@ void handle_keypress(Ghandles * g, XID winid)
 			fprintf(stderr, "failed to get modifier state\n");
 		state.mods = key.state;
 	}
+	if (!g->sync_all_modifiers) {
+		// ignore all but CapsLock
+		state.mods &= LockMask;
+		key.state &= LockMask;
+	}
 	if (state.mods != key.state) {
 		XModifierKeymap *modmap;
 		int mod_index;
@@ -1488,6 +1494,7 @@ void usage()
 	fprintf(stderr, "Usage: qubes_gui [-v] [-q] [-h]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
+	fprintf(stderr, "       -m  sync all modifiers before key event (default: only Caps Lock)\n");
 	fprintf(stderr, "       -h  print this message\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Log levels:\n");
@@ -1502,13 +1509,17 @@ void parse_args(Ghandles * g, int argc, char **argv)
 
 	// defaults
 	g->log_level = 0;
-	while ((opt = getopt(argc, argv, "qvh")) != -1) {
+	g->sync_all_modifiers = 0;
+	while ((opt = getopt(argc, argv, "qvhm")) != -1) {
 		switch (opt) {
 		case 'q':
 			g->log_level--;
 			break;
 		case 'v':
 			g->log_level++;
+			break;
+		case 'm':
+			g->sync_all_modifiers = 1;
 			break;
 		case 'h':
 			usage();
