@@ -31,6 +31,7 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 #include <signal.h>
 #include <poll.h>
 #include <errno.h>
@@ -56,6 +57,7 @@
 /* default width of forced colorful border */
 #define BORDER_WIDTH 2
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes_clipboard.bin"
+#define QREXEC_CLIENT_PATH "/usr/lib/qubes/qrexec_client"
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
 /* this feature was used to fill icon bg with VM color, later changed to white;
@@ -64,6 +66,11 @@
 
 // Mod3 excluded as it is Num_Lock
 #define SPECAL_KEYS_MASK (Mod1Mask | Mod2Mask | Mod4Mask | ShiftMask | ControlMask )
+
+enum clipboard_op {
+	CLIPBOARD_COPY,
+	CLIPBOARD_PASTE
+};
 
 /* per-window data */
 struct windowdata {
@@ -142,6 +149,7 @@ struct _global_handles {
 	KeySym copy_seq_key;	/* key for secure-copy key sequence */
 	int paste_seq_mask;	/* modifiers mask for secure-paste key sequence */
 	KeySym paste_seq_key;	/* key for secure-paste key sequence */
+	int qrexec_clipboard;	/* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
 };
 
 typedef struct _global_handles Ghandles;
@@ -374,6 +382,11 @@ void mkghandles(Ghandles * g)
 	/* init window lists */
 	g->remote2local = list_new();
 	g->wid2windowdata = list_new();
+	/* use qrexec for clipboard operations when stubdom GUI is used */
+	if (g->domid != g->target_domid)
+		g->qrexec_clipboard = 1;
+	else
+		g->qrexec_clipboard = 0;
 }
 
 /* find if window (given by id) is managed by this guid */
@@ -387,6 +400,18 @@ struct windowdata *check_nonmanged_window(Ghandles * g, XID id)
 		return NULL;
 	}
 	return item->data;
+}
+
+void save_clipboard_source_vmname(const char *vmname) {
+	FILE *file;
+
+	file = fopen(QUBES_CLIPBOARD_FILENAME ".source", "w");
+	if (!file) {
+		perror("open " QUBES_CLIPBOARD_FILENAME ".source");
+		exit(1);
+	}
+	fwrite(vmname, strlen(vmname), 1, file);
+	fclose(file);
 }
 
 /* fetch clippboard content from file */
@@ -409,11 +434,92 @@ void get_qubes_clipboard(char **data, int *len)
 	fread(*data, *len, 1, file);
 	fclose(file);
 	truncate(QUBES_CLIPBOARD_FILENAME, 0);
-	file = fopen(QUBES_CLIPBOARD_FILENAME ".source", "w+");
-	fclose(file);
-      out:
+	save_clipboard_source_vmname("");
+out:
 	inter_appviewer_lock(0);
 }
+
+int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
+	char *path_stdin, *path_stdout, *service_call;
+	pid_t pid;
+	struct rlimit rl;
+	int fd;
+	char domid_str[16];
+	int status;
+
+	switch (op) {
+		case CLIPBOARD_COPY:
+			path_stdin = "/dev/null";
+			path_stdout = QUBES_CLIPBOARD_FILENAME;
+			service_call = "DEFAULT:QUBESRPC qubes.ClipboardCopy";
+			break;
+		case CLIPBOARD_PASTE:
+			path_stdin = QUBES_CLIPBOARD_FILENAME;
+			path_stdout = "/dev/null";
+			service_call = "DEFAULT:QUBESRPC qubes.ClipboardPaste";
+			break;
+	}
+	switch (pid=fork()) {
+		case -1:
+			perror("fork");
+			exit(1);
+		case 0:
+			fd = open(path_stdout, O_WRONLY);
+			if (fd < 0) {
+				perror("open");
+				exit(1);
+			}
+			if (op == CLIPBOARD_COPY) {
+				rl.rlim_cur = MAX_CLIPBOARD_SIZE;
+				rl.rlim_max = MAX_CLIPBOARD_SIZE;
+				setrlimit(RLIMIT_FSIZE, &rl);
+				// TODO: place for security filter (via pipe() and another fork+exec)
+			}
+			dup2(fd, 1);
+			close(fd);
+			fd = open(path_stdin, O_RDONLY);
+			dup2(fd, 0);
+			close(fd);
+			snprintf(domid_str, sizeof(domid_str), "%d", g->target_domid);
+			execl(QREXEC_CLIENT_PATH, "qrexec_client", "-d", domid_str, service_call, (char*)NULL);
+			perror("execl");
+			exit(1);
+		default:
+			waitpid(pid, &status, 0);
+	}
+	return WEXITSTATUS(status) == 0;
+}
+
+int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
+	int ret;
+
+	inter_appviewer_lock(1);
+	ret = run_clipboard_rpc(g, CLIPBOARD_COPY);
+	if (ret) {
+		save_clipboard_source_vmname(g->vmname);
+	} else {
+		truncate(QUBES_CLIPBOARD_FILENAME, 0);
+		save_clipboard_source_vmname("");
+	}
+
+	inter_appviewer_lock(0);
+	return ret;
+}
+
+int paste_qubes_clipboard_using_qrexec(Ghandles * g) {
+	int ret;
+
+	inter_appviewer_lock(1);
+	ret = run_clipboard_rpc(g, CLIPBOARD_PASTE);
+	if (ret) {
+		truncate(QUBES_CLIPBOARD_FILENAME, 0);
+		save_clipboard_source_vmname("");
+	}
+
+	inter_appviewer_lock(0);
+	return ret;
+}
+
 
 /* handle VM message: MSG_CLIPBOARD_DATA
  *  - checks if clipboard data was requested
@@ -454,13 +560,7 @@ void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	}
 	fwrite(untrusted_data, untrusted_data_sz, 1, file);
 	fclose(file);
-	file = fopen(QUBES_CLIPBOARD_FILENAME ".source", "w");
-	if (!file) {
-		perror("open " QUBES_CLIPBOARD_FILENAME ".source");
-		exit(1);
-	}
-	fwrite(g->vmname, strlen(g->vmname), 1, file);
-	fclose(file);
+	save_clipboard_source_vmname(g->vmname);
 	inter_appviewer_lock(0);
 	g->clipboard_requested = 0;
 	free(untrusted_data);
@@ -480,13 +580,19 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 					       g->copy_seq_key)) {
 		if (ev->type != KeyPress)
 			return 1;
-		g->clipboard_requested = 1;
-		hdr.type = MSG_CLIPBOARD_REQ;
-		hdr.window = remote_winid;
-		hdr.untrusted_len = 0;
-		if (g->log_level > 0)
-			fprintf(stderr, "secure copy\n");
-		write_struct(hdr);
+		if (g->qrexec_clipboard) {
+			int ret = fetch_qubes_clipboard_using_qrexec(g);
+			if (g->log_level > 0)
+				fprintf(stderr, "secure copy: %s\n", ret?"success":"failed");
+		} else {
+			g->clipboard_requested = 1;
+			hdr.type = MSG_CLIPBOARD_REQ;
+			hdr.window = remote_winid;
+			hdr.untrusted_len = 0;
+			if (g->log_level > 0)
+				fprintf(stderr, "secure copy\n");
+			write_struct(hdr);
+		}
 		return 1;
 	}
 	if ((ev->state & SPECAL_KEYS_MASK) ==
@@ -495,16 +601,22 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 					       g->paste_seq_key)) {
 		if (ev->type != KeyPress)
 			return 1;
-		hdr.type = MSG_CLIPBOARD_DATA;
-		if (g->log_level > 0)
-			fprintf(stderr, "secure paste\n");
-		get_qubes_clipboard(&data, &len);
-		if (len > 0) {
-			hdr.window = len;
-			hdr.untrusted_len = len;
-			real_write_message((char *) &hdr, sizeof(hdr),
-					   data, len);
-			free(data);
+		if (g->qrexec_clipboard) {
+			int ret = paste_qubes_clipboard_using_qrexec(g);
+			if (g->log_level > 0)
+				fprintf(stderr, "secure paste: %s\n", ret?"success":"failed");
+		} else {
+			hdr.type = MSG_CLIPBOARD_DATA;
+			if (g->log_level > 0)
+				fprintf(stderr, "secure paste\n");
+			get_qubes_clipboard(&data, &len);
+			if (len > 0) {
+				hdr.window = len;
+				hdr.untrusted_len = len;
+				real_write_message((char *) &hdr, sizeof(hdr),
+						data, len);
+				free(data);
+			}
 		}
 
 		return 1;
