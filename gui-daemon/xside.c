@@ -58,6 +58,7 @@
 #define BORDER_WIDTH 2
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes_clipboard.bin"
 #define QREXEC_CLIENT_PATH "/usr/lib/qubes/qrexec_client"
+#define QREXEC_POLICY_PATH "/usr/lib/qubes/qrexec_policy"
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
 /* this feature was used to fill icon bg with VM color, later changed to white;
@@ -415,14 +416,14 @@ void save_clipboard_source_vmname(const char *vmname) {
 }
 
 /* fetch clippboard content from file */
+/* lock already taken in is_special_keypress() */
 void get_qubes_clipboard(char **data, int *len)
 {
 	FILE *file;
 	*len = 0;
-	inter_appviewer_lock(1);
 	file = fopen(QUBES_CLIPBOARD_FILENAME, "r");
 	if (!file)
-		goto out;
+		return;
 	fseek(file, 0, SEEK_END);
 	*len = ftell(file);
 	*data = malloc(*len);
@@ -435,8 +436,6 @@ void get_qubes_clipboard(char **data, int *len)
 	fclose(file);
 	truncate(QUBES_CLIPBOARD_FILENAME, 0);
 	save_clipboard_source_vmname("");
-out:
-	inter_appviewer_lock(0);
 }
 
 int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
@@ -506,17 +505,16 @@ int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
 	return ret;
 }
 
+/* lock already taken in is_special_keypress() */
 int paste_qubes_clipboard_using_qrexec(Ghandles * g) {
 	int ret;
 
-	inter_appviewer_lock(1);
 	ret = run_clipboard_rpc(g, CLIPBOARD_PASTE);
 	if (ret) {
 		truncate(QUBES_CLIPBOARD_FILENAME, 0);
 		save_clipboard_source_vmname("");
 	}
 
-	inter_appviewer_lock(0);
 	return ret;
 }
 
@@ -566,6 +564,42 @@ void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	free(untrusted_data);
 }
 
+int evaluate_clipboard_policy(Ghandles * g) {
+	int fd, len;
+	char source_vm[255];
+	int status;
+	pid_t pid;
+
+	fd = open(QUBES_CLIPBOARD_FILENAME ".source", O_RDONLY);
+	if (fd < 0)
+		return 0;
+
+	len = read(fd, source_vm, sizeof(source_vm));
+	if (len < 0) {
+		perror("read");
+		close(fd);
+		return 0;
+	}
+	close(fd);
+	if (len == 0) {
+		/* empty clipboard */
+		return 0;
+	}
+	source_vm[len] = 0;
+	switch(pid=fork()) {
+		case -1:
+			perror("fork");
+			exit(1);
+		case 0:
+			execl(QREXEC_POLICY_PATH, "qrexec_policy", "--assume-yes-for-ask", "--just-evaluate", source_vm, g->vmname, "qubes.ClipboardPaste", "0", (char*)NULL);
+			perror("execl");
+			exit(1);
+		default:
+			waitpid(pid, &status, 0);
+	}
+	return WEXITSTATUS(status) == 0;
+}
+
 /* check and handle guid-special keys
  * currently only for inter-vm clipboard copy
  */
@@ -601,6 +635,11 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 					       g->paste_seq_key)) {
 		if (ev->type != KeyPress)
 			return 1;
+		inter_appviewer_lock(1);
+		if (!evaluate_clipboard_policy(g)) {
+			inter_appviewer_lock(0);
+			return 1;
+		}
 		if (g->qrexec_clipboard) {
 			int ret = paste_qubes_clipboard_using_qrexec(g);
 			if (g->log_level > 0)
@@ -618,6 +657,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 				free(data);
 			}
 		}
+		inter_appviewer_lock(0);
 
 		return 1;
 	}
