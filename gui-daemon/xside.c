@@ -115,7 +115,8 @@ struct _global_handles {
 	int cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
 	/* Client VM parameters */
 	char vmname[32];	/* name of VM */
-	int domid;		/* Xen domain id */
+	int domid;		/* Xen domain id (GUI) */
+	int target_domid;		/* Xen domain id (VM) - can differ from domid when GUI is stubdom */
 	char *cmdline_color;	/* color of frame */
 	char *cmdline_icon;	/* icon hint for WM */
 	int label_index;	/* label (frame color) hint for WM */
@@ -2312,7 +2313,7 @@ int main(int argc, char **argv)
 	parse_cmdline(&ghandles, argc, argv);
 	get_boot_lock(ghandles.domid);
 	/* vmname is required to parse config file */
-	vmname = get_vm_name(ghandles.domid);
+	vmname = get_vm_name(ghandles.domid, &ghandles.target_domid);
 	strncpy(ghandles.vmname, vmname, sizeof(ghandles.vmname));
 	ghandles.vmname[sizeof(ghandles.vmname) - 1] = 0;
 	free(vmname);
