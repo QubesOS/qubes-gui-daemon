@@ -21,7 +21,7 @@
 
 //arbitrary
 #define MAX_CLIPBOARD_SIZE 65000
-#define MAX_WINDOW_WIDTH 4096
+#define MAX_WINDOW_WIDTH 8192
 #define MAX_WINDOW_HEIGHT 3072
 
 //not arbitrary
