@@ -91,6 +91,7 @@ install -D relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so $RPM_BUILD_ROO
 install -D appvm_scripts/etc/X11/xorg-qubes.conf.template $RPM_BUILD_ROOT/etc/X11/xorg-qubes.conf.template
 install -D appvm_scripts/etc/init.d/qubes_gui $RPM_BUILD_ROOT/etc/init.d/qubes_gui
 install -D appvm_scripts/etc/polkit-1-qubes-allow-all.pkla $RPM_BUILD_ROOT/etc/polkit-1/localauthority/50-local.d/qubes-allow-all.pkla
+install -D appvm_scripts/etc/polkit-1-qubes-allow-all.rules $RPM_BUILD_ROOT/etc/polkit-1/rules.d/00-qubes-allow-all.rules
 install -D appvm_scripts/etc/profile.d/qubes_gui.sh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.sh
 install -D appvm_scripts/etc/profile.d/qubes_gui.csh $RPM_BUILD_ROOT/etc/profile.d/qubes_gui.csh
 install -D appvm_scripts/etc/profile.d/qubes-session.sh $RPM_BUILD_ROOT/etc/profile.d/qubes-session.sh
@@ -143,6 +144,7 @@ rm -rf $RPM_BUILD_ROOT
 %attr(0644,root,root) /etc/X11/xorg-qubes.conf.template
 /etc/init.d/qubes_gui
 /etc/polkit-1/localauthority/50-local.d/qubes-allow-all.pkla
+/etc/polkit-1/rules.d/00-qubes-allow-all.rules
 /etc/profile.d/qubes_gui.sh
 /etc/profile.d/qubes_gui.csh
 /etc/profile.d/qubes-session.sh
