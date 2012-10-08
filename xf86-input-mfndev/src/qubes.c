@@ -382,6 +382,11 @@ int connect_unix_socket(QubesDevicePtr pQubes)
 	return s;
 }
 
+static void
+QubesPtrCtrlProc (DeviceIntPtr device, PtrCtrl *ctrl)
+{
+	    /* This function intentionally left blank */
+}
 
 static int QubesControl(DeviceIntPtr device, int what)
 {
@@ -390,9 +395,11 @@ static int QubesControl(DeviceIntPtr device, int what)
 
 	switch (what) {
 	case DEVICE_INIT:
+		device->public.on = FALSE;
 		_qubes_init_buttons(device);
 		_qubes_init_axes(device);
 		_qubes_init_kbd(device);
+		InitPtrFeedbackClassDeviceStruct(device, QubesPtrCtrlProc);
 		break;
 
 		/* Switch device on.  Establish socket, start event delivery.  */
