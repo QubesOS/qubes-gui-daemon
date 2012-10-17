@@ -19,6 +19,9 @@
  *
  */
 
+#ifndef _QUBES_TXRX_H
+#define _QUBES_TXRX_H
+
 #include <sys/select.h>
 int write_data(char *buf, int size);
 int real_write_message(char *hdr, int size, char *data, int datasize);
@@ -32,7 +35,18 @@ int read_ready();
     } while(0)
 void wait_for_vchan_or_argfd(int nfd, int *fd, fd_set * retset);
 int peer_server_init(int port);
-char *get_vm_name(int dom);
+char *get_vm_name(int dom, int *target_domid);
 void peer_client_init(int dom, int port);
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void));
 void vchan_close();
+int vchan_fd();
+
+/* used only in stubdom */
+#ifdef CONFIG_STUBDOM
+int vchan_handle_connected();
+void vchan_handler_called();
+void vchan_unmask_channel();
+#endif
+
+
+#endif /* _QUBES_TXRX_H */

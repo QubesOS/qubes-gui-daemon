@@ -25,6 +25,7 @@
 #include <libvchan.h>
 #include <xs.h>
 #include <xenctrl.h>
+#include <sys/select.h>
 #include "double_buffer.h"
 
 struct libvchan *ctrl;
@@ -181,7 +182,12 @@ void wait_for_vchan_or_argfd(int nfd, int *fd, fd_set * retset)
 
 int peer_server_init(int port)
 {
+#ifdef CONFIG_STUBDOM
+	double_buffer_init();
+	double_buffered = 1;
+#else
 	double_buffered = 0; // writes to vchan may block
+#endif
 	is_server = 1;
 	ctrl = libvchan_server_init(port);
 	if (!ctrl) {
@@ -191,11 +197,12 @@ int peer_server_init(int port)
 	return 0;
 }
 
-char *get_vm_name(int dom)
+char *get_vm_name(int dom, int *target_dom)
 {
 	struct xs_handle *xs;
 	char buf[64];
 	char *name;
+	char *target_dom_str;
 	unsigned int len = 0;
 
 	xs = xs_daemon_open();
@@ -203,7 +210,18 @@ char *get_vm_name(int dom)
 		perror("xs_daemon_open");
 		exit(1);
 	}
-	snprintf(buf, sizeof(buf), "/local/domain/%d/name", dom);
+	snprintf(buf, sizeof(buf), "/local/domain/%d/target", dom);
+	target_dom_str = xs_read(xs, 0, buf, &len);
+	if (target_dom_str) {
+		errno = 0;
+		*target_dom = strtol(target_dom_str, (char **) NULL, 10);
+		if (errno != 0) {
+			perror("strtol");
+			exit(1);
+		}
+	} else
+		*target_dom = dom;
+	snprintf(buf, sizeof(buf), "/local/domain/%d/name", *target_dom);
 	name = xs_read(xs, 0, buf, &len);
 	if (!name) {
 		perror("xs_read domainname");
@@ -267,3 +285,26 @@ void vchan_close()
 		libvchan_close(ctrl);
 	vchan_is_closed = 1;
 }
+
+int vchan_fd()
+{
+	return libvchan_fd_for_select(ctrl);
+}
+
+#ifdef CONFIG_STUBDOM
+int vchan_handle_connected()
+{
+	return libvchan_server_handle_connected(ctrl);
+}
+
+void vchan_handler_called()
+{
+	// clear the pending flag, will never block if called as name suggest
+	libvchan_wait(ctrl);
+}
+
+void vchan_unmask_channel()
+{
+	libvchan_prepare_to_select(ctrl);
+}
+#endif

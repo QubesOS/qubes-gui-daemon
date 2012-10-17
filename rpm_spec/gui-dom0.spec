@@ -73,6 +73,7 @@ install -D shmoverride/X_wrapper_qubes $RPM_BUILD_ROOT/usr/bin/X_wrapper_qubes
 install -D shmoverride/shmoverride.so $RPM_BUILD_ROOT/%{_libdir}/shmoverride.so
 install -D gui-daemon/guid.conf $RPM_BUILD_ROOT/%{_sysconfdir}/qubes/guid.conf
 install -D gui-daemon/qubes-localgroup.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
+install -D gui-daemon/qubes.ClipboardPaste.policy $RPM_BUILD_ROOT%{_sysconfdir}/qubes_rpc/policy/qubes.ClipboardPaste
 
 %triggerin -- xorg-x11-server-Xorg
 ln -sf /usr/bin/X_wrapper_qubes /usr/bin/X
@@ -93,4 +94,5 @@ rm -rf $RPM_BUILD_ROOT
 /usr/bin/X_wrapper_qubes
 %{_libdir}/shmoverride.so
 %config(noreplace) %{_sysconfdir}/qubes/guid.conf
+%config(noreplace) %{_sysconfdir}/qubes_rpc/policy/qubes.ClipboardPaste
 /etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
