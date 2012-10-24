@@ -20,4 +20,4 @@
  */
 
 void wait_for_vchan(struct libvchan *);
-struct libvchan *peer_client_init(int dom, int port);
+struct libvchan *peer_client_init(int dom, int port, char **name);

@@ -99,6 +99,7 @@ int main(int argc, char *argv[])
 #endif         
 	struct libvchan *ctrl;
 	pa_simple *s = NULL;
+	char *name = NULL;
 	int ret = 1;
 	int error;
 	int bufsize = 4096;
@@ -108,7 +109,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "usage: %s domid\n", argv[0]);
 		exit(1);
 	}
-	ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SINK_VCHAN_PORT);
+	ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SINK_VCHAN_PORT, &name);
 	if (!ctrl) {
 		perror("libvchan_client_init");
 		exit(1);
@@ -118,7 +119,7 @@ pa_connect:
 	/* Create a new playback stream */
 	if (!
 	    (s =
-	     pa_simple_new(NULL, argv[0], PA_STREAM_PLAYBACK, NULL,
+	     pa_simple_new(NULL, name, PA_STREAM_PLAYBACK, NULL,
 			   "playback", &ss, NULL, bufattr, &error))) {
 		fprintf(stderr, __FILE__ ": pa_simple_new() failed: %s\n",
 			pa_strerror(error));

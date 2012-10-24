@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <libvchan.h>
+#include <xs.h>
 #include <xenctrl.h>
 
 #ifdef XENCTRL_HAS_XC_INTERFACE
@@ -83,9 +84,25 @@ void wait_for_vchan(struct libvchan *ctrl)
 	while (wait_for_vchan_once(ctrl) == 0);
 }
 
-struct libvchan *peer_client_init(int dom, int port)
+struct libvchan *peer_client_init(int dom, int port, char **name)
 {
 	struct libvchan *ctrl;
+	struct xs_handle *xs;
+	char buf[64];
+	unsigned int len = 0;
+
+	xs = xs_daemon_open();
+	if (!xs) {
+		perror("xs_daemon_open");
+		exit(1);
+	}
+	snprintf(buf, sizeof(buf), "/local/domain/%d/name", dom);
+	*name = xs_read(xs, 0, buf, &len);
+	if (!*name) {
+		perror("xs_read domainname");
+		exit(1);
+	}
+	xs_daemon_close(xs);
 
 	do {
 		ctrl = libvchan_client_init(dom, port);
