@@ -249,24 +249,27 @@ static void thread_func(void *userdata)
 
 		play_pollfd = pa_rtpoll_item_get_pollfd(u->play_rtpoll_item, NULL);
 
+		if (play_pollfd->revents & POLLIN) {
+			if (libvchan_wait(u->play_ctrl) < 0)
+				goto fail;
+			play_pollfd->revents = 0;
+		}
+
 		/* Render some data and write it to the fifo */
 		if (PA_SINK_IS_OPENED(u->sink->thread_info.state)) {
 
 			if (u->sink->thread_info.rewind_requested)
 				pa_sink_process_rewind(u->sink, 0);
 
-			if (play_pollfd->revents || libvchan_buffer_space(u->play_ctrl)) {
+			if (libvchan_buffer_space(u->play_ctrl)) {
 				if (process_sink_render(u) < 0)
 					goto fail;
 
-				play_pollfd->revents = 0;
 			}
 		}
 
 		/* Hmm, nothing to do. Let's sleep */
-		play_pollfd->events =
-		    (short) (u->sink->thread_info.state ==
-			     PA_SINK_RUNNING ? POLLIN : 0);
+		play_pollfd->events = POLLIN;
 
 		if ((ret = pa_rtpoll_run(u->rtpoll, TRUE)) < 0)
 			goto fail;
