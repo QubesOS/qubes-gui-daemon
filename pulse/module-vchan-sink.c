@@ -78,7 +78,7 @@
 #include <libvchan.h>
 
 PA_MODULE_AUTHOR("Lennart Poettering");
-PA_MODULE_DESCRIPTION("UNIX pipe sink");
+PA_MODULE_DESCRIPTION("VCHAN sink/source");
 PA_MODULE_VERSION(PACKAGE_VERSION);
 PA_MODULE_LOAD_ONCE(FALSE);
 PA_MODULE_USAGE("sink_name=<name for the sink> "
@@ -88,10 +88,10 @@ PA_MODULE_USAGE("sink_name=<name for the sink> "
 		"channels=<number of channels> "
 		"channel_map=<channel map>");
 
-#define DEFAULT_FILE_NAME "vchan_output"
 #define DEFAULT_SINK_NAME "vchan_output"
 
 struct libvchan *ctrl = NULL;
+#define VCHAN_BUF 8192
 
 struct userdata {
 	pa_core *core;
@@ -101,9 +101,6 @@ struct userdata {
 	pa_thread *thread;
 	pa_thread_mq thread_mq;
 	pa_rtpoll *rtpoll;
-
-	char *filename;
-	int fd;
 
 	pa_memchunk memchunk;
 
@@ -115,7 +112,6 @@ struct userdata {
 static const char *const valid_modargs[] = {
 	"sink_name",
 	"sink_properties",
-	"file",
 	"format",
 	"rate",
 	"channels",
@@ -193,7 +189,7 @@ static int process_render(struct userdata *u)
 	pa_assert(u);
 
 	if (u->memchunk.length <= 0)
-		pa_sink_render(u->sink, pa_pipe_buf(u->fd), &u->memchunk);
+		pa_sink_render(u->sink, libvchan_buffer_space(ctrl), &u->memchunk);
 
 	pa_assert(u->memchunk.length > 0);
 
@@ -216,7 +212,7 @@ static int process_render(struct userdata *u)
 				return 0;
 			else {
 				pa_log
-				    ("Failed to write data to FIFO: %s",
+				    ("Failed to write data to VCHAN: %s",
 				     pa_cstrerror(errno));
 				return -1;
 			}
@@ -275,13 +271,6 @@ static void thread_func(void *userdata)
 
 		if (ret == 0)
 			goto finish;
-
-		pollfd = pa_rtpoll_item_get_pollfd(u->rtpoll_item, NULL);
-
-		if (pollfd->revents & ~POLLIN) {
-			pa_log("FIFO shutdown.");
-			goto fail;
-		}
 	}
 
       fail:
@@ -344,10 +333,7 @@ int pa__init(pa_module * m)
 	pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
 	u->write_type = 0;
 
-	u->filename =
-	    pa_runtime_path(pa_modargs_get_value
-			    (ma, "file", DEFAULT_FILE_NAME));
-	if ((u->fd = do_conn()) < 0) {
+	if ((do_conn()) < 0) {
 
 		pa_log("get_early_allocated_vchan: %s",
 		       pa_cstrerror(errno));
@@ -361,10 +347,10 @@ int pa__init(pa_module * m)
 						       "sink_name",
 						       DEFAULT_SINK_NAME));
 	pa_proplist_sets(data.proplist,
-			 PA_PROP_DEVICE_STRING, u->filename);
+			 PA_PROP_DEVICE_STRING, DEFAULT_SINK_NAME);
 	pa_proplist_setf(data.proplist,
-			 PA_PROP_DEVICE_DESCRIPTION,
-			 "Unix FIFO sink %s", u->filename);
+			PA_PROP_DEVICE_DESCRIPTION,
+			"Unix VCHAN sink");
 	pa_sink_new_data_set_sample_spec(&data, &ss);
 	pa_sink_new_data_set_channel_map(&data, &map);
 
@@ -389,15 +375,15 @@ int pa__init(pa_module * m)
 
 	pa_sink_set_asyncmsgq(u->sink, u->thread_mq.inq);
 	pa_sink_set_rtpoll(u->sink, u->rtpoll);
-	pa_sink_set_max_request(u->sink, pa_pipe_buf(u->fd));
+	pa_sink_set_max_request(u->sink, VCHAN_BUF);
 	pa_sink_set_fixed_latency(u->sink,
 				  pa_bytes_to_usec
-				  (pa_pipe_buf(u->fd),
+				  (VCHAN_BUF,
 				   &u->sink->sample_spec));
 
 	u->rtpoll_item = pa_rtpoll_item_new(u->rtpoll, PA_RTPOLL_NEVER, 1);
 	pollfd = pa_rtpoll_item_get_pollfd(u->rtpoll_item, NULL);
-	pollfd->fd = u->fd;
+	pollfd->fd = libvchan_fd_for_select(ctrl);
 	pollfd->events = POLLIN;
 	pollfd->revents = 0;
 
@@ -467,13 +453,9 @@ void pa__done(pa_module * m)
 	if (u->rtpoll)
 		pa_rtpoll_free(u->rtpoll);
 
-	if (u->filename) {
-		unlink(u->filename);
-		pa_xfree(u->filename);
-	}
 
-	if (u->fd >= 0)
-		pa_assert_se(libvchan_close(ctrl) == 0);
+	if (ctrl)
+		libvchan_close(ctrl);
 
 	pa_xfree(u);
 }
