@@ -51,6 +51,7 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <sys/time.h>
 
 #include <pulse/pulseaudio.h>
 #include <pulse/error.h>
@@ -311,12 +312,28 @@ fail:
 
 }
 
+static void check_vchan_eof_timer(pa_mainloop_api*a, pa_time_event* e, const struct timeval *tv, void *userdata)
+{
+	struct userdata *u = userdata;
+	struct timeval restart_tv = { 5, 0 };
+	assert(u);
+
+	/* this call will exit if detect the other end dead */
+	slow_check_for_libvchan_is_eof(u->play_ctrl);
+
+	pa_gettimeofday(&restart_tv);
+	pa_timeval_add(&restart_tv, (pa_usec_t) 5 * 1000 * PA_USEC_PER_MSEC);
+	a->time_restart(e, &restart_tv);
+}
+
 int main(int argc, char *argv[])
 {
+	struct timeval tv;
 	struct userdata u;
 	char *name = NULL;
 	int ret = 1;
 	pa_mainloop* m = NULL;
+	pa_time_event *time_event = NULL;
 	char *server = NULL;
 
 
@@ -354,6 +371,13 @@ int main(int argc, char *argv[])
 	}
 
 
+	pa_gettimeofday(&tv);
+	pa_timeval_add(&tv, (pa_usec_t) 5 * 1000 * PA_USEC_PER_MSEC);
+	time_event = mainloop_api->time_new(mainloop_api, &tv, check_vchan_eof_timer, &u);
+	if (!time_event) {
+		pacat_log("time_event create failed");
+		goto quit;
+	}
 
 	if (!(u.context = pa_context_new_with_proplist(mainloop_api, NULL, u.proplist))) {
 		pacat_log("pa_context_new() failed.");
@@ -383,6 +407,11 @@ quit:
 	if (u.play_stdio_event) {
 		assert(mainloop_api);
 		mainloop_api->io_free(u.play_stdio_event);
+	}
+
+	if (time_event) {
+		assert(mainloop_api);
+		mainloop_api->time_free(time_event);
 	}
 
 	/* discard remaining data */
