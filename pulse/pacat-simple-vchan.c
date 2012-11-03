@@ -50,12 +50,50 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdarg.h>
-#include <pulse/simple.h>
+#include <assert.h>
+
+#include <pulse/pulseaudio.h>
 #include <pulse/error.h>
 #include <pulse/gccmacro.h>
 #include <libvchan.h>
 #include "vchanio.h"
 #include "qubes-vchan-sink.h"
+
+#define CLEAR_LINE "\x1B[K"
+
+static pa_mainloop_api *mainloop_api = NULL;
+
+struct userdata {
+	struct libvchan *play_ctrl;
+
+	pa_proplist *proplist;
+	pa_context *context;
+	pa_stream *play_stream;
+	char *play_device;
+
+	pa_io_event* play_stdio_event;
+};
+
+/* The Sample format to use */
+static pa_sample_spec sample_spec = {
+	.format = PA_SAMPLE_S16LE,
+	.rate = 44100,
+	.channels = 2
+};
+#ifdef CUSTOM_BUFFERING
+static const pa_buffer_attr custom_bufattr ={
+	.maxlength = 8192,
+	.minreq = (uint32_t)-1,
+	.prebuf = (uint32_t)-1,
+	.tlength = 4096
+};
+pa_buffer_attr * bufattr = &custom_bufattr;
+#else
+pa_buffer_attr * bufattr = NULL;
+#endif
+
+
+static int verbose = 1;
 
 static void pacat_log(const char *fmt, ...) {
 	va_list args;
@@ -65,120 +103,306 @@ static void pacat_log(const char *fmt, ...) {
 	fprintf(stderr, "\n");
 }
 
-static ssize_t loop_read(struct libvchan *ctrl, char *data, size_t size)
-{
-	ssize_t ret = 0;
 
-	while (size > 0) {
-		ssize_t r;
-		if (!libvchan_data_ready(ctrl))
-			wait_for_vchan(ctrl);
-		if ((r = libvchan_read(ctrl, data, size)) < 0)
-			return r;
+/* A shortcut for terminating the application */
+static void quit(int ret) {
+	assert(mainloop_api);
+	mainloop_api->quit(mainloop_api, ret);
+}
 
-		if (r == 0)
-			break;
+/* Connection draining complete */
+static void context_drain_complete(pa_context*c, void *userdata) {
+	pa_context_disconnect(c);
+}
 
-		ret += r;
-		data = data + r;
-		size -= (size_t) r;
+/* Stream draining complete */
+static void stream_drain_complete(pa_stream*s, int success, void *userdata) {
+	struct userdata *u = userdata;
+
+	if (!success) {
+		pacat_log("Failed to drain stream: %s", pa_strerror(pa_context_errno(u->context)));
+		quit(1);
 	}
 
-	return ret;
+	if (verbose)
+		pacat_log("Playback stream drained.");
+
+	pa_stream_disconnect(s);
+	pa_stream_unref(s);
+	u->play_stream = NULL;
+
+	if (!pa_context_drain(u->context, context_drain_complete, NULL))
+		pa_context_disconnect(u->context);
+	else {
+		if (verbose)
+			pacat_log("Draining connection to server.");
+	}
+}
+
+/* Start draining */
+static void start_drain(pa_stream *s) {
+
+	if (s) {
+		pa_operation *o;
+
+		pa_stream_set_write_callback(s, NULL, NULL);
+
+		if (!(o = pa_stream_drain(s, stream_drain_complete, NULL))) {
+			pacat_log("pa_stream_drain(): %s", pa_strerror(pa_context_errno(pa_stream_get_context(s))));
+			quit(1);
+			return;
+		}
+
+		pa_operation_unref(o);
+	} else
+		quit(0);
+}
+
+static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_length)
+{
+	size_t l = 0;
+	size_t index, buffer_length;
+	void *buffer = NULL;
+	assert(s);
+
+	if (!libvchan_data_ready(u->play_ctrl) || !max_length)
+		return;
+
+	buffer_length = max_length;
+
+	if (pa_stream_begin_write(s, &buffer, &buffer_length) < 0) {
+		pacat_log("pa_stream_begin_write() failed: %s", pa_strerror(pa_context_errno(u->context)));
+		quit(1);
+		return;
+	}
+	index = 0;
+
+	while (libvchan_data_ready(u->play_ctrl) && buffer_length > 0) {
+		l = libvchan_read(u->play_ctrl, buffer + index, buffer_length);
+		if (l < 0) {
+			pacat_log("vchan read failed");
+			quit(1);
+			return;
+		}
+		if (l == 0) {
+			pacat_log("disconnected");
+			quit(0);
+			return;
+		}
+		buffer_length -= l;
+		index += l;
+	}
+
+	if (index) {
+		if (pa_stream_write(s, buffer, index, NULL, 0, PA_SEEK_RELATIVE) < 0) {
+			pacat_log("pa_stream_write() failed: %s", pa_strerror(pa_context_errno(u->context)));
+			quit(1);
+			return;
+		}
+	} else
+		pa_stream_cancel_write(s);
+
+	return;
+}
+
+/* This is called whenever new data may be written to the stream */
+static void stream_write_callback(pa_stream *s, size_t length, void *userdata) {
+	struct userdata *u = userdata;
+
+	assert(s);
+	assert(length > 0);
+
+	process_playback_data(u, s, length);
+}
+
+/* vchan event */
+static void vchan_play_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io_event_flags_t f, void *userdata) {
+	struct userdata *u = userdata;
+
+	if (libvchan_is_eof(u->play_ctrl)) {
+		pacat_log("vchan_is_eof");
+		start_drain(u->play_stream);
+		return;
+	}
+
+	/* receive event */
+	libvchan_wait(u->play_ctrl);
+
+	/* process playback data */
+	if (u->play_stream && pa_stream_get_state(u->play_stream) == PA_STREAM_READY)
+		process_playback_data(u, u->play_stream, pa_stream_writable_size(u->play_stream));
+}
+
+/* This routine is called whenever the stream state changes */
+static void stream_state_callback(pa_stream *s, void *userdata) {
+	assert(s);
+
+	switch (pa_stream_get_state(s)) {
+		case PA_STREAM_CREATING:
+		case PA_STREAM_TERMINATED:
+		case PA_STREAM_READY:
+			break;
+
+		case PA_STREAM_FAILED:
+		default:
+			pacat_log("Stream error: %s", pa_strerror(pa_context_errno(pa_stream_get_context(s))));
+			quit(1);
+	}
+}
+
+/* This is called whenever the context status changes */
+static void context_state_callback(pa_context *c, void *userdata) {
+	struct userdata *u = userdata;
+	pa_channel_map channel_map;
+
+	assert(c);
+
+	switch (pa_context_get_state(c)) {
+		case PA_CONTEXT_CONNECTING:
+		case PA_CONTEXT_AUTHORIZING:
+		case PA_CONTEXT_SETTING_NAME:
+			break;
+
+		case PA_CONTEXT_READY:
+
+			pa_channel_map_init_extend(&channel_map, sample_spec.channels, PA_CHANNEL_MAP_DEFAULT);
+
+			if (!pa_channel_map_compatible(&channel_map, &sample_spec)) {
+				pacat_log("Channel map doesn't match sample specification");
+				goto fail;
+			}
+
+
+			assert(!u->play_stream);
+
+			if (verbose)
+				pacat_log("Connection established.%s", CLEAR_LINE);
+
+			if (!(u->play_stream = pa_stream_new_with_proplist(c, "playback", &sample_spec, &channel_map, u->proplist))) {
+				pacat_log("play pa_stream_new() failed: %s", pa_strerror(pa_context_errno(c)));
+				goto fail;
+			}
+
+			pa_stream_set_state_callback(u->play_stream, stream_state_callback, u);
+			pa_stream_set_write_callback(u->play_stream, stream_write_callback, u);
+
+			if (pa_stream_connect_playback(u->play_stream, u->play_device, bufattr, 0 /* flags */, NULL /* volume */, NULL) < 0) {
+				pacat_log("pa_stream_connect_playback() failed: %s", pa_strerror(pa_context_errno(c)));
+				goto fail;
+			}
+
+			break;
+
+		case PA_CONTEXT_TERMINATED:
+			pacat_log("pulseaudio connection terminated");
+			quit(0);
+			break;
+
+		case PA_CONTEXT_FAILED:
+		default:
+			pacat_log("Connection failure: %s", pa_strerror(pa_context_errno(c)));
+			goto fail;
+	}
+
+	return;
+
+fail:
+	quit(1);
+
 }
 
 int main(int argc, char *argv[])
 {
-
-	/* The Sample format to use */
-	static const pa_sample_spec ss = {
-		.format = PA_SAMPLE_S16LE,
-		.rate = 44100,
-		.channels = 2
-	};
-#ifdef CUSTOM_BUFFERING
-	static const pa_buffer_attr custom_bufattr ={
-	        .maxlength = 8192,
-	        .minreq = (uint32_t)-1,
-	        .prebuf = (uint32_t)-1,
-	        .tlength = 4096
-        };
-        pa_buffer_attr * bufattr = &custom_bufattr;
-#else
-        pa_buffer_attr * bufattr = NULL;
-#endif         
-	struct libvchan *ctrl;
-	pa_simple *s = NULL;
+	struct userdata u;
 	char *name = NULL;
 	int ret = 1;
-	int error;
-	int bufsize = 4096;
+	pa_mainloop* m = NULL;
+	char *server = NULL;
 
-	/* replace STDIN with the specified file if needed */
+
 	if (argc <= 1) {
 		fprintf(stderr, "usage: %s domid\n", argv[0]);
 		exit(1);
 	}
-	ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SINK_VCHAN_PORT, &name);
-	if (!ctrl) {
+
+	memset(&u, 0, sizeof(u));
+
+	u.play_ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SINK_VCHAN_PORT, &name);
+	if (!u.play_ctrl) {
 		perror("libvchan_client_init");
 		exit(1);
 	}
 	setuid(getuid());
-pa_connect:
-	/* Create a new playback stream */
-	if (!
-	    (s =
-	     pa_simple_new(NULL, name, PA_STREAM_PLAYBACK, NULL,
-			   "playback", &ss, NULL, bufattr, &error))) {
-		fprintf(stderr, __FILE__ ": pa_simple_new() failed: %s\n",
-			pa_strerror(error));
-		goto finish;
+
+	u.proplist = pa_proplist_new();
+	pa_proplist_sets(u.proplist, PA_PROP_APPLICATION_NAME, name);
+	pa_proplist_sets(u.proplist, PA_PROP_MEDIA_NAME, name);
+
+	/* Set up a new main loop */
+	if (!(m = pa_mainloop_new())) {
+		pacat_log("pa_mainloop_new() failed.");
+		goto quit;
 	}
 
-	for (;;) {
-		char buf[bufsize];
-		ssize_t r;
+	mainloop_api = pa_mainloop_get_api(m);
 
-		/* Read some data ... */
-		if ((r = loop_read(ctrl, buf, bufsize)) <= 0) {
-			if (r == 0)	/* EOF */
-				break;
-
-			fprintf(stderr, __FILE__ ": read() failed: %s\n",
-				strerror(errno));
-			goto finish;
-		}
-
-		/* ... and play it */
-		if (pa_simple_write(s, buf, (size_t) r, &error) < 0) {
-			fprintf(stderr,
-				__FILE__
-				": pa_simple_write() failed: %s\n",
-				pa_strerror(error));
-			if (error == PA_ERR_CONNECTIONTERMINATED) {
-				fprintf(stderr, __FILE__ ": trying reconnect; sorry, some samples will be lost\n");
-				pa_simple_free(s);
-				goto pa_connect;
-			}
-			goto finish;
-		}
+	u.play_stdio_event = mainloop_api->io_new(mainloop_api,
+			libvchan_fd_for_select(u.play_ctrl), PA_IO_EVENT_INPUT, vchan_play_callback, &u);
+	if (!u.play_stdio_event) {
+		pacat_log("io_new play failed");
+		goto quit;
 	}
 
-	/* Make sure that every single sample was played */
-	if (pa_simple_drain(s, &error) < 0) {
-		fprintf(stderr,
-			__FILE__ ": pa_simple_drain() failed: %s\n",
-			pa_strerror(error));
-		goto finish;
+
+
+	if (!(u.context = pa_context_new_with_proplist(mainloop_api, NULL, u.proplist))) {
+		pacat_log("pa_context_new() failed.");
+		goto quit;
+	}
+
+	pa_context_set_state_callback(u.context, context_state_callback, &u);
+	/* Connect the context */
+	if (pa_context_connect(u.context, server, 0, NULL) < 0) {
+		pacat_log("pa_context_connect() failed: %s", pa_strerror(pa_context_errno(u.context)));
+		goto quit;
 	}
 
 	ret = 0;
+	/* Run the main loop */
+	if (pa_mainloop_run(m, &ret) < 0) {
+		pacat_log("pa_mainloop_run() failed.");
+		goto quit;
+	}
+quit:
+	if (u.play_stream)
+		pa_stream_unref(u.play_stream);
 
-      finish:
+	if (u.context)
+		pa_context_unref(u.context);
 
-	if (s)
-		pa_simple_free(s);
+	if (u.play_stdio_event) {
+		assert(mainloop_api);
+		mainloop_api->io_free(u.play_stdio_event);
+	}
+
+	/* discard remaining data */
+	if (libvchan_data_ready(u.play_ctrl)) {
+		char buf[2048];
+		libvchan_read(u.play_ctrl, buf, sizeof(buf));
+	}
+
+	/* close vchan */
+	if (u.play_ctrl) {
+		libvchan_close(u.play_ctrl);
+	}
+
+	if (m) {
+		pa_signal_done();
+		pa_mainloop_free(m);
+	}
+
+	if (u.proplist)
+		pa_proplist_free(u.proplist);
 
 	return ret;
 }
