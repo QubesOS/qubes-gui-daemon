@@ -61,6 +61,7 @@
 
 #include <pulsecore/core-error.h>
 #include <pulsecore/sink.h>
+#include <pulsecore/source.h>
 #include <pulsecore/module.h>
 #include <pulsecore/core-util.h>
 #include <pulsecore/modargs.h>
@@ -83,12 +84,15 @@ PA_MODULE_VERSION(PACKAGE_VERSION);
 PA_MODULE_LOAD_ONCE(FALSE);
 PA_MODULE_USAGE("sink_name=<name for the sink> "
 		"sink_properties=<properties for the sink> "
+		"source_name=<name for the source> "
+		"source_properties=<properties for the source> "
 		"format=<sample format> "
 		"rate=<sample rate>"
 		"channels=<number of channels> "
 		"channel_map=<channel map>");
 
 #define DEFAULT_SINK_NAME "vchan_output"
+#define DEFAULT_SOURCE_NAME "vchan_input"
 
 #define VCHAN_BUF 8192
 
@@ -96,21 +100,27 @@ struct userdata {
 	pa_core *core;
 	pa_module *module;
 	pa_sink *sink;
+	pa_source *source;
 
 	struct libvchan *play_ctrl;
+	struct libvchan *rec_ctrl;
 
 	pa_thread *thread;
 	pa_thread_mq thread_mq;
 	pa_rtpoll *rtpoll;
 
 	pa_memchunk memchunk_sink;
+	pa_memchunk memchunk_source;
 
 	pa_rtpoll_item *play_rtpoll_item;
+	pa_rtpoll_item *rec_rtpoll_item;
 };
 
 static const char *const valid_modargs[] = {
 	"sink_name",
 	"sink_properties",
+	"source_name",
+	"source_properties",
 	"format",
 	"rate",
 	"channels",
@@ -145,6 +155,46 @@ static int sink_process_msg(pa_msgobject * o, int code, void *data,
 	}
 
 	return pa_sink_process_msg(o, code, data, offset, chunk);
+}
+
+static int source_process_msg(pa_msgobject * o, int code, void *data,
+			    int64_t offset, pa_memchunk * chunk)
+{
+	int r;
+	struct userdata *u = PA_SOURCE(o)->userdata;
+	int state;
+	switch (code) {
+	case PA_SOURCE_MESSAGE_SET_STATE:
+		state = PA_PTR_TO_UINT(data);
+		r = pa_source_process_msg(o, code, data, offset, chunk);
+		if (r >= 0) {
+			pa_log("source cork req state =%d, now state=%d\n", state,
+			       (int) (u->source->state));
+			uint32_t cmd = 0;
+			if (u->source->state != PA_SOURCE_RUNNING && state == PA_SOURCE_RUNNING)
+				cmd = QUBES_PA_SOURCE_START_CMD;
+			else if (u->source->state -= PA_SOURCE_RUNNING && state != PA_SOURCE_RUNNING)
+				cmd = QUBES_PA_SOURCE_STOP_CMD;
+			if (cmd != 0) {
+				if (libvchan_write(u->rec_ctrl, (char*)&cmd, sizeof(cmd)) < 0) {
+					pa_log("vchan: failed to send record cmd");
+					return -1;
+				}
+			}
+		}
+		return r;
+
+	case PA_SOURCE_MESSAGE_GET_LATENCY:{
+			size_t n = 0;
+			n += u->memchunk_source.length;
+
+			*((pa_usec_t *) data) =
+			    pa_bytes_to_usec(n, &u->source->sample_spec);
+			return 0;
+		}
+	}
+
+	return pa_source_process_msg(o, code, data, offset, chunk);
 }
 
 static int write_to_vchan(struct libvchan *ctrl, char *buf, int size)
@@ -234,9 +284,44 @@ static int process_sink_render(struct userdata *u)
 	}
 }
 
+static int process_source_data(struct userdata *u)
+{
+	ssize_t l;
+	void *p;
+	if (!u->memchunk_source.memblock) {
+		u->memchunk_source.memblock = pa_memblock_new(u->core->mempool, 16*1024); // at least vchan buffer size
+		u->memchunk_source.index = u->memchunk_source.length = 0;
+	}
+
+	pa_assert(pa_memblock_get_length(u->memchunk_source.memblock) > u->memchunk_source.index);
+
+	p = pa_memblock_acquire(u->memchunk_source.memblock);
+	l = libvchan_read(u->rec_ctrl, p + u->memchunk_source.index, pa_memblock_get_length(u->memchunk_source.memblock) - u->memchunk_source.index);
+	pa_memblock_release(u->memchunk_source.memblock);
+	pa_log_debug("process_source_data %d", l);
+
+	if (l <= 0) {
+		/* vchan disconnected/error */
+		pa_log("Failed to read data from vchan");
+		return -1;
+	} else {
+
+		u->memchunk_source.length = (size_t) l;
+		pa_source_post(u->source, &u->memchunk_source);
+		u->memchunk_source.index += (size_t) l;
+
+		if (u->memchunk_source.index >= pa_memblock_get_length(u->memchunk_source.memblock)) {
+			pa_memblock_unref(u->memchunk_source.memblock);
+			pa_memchunk_reset(&u->memchunk_source);
+		}
+	}
+	return 0;
+}
+
 static void thread_func(void *userdata)
 {
 	struct userdata *u = userdata;
+	char buf[2048]; // max ring buffer size
 
 	pa_assert(u);
 
@@ -245,14 +330,22 @@ static void thread_func(void *userdata)
 	pa_thread_mq_install(&u->thread_mq);
 	for (;;) {
 		struct pollfd *play_pollfd;
+		struct pollfd *rec_pollfd;
 		int ret;
 
 		play_pollfd = pa_rtpoll_item_get_pollfd(u->play_rtpoll_item, NULL);
+		rec_pollfd = pa_rtpoll_item_get_pollfd(u->rec_rtpoll_item, NULL);
 
 		if (play_pollfd->revents & POLLIN) {
 			if (libvchan_wait(u->play_ctrl) < 0)
 				goto fail;
 			play_pollfd->revents = 0;
+		}
+
+		if (rec_pollfd->revents & POLLIN) {
+			if (libvchan_wait(u->rec_ctrl) < 0)
+				goto fail;
+			rec_pollfd->revents = 0;
 		}
 
 		/* Render some data and write it to the fifo */
@@ -264,12 +357,24 @@ static void thread_func(void *userdata)
 			if (libvchan_buffer_space(u->play_ctrl)) {
 				if (process_sink_render(u) < 0)
 					goto fail;
-
 			}
+		}
+
+		if (u->source->thread_info.state == PA_SOURCE_RUNNING) {
+			while (libvchan_data_ready(u->rec_ctrl)) {
+				if (process_source_data(u) < 0)
+					goto fail;
+			}
+		} else {
+			/* discard the data */
+			if (libvchan_data_ready(u->rec_ctrl))
+				if (libvchan_read(u->rec_ctrl, buf, sizeof(buf)) < 0)
+					goto fail;
 		}
 
 		/* Hmm, nothing to do. Let's sleep */
 		play_pollfd->events = POLLIN;
+		rec_pollfd->events = POLLIN;
 
 		if ((ret = pa_rtpoll_run(u->rtpoll, TRUE)) < 0)
 			goto fail;
@@ -298,8 +403,15 @@ static int do_conn(struct userdata *u)
 		pa_log("libvchan_server_init play failed\n");
 		return -1;
 	}
+	u->rec_ctrl = libvchan_server_init(QUBES_PA_SOURCE_VCHAN_PORT);
+	if (!u->rec_ctrl) {
+		pa_log("libvchan_server_init rec failed\n");
+		return -1;
+	}
 	fd = libvchan_fd_for_select(u->play_ctrl);
 	pa_log("play libvchan_fd_for_select=%d, ctrl=%p\n", fd, u->play_ctrl);
+	fd = libvchan_fd_for_select(u->rec_ctrl);
+	pa_log("rec libvchan_fd_for_select=%d, ctrl=%p\n", fd, u->rec_ctrl);
 	return 0;
 }
 
@@ -312,9 +424,11 @@ int pa__init(pa_module * m)
 	pa_modargs *ma;
 	struct pollfd *pollfd;
 	pa_sink_new_data data_sink;
+	pa_source_new_data data_source;
 
 	pa_assert(m);
 
+	pa_log("vchan module loading");
 	if (!(ma = pa_modargs_new(m->argument, valid_modargs))) {
 		pa_log("Failed to parse module arguments.");
 		goto fail;
@@ -334,6 +448,7 @@ int pa__init(pa_module * m)
 	u->module = m;
 	m->userdata = u;
 	pa_memchunk_reset(&u->memchunk_sink);
+	pa_memchunk_reset(&u->memchunk_source);
 	u->rtpoll = pa_rtpoll_new();
 	pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
 
@@ -391,6 +506,43 @@ int pa__init(pa_module * m)
 	pollfd->events = POLLIN;
 	pollfd->revents = 0;
 
+	/* SOURCE preparation */
+	pa_source_new_data_init(&data_source);
+	data_source.driver = __FILE__;
+	data_source.module = m;
+	pa_source_new_data_set_name(&data_source, pa_modargs_get_value(ma, "source_name", DEFAULT_SOURCE_NAME));
+	pa_proplist_sets(data_source.proplist, PA_PROP_DEVICE_STRING, DEFAULT_SOURCE_NAME);
+	pa_proplist_setf(data_source.proplist, PA_PROP_DEVICE_DESCRIPTION, "Unix VCHAN source");
+	pa_source_new_data_set_sample_spec(&data_source, &ss);
+	pa_source_new_data_set_channel_map(&data_source, &map);
+
+	if (pa_modargs_get_proplist(ma, "source_properties", data_source.proplist, PA_UPDATE_REPLACE) < 0) {
+		pa_log("Invalid properties");
+		pa_source_new_data_done(&data_source);
+		goto fail;
+	}
+
+	u->source = pa_source_new(m->core, &data_source, PA_SOURCE_LATENCY);
+	pa_source_new_data_done(&data_source);
+
+	if (!u->source) {
+		pa_log("Failed to create source.");
+		goto fail;
+	}
+
+	u->source->parent.process_msg = source_process_msg;
+	u->source->userdata = u;
+
+	pa_source_set_asyncmsgq(u->source, u->thread_mq.inq);
+	pa_source_set_rtpoll(u->source, u->rtpoll);
+	pa_source_set_fixed_latency(u->source, pa_bytes_to_usec(PIPE_BUF, &u->source->sample_spec));
+
+	u->rec_rtpoll_item = pa_rtpoll_item_new(u->rtpoll, PA_RTPOLL_NEVER, 1);
+	pollfd = pa_rtpoll_item_get_pollfd(u->rec_rtpoll_item, NULL);
+	pollfd->fd = libvchan_fd_for_select(u->rec_ctrl);
+	pollfd->events = POLLIN;
+	pollfd->revents = 0;
+
 #if PA_CHECK_VERSION(0,9,22)
 	if (!(u->thread = pa_thread_new("vchan-sink", thread_func, u))) {
 #else
@@ -401,6 +553,7 @@ int pa__init(pa_module * m)
 	}
 
 	pa_sink_put(u->sink);
+	pa_source_put(u->source);
 
 	pa_modargs_free(ma);
 
@@ -437,6 +590,9 @@ void pa__done(pa_module * m)
 	if (u->sink)
 		pa_sink_unlink(u->sink);
 
+	if (u->source)
+		pa_source_unlink(u->source);
+
 	if (u->thread) {
 		pa_asyncmsgq_send(u->thread_mq.inq, NULL,
 				  PA_MESSAGE_SHUTDOWN, NULL, 0, NULL);
@@ -448,12 +604,20 @@ void pa__done(pa_module * m)
 	if (u->sink)
 		pa_sink_unref(u->sink);
 
+	if (u->source)
+		pa_source_unref(u->source);
+
 	if (u->memchunk_sink.memblock)
 		pa_memblock_unref(u->memchunk_sink.memblock);
+
+	if (u->memchunk_source.memblock)
+		pa_memblock_unref(u->memchunk_source.memblock);
 
 	if (u->play_rtpoll_item)
 		pa_rtpoll_item_free(u->play_rtpoll_item);
 
+	if (u->rec_rtpoll_item)
+		pa_rtpoll_item_free(u->rec_rtpoll_item);
 
 	if (u->rtpoll)
 		pa_rtpoll_free(u->rtpoll);
@@ -461,6 +625,8 @@ void pa__done(pa_module * m)
 	if (u->play_ctrl)
 		libvchan_close(u->play_ctrl);
 
+	if (u->rec_ctrl)
+		libvchan_close(u->rec_ctrl);
 
 	pa_xfree(u);
 }
