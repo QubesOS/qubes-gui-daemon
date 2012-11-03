@@ -164,7 +164,10 @@ static int write_to_vchan(struct libvchan *ctrl, char *buf, int size)
 		return -1;
 	}
 	if (ret) {
-		libvchan_wait(ctrl);
+		if (libvchan_wait(ctrl) < 0) {
+			pa_log("Failed libvchan_wait");
+			return -1;
+		}
 		waited++;
 	} else
 		nonwaited++;
