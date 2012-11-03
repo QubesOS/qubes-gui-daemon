@@ -49,12 +49,22 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <pulse/simple.h>
 #include <pulse/error.h>
 #include <pulse/gccmacro.h>
 #include <libvchan.h>
 #include "vchanio.h"
 #include "qubes-vchan-sink.h"
+
+static void pacat_log(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	vfprintf(stderr, fmt, args);
+	va_end(args);
+	fprintf(stderr, "\n");
+}
+
 static ssize_t loop_read(struct libvchan *ctrl, char *data, size_t size)
 {
 	ssize_t ret = 0;
