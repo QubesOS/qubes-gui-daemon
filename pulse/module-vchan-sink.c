@@ -74,6 +74,7 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include "module-vchan-sink-symdef.h"
+#include "qubes-vchan-sink.h"
 #include <libvchan.h>
 
 PA_MODULE_AUTHOR("Lennart Poettering");
@@ -295,13 +296,12 @@ static void thread_func(void *userdata)
 	pa_log_debug("Thread shutting down");
 }
 
-struct libvchan *get_early_allocated_vchan(int id);	// from libsetup-vchan-early.so
 static int do_conn()
 {
 	int fd;
-	ctrl = get_early_allocated_vchan(0);
+	ctrl = libvchan_server_init(QUBES_PA_SINK_VCHAN_PORT);
 	if (!ctrl) {
-		pa_log("get_early_allocated_vchan  failed\n");
+		pa_log("libvchan_server_init  failed\n");
 		return -1;
 	}
 	fd = libvchan_fd_for_select(ctrl);

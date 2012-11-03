@@ -1561,7 +1561,6 @@ int main(int argc, char **argv)
 	}
 	XAutoRepeatOff(g.display);
 	signal(SIGCHLD, SIG_IGN);
-	do_execute(NULL, "/usr/bin/start-pulseaudio-with-vchan");
 	windows_list = list_new();
 	embeder_list = list_new();
 	XSetErrorHandler(dummy_handler);

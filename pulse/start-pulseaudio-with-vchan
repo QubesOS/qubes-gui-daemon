@@ -19,6 +19,6 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 #
-DROPTOUSER=user LD_PRELOAD=libsetup-vchan-early.so LD_BIND_NOW=1 pulseaudio \
+pulseaudio --start \
 	-L "module-x11-publish display=$DISPLAY" -L module-vchan-sink \
-	--exit-idle-time=-1 2>/var/log/qubes/pulseaudio.log &
+	--exit-idle-time=-1
