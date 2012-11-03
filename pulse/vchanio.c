@@ -37,7 +37,7 @@ side dies because of "xm destroy", we get no wakeup. So we have to check
 periodically if the peer is connected. Hopefully this can be removed in
 some final version.
 */
-static void slow_check_for_libvchan_is_eof(struct libvchan *ctrl)
+void slow_check_for_libvchan_is_eof(struct libvchan *ctrl)
 {
 	struct evtchn_status evst;
 	evst.port = ctrl->evport;
