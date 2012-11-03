@@ -90,13 +90,14 @@ PA_MODULE_USAGE("sink_name=<name for the sink> "
 
 #define DEFAULT_SINK_NAME "vchan_output"
 
-struct libvchan *ctrl = NULL;
 #define VCHAN_BUF 8192
 
 struct userdata {
 	pa_core *core;
 	pa_module *module;
 	pa_sink *sink;
+
+	struct libvchan *play_ctrl;
 
 	pa_thread *thread;
 	pa_thread_mq thread_mq;
@@ -148,7 +149,7 @@ static int sink_process_msg(pa_msgobject * o, int code, void *data,
 	return pa_sink_process_msg(o, code, data, offset, chunk);
 }
 
-static int write_to_vchan(char *buf, int size)
+static int write_to_vchan(struct libvchan *ctrl, char *buf, int size)
 {
 	static int all = 0, waited = 0, nonwaited = 0, full = 0;
 	ssize_t l;
@@ -189,7 +190,7 @@ static int process_render(struct userdata *u)
 	pa_assert(u);
 
 	if (u->memchunk.length <= 0)
-		pa_sink_render(u->sink, libvchan_buffer_space(ctrl), &u->memchunk);
+		pa_sink_render(u->sink, libvchan_buffer_space(u->play_ctrl), &u->memchunk);
 
 	pa_assert(u->memchunk.length > 0);
 
@@ -198,7 +199,7 @@ static int process_render(struct userdata *u)
 		void *p;
 
 		p = pa_memblock_acquire(u->memchunk.memblock);
-		l = write_to_vchan((char *) p +
+		l = write_to_vchan(u->play_ctrl, (char *) p +
 				   u->memchunk.index, u->memchunk.length);
 		pa_memblock_release(u->memchunk.memblock);
 
@@ -253,7 +254,7 @@ static void thread_func(void *userdata)
 			if (u->sink->thread_info.rewind_requested)
 				pa_sink_process_rewind(u->sink, 0);
 
-			if (pollfd->revents || libvchan_buffer_space(ctrl)) {
+			if (pollfd->revents || libvchan_buffer_space(u->play_ctrl)) {
 				if (process_render(u) < 0)
 					goto fail;
 
@@ -285,16 +286,16 @@ static void thread_func(void *userdata)
 	pa_log_debug("Thread shutting down");
 }
 
-static int do_conn()
+static int do_conn(struct userdata *u)
 {
 	int fd;
-	ctrl = libvchan_server_init(QUBES_PA_SINK_VCHAN_PORT);
-	if (!ctrl) {
-		pa_log("libvchan_server_init  failed\n");
+	u->play_ctrl = libvchan_server_init(QUBES_PA_SINK_VCHAN_PORT);
+	if (!u->play_ctrl) {
+		pa_log("libvchan_server_init play failed\n");
 		return -1;
 	}
-	fd = libvchan_fd_for_select(ctrl);
-	pa_log("libvchan_fd_for_select=%d, ctrl=%p\n", fd, ctrl);
+	fd = libvchan_fd_for_select(u->play_ctrl);
+	pa_log("play libvchan_fd_for_select=%d, ctrl=%p\n", fd, u->play_ctrl);
 	return fd;
 }
 
@@ -333,7 +334,7 @@ int pa__init(pa_module * m)
 	pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
 	u->write_type = 0;
 
-	if ((do_conn()) < 0) {
+	if ((do_conn(u)) < 0) {
 
 		pa_log("get_early_allocated_vchan: %s",
 		       pa_cstrerror(errno));
@@ -383,7 +384,7 @@ int pa__init(pa_module * m)
 
 	u->rtpoll_item = pa_rtpoll_item_new(u->rtpoll, PA_RTPOLL_NEVER, 1);
 	pollfd = pa_rtpoll_item_get_pollfd(u->rtpoll_item, NULL);
-	pollfd->fd = libvchan_fd_for_select(ctrl);
+	pollfd->fd = libvchan_fd_for_select(u->play_ctrl);
 	pollfd->events = POLLIN;
 	pollfd->revents = 0;
 
@@ -453,9 +454,9 @@ void pa__done(pa_module * m)
 	if (u->rtpoll)
 		pa_rtpoll_free(u->rtpoll);
 
+	if (u->play_ctrl)
+		libvchan_close(u->play_ctrl);
 
-	if (ctrl)
-		libvchan_close(ctrl);
 
 	pa_xfree(u);
 }
