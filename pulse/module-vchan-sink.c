@@ -106,8 +106,6 @@ struct userdata {
 	pa_memchunk memchunk_sink;
 
 	pa_rtpoll_item *play_rtpoll_item;
-
-	int write_type;
 };
 
 static const char *const valid_modargs[] = {
@@ -332,7 +330,6 @@ int pa__init(pa_module * m)
 	pa_memchunk_reset(&u->memchunk_sink);
 	u->rtpoll = pa_rtpoll_new();
 	pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
-	u->write_type = 0;
 
 	if ((do_conn(u)) < 0) {
 
