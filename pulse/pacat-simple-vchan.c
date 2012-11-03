@@ -322,7 +322,32 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
 	switch (pa_stream_get_state(s)) {
 		case PA_STREAM_CREATING:
 		case PA_STREAM_TERMINATED:
+			break;
+
 		case PA_STREAM_READY:
+
+			if (verbose) {
+				const pa_buffer_attr *a;
+				char cmt[PA_CHANNEL_MAP_SNPRINT_MAX], sst[PA_SAMPLE_SPEC_SNPRINT_MAX];
+
+				pacat_log("Stream successfully created.");
+
+				if (!(a = pa_stream_get_buffer_attr(s)))
+					pacat_log("pa_stream_get_buffer_attr() failed: %s", pa_strerror(pa_context_errno(pa_stream_get_context(s))));
+				else {
+					pacat_log("Buffer metrics: maxlength=%u, tlength=%u, prebuf=%u, minreq=%u", a->maxlength, a->tlength, a->prebuf, a->minreq);
+				}
+
+				pacat_log("Using sample spec '%s', channel map '%s'.",
+						pa_sample_spec_snprint(sst, sizeof(sst), pa_stream_get_sample_spec(s)),
+						pa_channel_map_snprint(cmt, sizeof(cmt), pa_stream_get_channel_map(s)));
+
+				pacat_log("Connected to device %s (%u, %ssuspended).",
+						pa_stream_get_device_name(s),
+						pa_stream_get_device_index(s),
+						pa_stream_is_suspended(s) ? "" : "not ");
+			}
+
 			break;
 
 		case PA_STREAM_FAILED:
@@ -331,6 +356,66 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
 			quit(1);
 	}
 }
+
+static void stream_suspended_callback(pa_stream *s, void *userdata) {
+	assert(s);
+
+	if (verbose) {
+		if (pa_stream_is_suspended(s))
+			pacat_log("Stream device %s suspended.%s", pa_stream_get_device_name(s), CLEAR_LINE);
+		else
+			pacat_log("Stream device %s resumed.%s", pa_stream_get_device_name(s), CLEAR_LINE);
+	}
+}
+
+static void stream_underflow_callback(pa_stream *s, void *userdata) {
+	assert(s);
+
+	if (verbose)
+		pacat_log("Stream underrun.%s", CLEAR_LINE);
+}
+
+static void stream_overflow_callback(pa_stream *s, void *userdata) {
+	assert(s);
+
+	if (verbose)
+		pacat_log("Stream %s overrun.%s", pa_stream_get_device_name(s), CLEAR_LINE);
+}
+
+static void stream_started_callback(pa_stream *s, void *userdata) {
+	assert(s);
+
+	if (verbose)
+		pacat_log("Stream started.%s", CLEAR_LINE);
+}
+
+static void stream_moved_callback(pa_stream *s, void *userdata) {
+	assert(s);
+
+	if (verbose)
+		pacat_log("Stream moved to device %s (%u, %ssuspended).%s", pa_stream_get_device_name(s), pa_stream_get_device_index(s), pa_stream_is_suspended(s) ? "" : "not ",  CLEAR_LINE);
+}
+
+static void stream_buffer_attr_callback(pa_stream *s, void *userdata) {
+	assert(s);
+
+	if (verbose)
+		pacat_log("Stream buffer attributes changed.%s", CLEAR_LINE);
+}
+
+static void stream_event_callback(pa_stream *s, const char *name, pa_proplist *pl, void *userdata) {
+	char *t;
+
+	assert(s);
+	assert(name);
+	assert(pl);
+
+	t = pa_proplist_to_string_sep(pl, ", ");
+	pacat_log("Got event '%s', properties '%s'", name, t);
+	pa_xfree(t);
+}
+
+
 
 /* This is called whenever the context status changes */
 static void context_state_callback(pa_context *c, void *userdata) {
@@ -368,6 +453,14 @@ static void context_state_callback(pa_context *c, void *userdata) {
 
 			pa_stream_set_state_callback(u->play_stream, stream_state_callback, u);
 			pa_stream_set_write_callback(u->play_stream, stream_write_callback, u);
+			/* pa_stream_set_read_callback */
+			pa_stream_set_suspended_callback(u->play_stream, stream_suspended_callback, u);
+			pa_stream_set_moved_callback(u->play_stream, stream_moved_callback, u);
+			pa_stream_set_underflow_callback(u->play_stream, stream_underflow_callback, u);
+			pa_stream_set_overflow_callback(u->play_stream, stream_overflow_callback, u);
+			pa_stream_set_started_callback(u->play_stream, stream_started_callback, u);
+			pa_stream_set_event_callback(u->play_stream, stream_event_callback, u);
+			pa_stream_set_buffer_attr_callback(u->play_stream, stream_buffer_attr_callback, u);
 
 			if (pa_stream_connect_playback(u->play_stream, u->play_device, bufattr, 0 /* flags */, NULL /* volume */, NULL) < 0) {
 				pacat_log("pa_stream_connect_playback() failed: %s", pa_strerror(pa_context_errno(c)));
@@ -383,7 +476,15 @@ static void context_state_callback(pa_context *c, void *userdata) {
 			}
 
 			pa_stream_set_state_callback(u->rec_stream, stream_state_callback, u);
+			/* pa_stream_set_write_callback */
 			pa_stream_set_read_callback(u->rec_stream, stream_read_callback, u);
+			pa_stream_set_suspended_callback(u->rec_stream, stream_suspended_callback, u);
+			pa_stream_set_moved_callback(u->rec_stream, stream_moved_callback, u);
+			pa_stream_set_underflow_callback(u->rec_stream, stream_underflow_callback, u);
+			pa_stream_set_overflow_callback(u->rec_stream, stream_overflow_callback, u);
+			pa_stream_set_started_callback(u->rec_stream, stream_started_callback, u);
+			pa_stream_set_event_callback(u->rec_stream, stream_event_callback, u);
+			pa_stream_set_buffer_attr_callback(u->rec_stream, stream_buffer_attr_callback, u);
 
 			flags = PA_STREAM_START_CORKED;
 
