@@ -66,13 +66,17 @@ static pa_mainloop_api *mainloop_api = NULL;
 
 struct userdata {
 	struct libvchan *play_ctrl;
+	struct libvchan *rec_ctrl;
 
 	pa_proplist *proplist;
 	pa_context *context;
 	pa_stream *play_stream;
+	pa_stream *rec_stream;
 	char *play_device;
+	char *rec_device;
 
 	pa_io_event* play_stdio_event;
+	pa_io_event* rec_stdio_event;
 };
 
 /* The Sample format to use */
@@ -216,6 +220,48 @@ static void stream_write_callback(pa_stream *s, size_t length, void *userdata) {
 	process_playback_data(u, s, length);
 }
 
+static void send_rec_data(pa_stream *s, struct userdata *u) {
+	size_t l;
+	const void *rec_buffer;
+	size_t rec_buffer_length;
+	int rec_buffer_index;
+
+	assert(s);
+	assert(u);
+
+	if (pa_stream_readable_size(s) <= 0)
+		return;
+
+	if (pa_stream_peek(s, &rec_buffer, &rec_buffer_length) < 0) {
+		pacat_log("pa_stream_peek failed");
+		quit(1);
+		return;
+	}
+	rec_buffer_index = 0;
+
+	while (rec_buffer_length > 0) {
+		/* can block */
+		if ((l=libvchan_write(u->rec_ctrl, rec_buffer + rec_buffer_index, rec_buffer_length)) < 0) {
+			pacat_log("libvchan_write failed");
+			quit(1);
+			return;
+		}
+		rec_buffer_length -= l;
+		rec_buffer_index += l;
+	}
+	pa_stream_drop(s);
+}
+
+/* This is called whenever new data may is available */
+static void stream_read_callback(pa_stream *s, size_t length, void *userdata) {
+	struct userdata *u = userdata;
+
+	assert(s);
+	assert(length > 0);
+
+	send_rec_data(s, u);
+}
+
 /* vchan event */
 static void vchan_play_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io_event_flags_t f, void *userdata) {
 	struct userdata *u = userdata;
@@ -232,6 +278,41 @@ static void vchan_play_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_i
 	/* process playback data */
 	if (u->play_stream && pa_stream_get_state(u->play_stream) == PA_STREAM_READY)
 		process_playback_data(u, u->play_stream, pa_stream_writable_size(u->play_stream));
+}
+
+static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io_event_flags_t f, void *userdata) {
+	struct userdata *u = userdata;
+
+	if (libvchan_is_eof(u->rec_ctrl)) {
+		pacat_log("vchan_is_eof");
+		quit(0);
+		return;
+	}
+
+	/* receive event */
+	libvchan_wait(u->rec_ctrl);
+
+	if (u->rec_stream && pa_stream_get_state(u->rec_stream) == PA_STREAM_READY) {
+		/* process VM control command */
+		if (libvchan_data_ready(u->rec_ctrl)) {
+			uint32_t cmd;
+			libvchan_read(u->rec_ctrl, (char*)&cmd, sizeof(cmd));
+			switch (cmd) {
+				case QUBES_PA_SOURCE_START_CMD:
+					pacat_log("Recording start");
+					pa_stream_cork(u->rec_stream, 0, NULL, u);
+					break;
+				case QUBES_PA_SOURCE_STOP_CMD:
+					pacat_log("Recording stop");
+					pa_stream_cork(u->rec_stream, 1, NULL, u);
+					break;
+			}
+		}
+		/* send the data if space is available */
+		if (libvchan_buffer_space(u->rec_ctrl)) {
+			send_rec_data(u->rec_stream, u);
+		}
+	}
 }
 
 /* This routine is called whenever the stream state changes */
@@ -254,6 +335,7 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
 /* This is called whenever the context status changes */
 static void context_state_callback(pa_context *c, void *userdata) {
 	struct userdata *u = userdata;
+	pa_stream_flags_t flags = 0;
 	pa_channel_map channel_map;
 
 	assert(c);
@@ -289,6 +371,24 @@ static void context_state_callback(pa_context *c, void *userdata) {
 
 			if (pa_stream_connect_playback(u->play_stream, u->play_device, bufattr, 0 /* flags */, NULL /* volume */, NULL) < 0) {
 				pacat_log("pa_stream_connect_playback() failed: %s", pa_strerror(pa_context_errno(c)));
+				goto fail;
+			}
+
+			/* setup recording stream */
+			assert(!u->rec_stream);
+
+			if (!(u->rec_stream = pa_stream_new_with_proplist(c, "record", &sample_spec, &channel_map, u->proplist))) {
+				pacat_log("rec pa_stream_new() failed: %s", pa_strerror(pa_context_errno(c)));
+				goto fail;
+			}
+
+			pa_stream_set_state_callback(u->rec_stream, stream_state_callback, u);
+			pa_stream_set_read_callback(u->rec_stream, stream_read_callback, u);
+
+			flags = PA_STREAM_START_CORKED;
+
+			if (pa_stream_connect_record(u->rec_stream, u->rec_device, bufattr, flags) < 0) {
+				pacat_log("pa_stream_connect_record() failed: %s", pa_strerror(pa_context_errno(c)));
 				goto fail;
 			}
 
@@ -349,6 +449,11 @@ int main(int argc, char *argv[])
 		perror("libvchan_client_init");
 		exit(1);
 	}
+	u.rec_ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SOURCE_VCHAN_PORT, NULL);
+	if (!u.rec_ctrl) {
+		perror("libvchan_client_init");
+		exit(1);
+	}
 	setuid(getuid());
 
 	u.proplist = pa_proplist_new();
@@ -370,6 +475,12 @@ int main(int argc, char *argv[])
 		goto quit;
 	}
 
+	u.rec_stdio_event = mainloop_api->io_new(mainloop_api,
+			libvchan_fd_for_select(u.rec_ctrl), PA_IO_EVENT_INPUT, vchan_rec_callback, &u);
+	if (!u.rec_stdio_event) {
+		pacat_log("io_new rec failed");
+		goto quit;
+	}
 
 	pa_gettimeofday(&tv);
 	pa_timeval_add(&tv, (pa_usec_t) 5 * 1000 * PA_USEC_PER_MSEC);
@@ -401,12 +512,19 @@ quit:
 	if (u.play_stream)
 		pa_stream_unref(u.play_stream);
 
+	if (u.rec_stream)
+		pa_stream_unref(u.rec_stream);
+
 	if (u.context)
 		pa_context_unref(u.context);
 
 	if (u.play_stdio_event) {
 		assert(mainloop_api);
 		mainloop_api->io_free(u.play_stdio_event);
+	}
+	if (u.rec_stdio_event) {
+		assert(mainloop_api);
+		mainloop_api->io_free(u.rec_stdio_event);
 	}
 
 	if (time_event) {
@@ -419,11 +537,18 @@ quit:
 		char buf[2048];
 		libvchan_read(u.play_ctrl, buf, sizeof(buf));
 	}
+	if (libvchan_data_ready(u.rec_ctrl)) {
+		char buf[2048];
+		libvchan_read(u.rec_ctrl, buf, sizeof(buf));
+	}
 
 	/* close vchan */
 	if (u.play_ctrl) {
 		libvchan_close(u.play_ctrl);
 	}
+
+	if (u.rec_ctrl)
+		libvchan_close(u.rec_ctrl);
 
 	if (m) {
 		pa_signal_done();
