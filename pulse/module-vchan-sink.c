@@ -103,9 +103,9 @@ struct userdata {
 	pa_thread_mq thread_mq;
 	pa_rtpoll *rtpoll;
 
-	pa_memchunk memchunk;
+	pa_memchunk memchunk_sink;
 
-	pa_rtpoll_item *rtpoll_item;
+	pa_rtpoll_item *play_rtpoll_item;
 
 	int write_type;
 };
@@ -131,14 +131,14 @@ static int sink_process_msg(pa_msgobject * o, int code, void *data,
 		state = PA_PTR_TO_UINT(data);
 		r = pa_sink_process_msg(o, code, data, offset, chunk);
 		if (r >= 0) {
-			pa_log("cork req state =%d, now state=%d\n", state,
+			pa_log("sink cork req state =%d, now state=%d\n", state,
 			       (int) (u->sink->state));
 		}
 		return r;
 
 	case PA_SINK_MESSAGE_GET_LATENCY:{
 			size_t n = 0;
-			n += u->memchunk.length;
+			n += u->memchunk_sink.length;
 
 			*((pa_usec_t *) data) =
 			    pa_bytes_to_usec(n, &u->sink->sample_spec);
@@ -185,23 +185,23 @@ static int write_to_vchan(struct libvchan *ctrl, char *buf, int size)
 	return l;
 }
 
-static int process_render(struct userdata *u)
+static int process_sink_render(struct userdata *u)
 {
 	pa_assert(u);
 
-	if (u->memchunk.length <= 0)
-		pa_sink_render(u->sink, libvchan_buffer_space(u->play_ctrl), &u->memchunk);
+	if (u->memchunk_sink.length <= 0)
+		pa_sink_render(u->sink, libvchan_buffer_space(u->play_ctrl), &u->memchunk_sink);
 
-	pa_assert(u->memchunk.length > 0);
+	pa_assert(u->memchunk_sink.length > 0);
 
 	for (;;) {
 		ssize_t l;
 		void *p;
 
-		p = pa_memblock_acquire(u->memchunk.memblock);
+		p = pa_memblock_acquire(u->memchunk_sink.memblock);
 		l = write_to_vchan(u->play_ctrl, (char *) p +
-				   u->memchunk.index, u->memchunk.length);
-		pa_memblock_release(u->memchunk.memblock);
+				   u->memchunk_sink.index, u->memchunk_sink.length);
+		pa_memblock_release(u->memchunk_sink.memblock);
 
 		pa_assert(l != 0);
 
@@ -220,12 +220,12 @@ static int process_render(struct userdata *u)
 
 		} else {
 
-			u->memchunk.index += (size_t) l;
-			u->memchunk.length -= (size_t) l;
+			u->memchunk_sink.index += (size_t) l;
+			u->memchunk_sink.length -= (size_t) l;
 
-			if (u->memchunk.length <= 0) {
-				pa_memblock_unref(u->memchunk.memblock);
-				pa_memchunk_reset(&u->memchunk);
+			if (u->memchunk_sink.length <= 0) {
+				pa_memblock_unref(u->memchunk_sink.memblock);
+				pa_memchunk_reset(&u->memchunk_sink);
 			}
 		}
 
@@ -243,10 +243,10 @@ static void thread_func(void *userdata)
 
 	pa_thread_mq_install(&u->thread_mq);
 	for (;;) {
-		struct pollfd *pollfd;
+		struct pollfd *play_pollfd;
 		int ret;
 
-		pollfd = pa_rtpoll_item_get_pollfd(u->rtpoll_item, NULL);
+		play_pollfd = pa_rtpoll_item_get_pollfd(u->play_rtpoll_item, NULL);
 
 		/* Render some data and write it to the fifo */
 		if (PA_SINK_IS_OPENED(u->sink->thread_info.state)) {
@@ -254,16 +254,16 @@ static void thread_func(void *userdata)
 			if (u->sink->thread_info.rewind_requested)
 				pa_sink_process_rewind(u->sink, 0);
 
-			if (pollfd->revents || libvchan_buffer_space(u->play_ctrl)) {
-				if (process_render(u) < 0)
+			if (play_pollfd->revents || libvchan_buffer_space(u->play_ctrl)) {
+				if (process_sink_render(u) < 0)
 					goto fail;
 
-				pollfd->revents = 0;
+				play_pollfd->revents = 0;
 			}
 		}
 
 		/* Hmm, nothing to do. Let's sleep */
-		pollfd->events =
+		play_pollfd->events =
 		    (short) (u->sink->thread_info.state ==
 			     PA_SINK_RUNNING ? POLLIN : 0);
 
@@ -307,7 +307,7 @@ int pa__init(pa_module * m)
 	pa_channel_map map;
 	pa_modargs *ma;
 	struct pollfd *pollfd;
-	pa_sink_new_data data;
+	pa_sink_new_data data_sink;
 
 	pa_assert(m);
 
@@ -329,7 +329,7 @@ int pa__init(pa_module * m)
 	u->core = m->core;
 	u->module = m;
 	m->userdata = u;
-	pa_memchunk_reset(&u->memchunk);
+	pa_memchunk_reset(&u->memchunk_sink);
 	u->rtpoll = pa_rtpoll_new();
 	pa_thread_mq_init(&u->thread_mq, m->core->mainloop, u->rtpoll);
 	u->write_type = 0;
@@ -340,31 +340,31 @@ int pa__init(pa_module * m)
 		       pa_cstrerror(errno));
 		goto fail;
 	}
-	pa_sink_new_data_init(&data);
-	data.driver = __FILE__;
-	data.module = m;
-	pa_sink_new_data_set_name(&data,
+	/* SINK preparation */
+	pa_sink_new_data_init(&data_sink);
+	data_sink.driver = __FILE__;
+	data_sink.module = m;
+	pa_sink_new_data_set_name(&data_sink,
 				  pa_modargs_get_value(ma,
 						       "sink_name",
 						       DEFAULT_SINK_NAME));
-	pa_proplist_sets(data.proplist,
+	pa_proplist_sets(data_sink.proplist,
 			 PA_PROP_DEVICE_STRING, DEFAULT_SINK_NAME);
-	pa_proplist_setf(data.proplist,
+	pa_proplist_setf(data_sink.proplist,
 			PA_PROP_DEVICE_DESCRIPTION,
 			"Unix VCHAN sink");
-	pa_sink_new_data_set_sample_spec(&data, &ss);
-	pa_sink_new_data_set_channel_map(&data, &map);
+	pa_sink_new_data_set_sample_spec(&data_sink, &ss);
+	pa_sink_new_data_set_channel_map(&data_sink, &map);
 
 	if (pa_modargs_get_proplist
-	    (ma, "sink_properties", data.proplist,
-	     PA_UPDATE_REPLACE) < 0) {
+		(ma, "sink_properties", data_sink.proplist, PA_UPDATE_REPLACE) < 0) {
 		pa_log("Invalid properties");
-		pa_sink_new_data_done(&data);
+		pa_sink_new_data_done(&data_sink);
 		goto fail;
 	}
 
-	u->sink = pa_sink_new(m->core, &data, PA_SINK_LATENCY);
-	pa_sink_new_data_done(&data);
+	u->sink = pa_sink_new(m->core, &data_sink, PA_SINK_LATENCY);
+	pa_sink_new_data_done(&data_sink);
 
 	if (!u->sink) {
 		pa_log("Failed to create sink.");
@@ -382,8 +382,8 @@ int pa__init(pa_module * m)
 				  (VCHAN_BUF,
 				   &u->sink->sample_spec));
 
-	u->rtpoll_item = pa_rtpoll_item_new(u->rtpoll, PA_RTPOLL_NEVER, 1);
-	pollfd = pa_rtpoll_item_get_pollfd(u->rtpoll_item, NULL);
+	u->play_rtpoll_item = pa_rtpoll_item_new(u->rtpoll, PA_RTPOLL_NEVER, 1);
+	pollfd = pa_rtpoll_item_get_pollfd(u->play_rtpoll_item, NULL);
 	pollfd->fd = libvchan_fd_for_select(u->play_ctrl);
 	pollfd->events = POLLIN;
 	pollfd->revents = 0;
@@ -445,11 +445,12 @@ void pa__done(pa_module * m)
 	if (u->sink)
 		pa_sink_unref(u->sink);
 
-	if (u->memchunk.memblock)
-		pa_memblock_unref(u->memchunk.memblock);
+	if (u->memchunk_sink.memblock)
+		pa_memblock_unref(u->memchunk_sink.memblock);
 
-	if (u->rtpoll_item)
-		pa_rtpoll_item_free(u->rtpoll_item);
+	if (u->play_rtpoll_item)
+		pa_rtpoll_item_free(u->play_rtpoll_item);
+
 
 	if (u->rtpoll)
 		pa_rtpoll_free(u->rtpoll);
