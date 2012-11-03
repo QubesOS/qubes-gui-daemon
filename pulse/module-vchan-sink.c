@@ -300,7 +300,7 @@ static int do_conn(struct userdata *u)
 	}
 	fd = libvchan_fd_for_select(u->play_ctrl);
 	pa_log("play libvchan_fd_for_select=%d, ctrl=%p\n", fd, u->play_ctrl);
-	return fd;
+	return 0;
 }
 
 
