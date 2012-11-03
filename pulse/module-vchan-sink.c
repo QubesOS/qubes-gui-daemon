@@ -161,9 +161,7 @@ static int write_to_vchan(char *buf, int size)
 	FD_ZERO(&rfds);
 	FD_SET(fd, &rfds);
 	all++;
-	setuid(getuid());
 	ret = select(fd + 1, &rfds, NULL, NULL, &tv);
-	setuid(getuid());
 	if (ret == -1) {
 		pa_log("Failed to select() in vchan: %s",
 		       pa_cstrerror(errno));
