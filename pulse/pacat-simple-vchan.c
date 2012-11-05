@@ -145,14 +145,14 @@ static void stream_drain_complete(pa_stream*s, int success, void *userdata) {
 }
 
 /* Start draining */
-static void start_drain(pa_stream *s) {
+static void start_drain(struct userdata *u, pa_stream *s) {
 
 	if (s) {
 		pa_operation *o;
 
 		pa_stream_set_write_callback(s, NULL, NULL);
 
-		if (!(o = pa_stream_drain(s, stream_drain_complete, NULL))) {
+		if (!(o = pa_stream_drain(s, stream_drain_complete, u))) {
 			pacat_log("pa_stream_drain(): %s", pa_strerror(pa_context_errno(pa_stream_get_context(s))));
 			quit(1);
 			return;
@@ -268,7 +268,7 @@ static void vchan_play_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_i
 
 	if (libvchan_is_eof(u->play_ctrl)) {
 		pacat_log("vchan_is_eof");
-		start_drain(u->play_stream);
+		start_drain(u, u->play_stream);
 		return;
 	}
 
