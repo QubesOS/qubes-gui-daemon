@@ -53,9 +53,12 @@
 #include <assert.h>
 #include <sys/time.h>
 
+#include <glib/gmain.h>
+
 #include <pulse/pulseaudio.h>
 #include <pulse/error.h>
 #include <pulse/gccmacro.h>
+#include <pulse/glib-mainloop.h>
 #include <libvchan.h>
 #include "vchanio.h"
 #include "qubes-vchan-sink.h"
@@ -65,6 +68,7 @@
 
 struct userdata {
 	pa_mainloop_api *mainloop_api;
+	GMainLoop *loop;
 
 	struct libvchan *play_ctrl;
 	struct libvchan *rec_ctrl;
@@ -112,8 +116,8 @@ static void pacat_log(const char *fmt, ...) {
 
 /* A shortcut for terminating the application */
 static void quit(struct userdata *u, int ret) {
-	assert(u->mainloop_api);
-	u->mainloop_api->quit(u->mainloop_api, ret);
+	assert(u->loop);
+	g_main_loop_quit(u->loop);
 }
 
 /* Connection draining complete */
@@ -535,7 +539,7 @@ int main(int argc, char *argv[])
 	struct userdata u;
 	char *name = NULL;
 	int ret = 1;
-	pa_mainloop* m = NULL;
+	pa_glib_mainloop* m = NULL;
 	pa_time_event *time_event = NULL;
 	char *server = NULL;
 
@@ -564,12 +568,16 @@ int main(int argc, char *argv[])
 	pa_proplist_sets(u.proplist, PA_PROP_MEDIA_NAME, name);
 
 	/* Set up a new main loop */
-	if (!(m = pa_mainloop_new())) {
-		pacat_log("pa_mainloop_new() failed.");
+	if (!(u.loop = g_main_loop_new (NULL, FALSE))) {
+		pacat_log("g_main_loop_new() failed.");
+		goto quit;
+	}
+	if (!(m = pa_glib_mainloop_new(g_main_loop_get_context(u.loop)))) {
+		pacat_log("pa_glib_mainloop_new() failed.");
 		goto quit;
 	}
 
-	u.mainloop_api = pa_mainloop_get_api(m);
+	u.mainloop_api = pa_glib_mainloop_get_api(m);
 
 	u.play_stdio_event = u.mainloop_api->io_new(u.mainloop_api,
 			libvchan_fd_for_select(u.play_ctrl), PA_IO_EVENT_INPUT, vchan_play_callback, &u);
@@ -606,11 +614,10 @@ int main(int argc, char *argv[])
 	}
 
 	ret = 0;
+
 	/* Run the main loop */
-	if (pa_mainloop_run(m, &ret) < 0) {
-		pacat_log("pa_mainloop_run() failed.");
-		goto quit;
-	}
+	g_main_loop_run (u.loop);
+
 quit:
 	if (u.play_stream)
 		pa_stream_unref(u.play_stream);
@@ -655,7 +662,7 @@ quit:
 
 	if (m) {
 		pa_signal_done();
-		pa_mainloop_free(m);
+		pa_glib_mainloop_free(m);
 	}
 
 	if (u.proplist)

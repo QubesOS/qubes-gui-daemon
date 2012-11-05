@@ -9,11 +9,11 @@ module-vchan-sink.so: module-vchan-sink.o
 module-vchan-sink.o: module-vchan-sink.c
 	$(CC) -Wall -c $(VCHANCFLAGS) -fPIC module-vchan-sink.c  -DHAVE_CONFIG_H -I.
 pacat-simple-vchan.o: pacat-simple-vchan.c
-	$(CC) -Wall -c $(VCHANCFLAGS) -I. pacat-simple-vchan.c	
+	$(CC) -Wall -c $(VCHANCFLAGS) -I. `pkg-config --cflags glib-2.0` pacat-simple-vchan.c
 vchanio.o: vchanio.c
 	$(CC) -Wall -c $(VCHANCFLAGS) vchanio.c	
 pacat-simple-vchan: pacat-simple-vchan.o vchanio.o
 	$(CC) -o pacat-simple-vchan pacat-simple-vchan.o vchanio.o \
-		$(VCHANLDFLAGS) $(VCHANLIBS) -lpulse-simple -lpulse
+		$(VCHANLDFLAGS) $(VCHANLIBS) -lpulse -lpulse-mainloop-glib `pkg-config --libs glib-2.0`
 clean:
 	rm -f *.so *.o pacat-simple-vchan *~
