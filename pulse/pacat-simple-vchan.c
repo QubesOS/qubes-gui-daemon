@@ -62,9 +62,10 @@
 
 #define CLEAR_LINE "\x1B[K"
 
-static pa_mainloop_api *mainloop_api = NULL;
 
 struct userdata {
+	pa_mainloop_api *mainloop_api;
+
 	struct libvchan *play_ctrl;
 	struct libvchan *rec_ctrl;
 
@@ -110,9 +111,9 @@ static void pacat_log(const char *fmt, ...) {
 
 
 /* A shortcut for terminating the application */
-static void quit(int ret) {
-	assert(mainloop_api);
-	mainloop_api->quit(mainloop_api, ret);
+static void quit(struct userdata *u, int ret) {
+	assert(u->mainloop_api);
+	u->mainloop_api->quit(u->mainloop_api, ret);
 }
 
 /* Connection draining complete */
@@ -126,7 +127,7 @@ static void stream_drain_complete(pa_stream*s, int success, void *userdata) {
 
 	if (!success) {
 		pacat_log("Failed to drain stream: %s", pa_strerror(pa_context_errno(u->context)));
-		quit(1);
+		quit(u, 1);
 	}
 
 	if (verbose)
@@ -154,13 +155,13 @@ static void start_drain(struct userdata *u, pa_stream *s) {
 
 		if (!(o = pa_stream_drain(s, stream_drain_complete, u))) {
 			pacat_log("pa_stream_drain(): %s", pa_strerror(pa_context_errno(pa_stream_get_context(s))));
-			quit(1);
+			quit(u, 1);
 			return;
 		}
 
 		pa_operation_unref(o);
 	} else
-		quit(0);
+		quit(u, 0);
 }
 
 static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_length)
@@ -177,7 +178,7 @@ static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_l
 
 	if (pa_stream_begin_write(s, &buffer, &buffer_length) < 0) {
 		pacat_log("pa_stream_begin_write() failed: %s", pa_strerror(pa_context_errno(u->context)));
-		quit(1);
+		quit(u, 1);
 		return;
 	}
 	index = 0;
@@ -186,12 +187,12 @@ static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_l
 		l = libvchan_read(u->play_ctrl, buffer + index, buffer_length);
 		if (l < 0) {
 			pacat_log("vchan read failed");
-			quit(1);
+			quit(u, 1);
 			return;
 		}
 		if (l == 0) {
 			pacat_log("disconnected");
-			quit(0);
+			quit(u, 0);
 			return;
 		}
 		buffer_length -= l;
@@ -201,7 +202,7 @@ static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_l
 	if (index) {
 		if (pa_stream_write(s, buffer, index, NULL, 0, PA_SEEK_RELATIVE) < 0) {
 			pacat_log("pa_stream_write() failed: %s", pa_strerror(pa_context_errno(u->context)));
-			quit(1);
+			quit(u, 1);
 			return;
 		}
 	} else
@@ -234,7 +235,7 @@ static void send_rec_data(pa_stream *s, struct userdata *u) {
 
 	if (pa_stream_peek(s, &rec_buffer, &rec_buffer_length) < 0) {
 		pacat_log("pa_stream_peek failed");
-		quit(1);
+		quit(u, 1);
 		return;
 	}
 	rec_buffer_index = 0;
@@ -243,7 +244,7 @@ static void send_rec_data(pa_stream *s, struct userdata *u) {
 		/* can block */
 		if ((l=libvchan_write(u->rec_ctrl, rec_buffer + rec_buffer_index, rec_buffer_length)) < 0) {
 			pacat_log("libvchan_write failed");
-			quit(1);
+			quit(u, 1);
 			return;
 		}
 		rec_buffer_length -= l;
@@ -288,7 +289,7 @@ static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io
 
 	if (libvchan_is_eof(u->rec_ctrl)) {
 		pacat_log("vchan_is_eof");
-		quit(0);
+		quit(u, 0);
 		return;
 	}
 
@@ -317,6 +318,7 @@ static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io
 
 /* This routine is called whenever the stream state changes */
 static void stream_state_callback(pa_stream *s, void *userdata) {
+	struct userdata *u = userdata;
 	assert(s);
 
 	switch (pa_stream_get_state(s)) {
@@ -353,7 +355,7 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
 		case PA_STREAM_FAILED:
 		default:
 			pacat_log("Stream error: %s", pa_strerror(pa_context_errno(pa_stream_get_context(s))));
-			quit(1);
+			quit(u, 1);
 	}
 }
 
@@ -497,7 +499,7 @@ static void context_state_callback(pa_context *c, void *userdata) {
 
 		case PA_CONTEXT_TERMINATED:
 			pacat_log("pulseaudio connection terminated");
-			quit(0);
+			quit(u, 0);
 			break;
 
 		case PA_CONTEXT_FAILED:
@@ -509,7 +511,7 @@ static void context_state_callback(pa_context *c, void *userdata) {
 	return;
 
 fail:
-	quit(1);
+	quit(u, 1);
 
 }
 
@@ -567,16 +569,16 @@ int main(int argc, char *argv[])
 		goto quit;
 	}
 
-	mainloop_api = pa_mainloop_get_api(m);
+	u.mainloop_api = pa_mainloop_get_api(m);
 
-	u.play_stdio_event = mainloop_api->io_new(mainloop_api,
+	u.play_stdio_event = u.mainloop_api->io_new(u.mainloop_api,
 			libvchan_fd_for_select(u.play_ctrl), PA_IO_EVENT_INPUT, vchan_play_callback, &u);
 	if (!u.play_stdio_event) {
 		pacat_log("io_new play failed");
 		goto quit;
 	}
 
-	u.rec_stdio_event = mainloop_api->io_new(mainloop_api,
+	u.rec_stdio_event = u.mainloop_api->io_new(u.mainloop_api,
 			libvchan_fd_for_select(u.rec_ctrl), PA_IO_EVENT_INPUT, vchan_rec_callback, &u);
 	if (!u.rec_stdio_event) {
 		pacat_log("io_new rec failed");
@@ -585,13 +587,13 @@ int main(int argc, char *argv[])
 
 	pa_gettimeofday(&tv);
 	pa_timeval_add(&tv, (pa_usec_t) 5 * 1000 * PA_USEC_PER_MSEC);
-	time_event = mainloop_api->time_new(mainloop_api, &tv, check_vchan_eof_timer, &u);
+	time_event = u.mainloop_api->time_new(u.mainloop_api, &tv, check_vchan_eof_timer, &u);
 	if (!time_event) {
 		pacat_log("time_event create failed");
 		goto quit;
 	}
 
-	if (!(u.context = pa_context_new_with_proplist(mainloop_api, NULL, u.proplist))) {
+	if (!(u.context = pa_context_new_with_proplist(u.mainloop_api, NULL, u.proplist))) {
 		pacat_log("pa_context_new() failed.");
 		goto quit;
 	}
@@ -620,17 +622,17 @@ quit:
 		pa_context_unref(u.context);
 
 	if (u.play_stdio_event) {
-		assert(mainloop_api);
-		mainloop_api->io_free(u.play_stdio_event);
+		assert(u.mainloop_api);
+		u.mainloop_api->io_free(u.play_stdio_event);
 	}
 	if (u.rec_stdio_event) {
-		assert(mainloop_api);
-		mainloop_api->io_free(u.rec_stdio_event);
+		assert(u.mainloop_api);
+		u.mainloop_api->io_free(u.rec_stdio_event);
 	}
 
 	if (time_event) {
-		assert(mainloop_api);
-		mainloop_api->time_free(time_event);
+		assert(u.mainloop_api);
+		u.mainloop_api->time_free(time_event);
 	}
 
 	/* discard remaining data */
