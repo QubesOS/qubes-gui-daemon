@@ -266,14 +266,14 @@ static void stream_read_callback(pa_stream *s, size_t length, void *userdata) {
 static void vchan_play_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io_event_flags_t f, void *userdata) {
 	struct userdata *u = userdata;
 
+	/* receive event */
+	libvchan_wait(u->play_ctrl);
+
 	if (libvchan_is_eof(u->play_ctrl)) {
 		pacat_log("vchan_is_eof");
 		start_drain(u, u->play_stream);
 		return;
 	}
-
-	/* receive event */
-	libvchan_wait(u->play_ctrl);
 
 	/* process playback data */
 	if (u->play_stream && pa_stream_get_state(u->play_stream) == PA_STREAM_READY)
@@ -283,14 +283,14 @@ static void vchan_play_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_i
 static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io_event_flags_t f, void *userdata) {
 	struct userdata *u = userdata;
 
+	/* receive event */
+	libvchan_wait(u->rec_ctrl);
+
 	if (libvchan_is_eof(u->rec_ctrl)) {
 		pacat_log("vchan_is_eof");
 		quit(0);
 		return;
 	}
-
-	/* receive event */
-	libvchan_wait(u->rec_ctrl);
 
 	if (u->rec_stream && pa_stream_get_state(u->rec_stream) == PA_STREAM_READY) {
 		/* process VM control command */
