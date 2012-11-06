@@ -53,36 +53,18 @@
 #include <assert.h>
 #include <sys/time.h>
 
-#include <glib/gmain.h>
 
 #include <pulse/pulseaudio.h>
 #include <pulse/error.h>
 #include <pulse/gccmacro.h>
 #include <pulse/glib-mainloop.h>
 #include <libvchan.h>
+
+#include "pacat-simple-vchan.h"
 #include "vchanio.h"
 #include "qubes-vchan-sink.h"
 
 #define CLEAR_LINE "\x1B[K"
-
-
-struct userdata {
-	pa_mainloop_api *mainloop_api;
-	GMainLoop *loop;
-
-	struct libvchan *play_ctrl;
-	struct libvchan *rec_ctrl;
-
-	pa_proplist *proplist;
-	pa_context *context;
-	pa_stream *play_stream;
-	pa_stream *rec_stream;
-	char *play_device;
-	char *rec_device;
-
-	pa_io_event* play_stdio_event;
-	pa_io_event* rec_stdio_event;
-};
 
 /* The Sample format to use */
 static pa_sample_spec sample_spec = {
@@ -234,6 +216,9 @@ static void send_rec_data(pa_stream *s, struct userdata *u) {
 	assert(s);
 	assert(u);
 
+	if (!u->rec_allowed)
+		return;
+
 	if (pa_stream_readable_size(s) <= 0)
 		return;
 
@@ -304,12 +289,19 @@ static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io
 			libvchan_read(u->rec_ctrl, (char*)&cmd, sizeof(cmd));
 			switch (cmd) {
 				case QUBES_PA_SOURCE_START_CMD:
-					pacat_log("Recording start");
-					pa_stream_cork(u->rec_stream, 0, NULL, u);
+					u->rec_requested = 1;
+					if (u->rec_allowed) {
+						pacat_log("Recording start");
+						pa_stream_cork(u->rec_stream, 0, NULL, u);
+					} else
+						pacat_log("Recording requested but not allowed");
 					break;
 				case QUBES_PA_SOURCE_STOP_CMD:
-					pacat_log("Recording stop");
-					pa_stream_cork(u->rec_stream, 1, NULL, u);
+					if (!pa_stream_is_corked(u->rec_stream)) {
+						pacat_log("Recording stop");
+						pa_stream_cork(u->rec_stream, 1, NULL, u);
+					}
+					u->rec_requested = 0;
 					break;
 			}
 		}
@@ -537,7 +529,6 @@ int main(int argc, char *argv[])
 {
 	struct timeval tv;
 	struct userdata u;
-	char *name = NULL;
 	int ret = 1;
 	pa_glib_mainloop* m = NULL;
 	pa_time_event *time_event = NULL;
@@ -551,7 +542,7 @@ int main(int argc, char *argv[])
 
 	memset(&u, 0, sizeof(u));
 
-	u.play_ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SINK_VCHAN_PORT, &name);
+	u.play_ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SINK_VCHAN_PORT, &u.name);
 	if (!u.play_ctrl) {
 		perror("libvchan_client_init");
 		exit(1);
@@ -564,8 +555,8 @@ int main(int argc, char *argv[])
 	setuid(getuid());
 
 	u.proplist = pa_proplist_new();
-	pa_proplist_sets(u.proplist, PA_PROP_APPLICATION_NAME, name);
-	pa_proplist_sets(u.proplist, PA_PROP_MEDIA_NAME, name);
+	pa_proplist_sets(u.proplist, PA_PROP_APPLICATION_NAME, u.name);
+	pa_proplist_sets(u.proplist, PA_PROP_MEDIA_NAME, u.name);
 
 	/* Set up a new main loop */
 	if (!(u.loop = g_main_loop_new (NULL, FALSE))) {
