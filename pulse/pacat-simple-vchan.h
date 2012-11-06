@@ -3,6 +3,7 @@
 
 #include <pulse/pulseaudio.h>
 #include <glib.h>
+#include <dbus/dbus-glib-bindings.h>
 #include <libvchan.h>
 
 struct userdata {
@@ -25,6 +26,8 @@ struct userdata {
 
 	int rec_allowed;
 	int rec_requested;
+	DBusGConnection *dbus;
+	GObject *pacat_control;
 };
 
 void pacat_log(const char *fmt, ...);

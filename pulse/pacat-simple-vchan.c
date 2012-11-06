@@ -62,6 +62,7 @@
 #include "pacat-simple-vchan.h"
 #include "vchanio.h"
 #include "qubes-vchan-sink.h"
+#include "pacat-control-object.h"
 
 #define CLEAR_LINE "\x1B[K"
 
@@ -296,11 +297,11 @@ static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io
 						pacat_log("Recording requested but not allowed");
 					break;
 				case QUBES_PA_SOURCE_STOP_CMD:
+					u->rec_requested = 0;
 					if (!pa_stream_is_corked(u->rec_stream)) {
 						pacat_log("Recording stop");
 						pa_stream_cork(u->rec_stream, 1, NULL, u);
 					}
-					u->rec_requested = 0;
 					break;
 			}
 		}
@@ -484,6 +485,7 @@ static void context_state_callback(pa_context *c, void *userdata) {
 			pa_stream_set_buffer_attr_callback(u->rec_stream, stream_buffer_attr_callback, u);
 
 			flags = PA_STREAM_START_CORKED;
+			u->rec_allowed = u->rec_requested = 0;
 
 			if (pa_stream_connect_record(u->rec_stream, u->rec_device, bufattr, flags) < 0) {
 				pacat_log("pa_stream_connect_record() failed: %s", pa_strerror(pa_context_errno(c)));
@@ -604,12 +606,25 @@ int main(int argc, char *argv[])
 		goto quit;
 	}
 
+	if (dbus_init(&u) < 0) {
+		pacat_log("dbus initialization failed");
+	}
+
 	ret = 0;
 
 	/* Run the main loop */
 	g_main_loop_run (u.loop);
 
 quit:
+	if (u.pacat_control) {
+		assert(u.dbus);
+		dbus_g_connection_unregister_g_object(u.dbus, u.pacat_control);
+		g_object_unref(u.pacat_control);
+	}
+
+	if (u.dbus)
+		dbus_g_connection_unref(u.dbus);
+
 	if (u.play_stream)
 		pa_stream_unref(u.play_stream);
 
