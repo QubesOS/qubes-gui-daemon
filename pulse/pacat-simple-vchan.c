@@ -53,7 +53,6 @@
 #include <assert.h>
 #include <sys/time.h>
 
-
 #include <pulse/pulseaudio.h>
 #include <pulse/error.h>
 #include <pulse/gccmacro.h>
@@ -87,7 +86,7 @@ pa_buffer_attr * bufattr = NULL;
 
 static int verbose = 1;
 
-static void pacat_log(const char *fmt, ...) {
+void pacat_log(const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
 	vfprintf(stderr, fmt, args);
@@ -510,6 +509,7 @@ fail:
 	quit(u, 1);
 
 }
+
 
 static void check_vchan_eof_timer(pa_mainloop_api*a, pa_time_event* e, const struct timeval *tv, void *userdata)
 {

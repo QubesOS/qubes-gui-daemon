@@ -27,4 +27,6 @@ struct userdata {
 	int rec_requested;
 };
 
+void pacat_log(const char *fmt, ...);
+
 #endif /* __PACAT_SIMPLE_VCHAN_H */
