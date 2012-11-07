@@ -11,3 +11,4 @@ ConsoleKit-devel
 libXcomposite-devel
 xen-devel-*DIST*
 pam-devel
+dbus-glib-devel
