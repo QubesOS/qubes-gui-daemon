@@ -2,8 +2,8 @@ pulseaudio-libs-devel
 libXt-devel
 libXext-devel
 libconfig-devel
-qubes-core-vm-devel-*DIST*
-qubes-core-vm-libs-*DIST*
+qubes-core-libs-devel-*DIST*
+qubes-core-libs-*DIST*
 libXdamage-devel
 libtool-ltdl-devel
 xorg-x11-server-devel
