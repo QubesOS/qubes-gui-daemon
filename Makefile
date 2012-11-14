@@ -25,8 +25,8 @@ VERSION := $(shell cat version)
 help:
 	@echo "Qubes GUI main Makefile:" ;\
 	    echo "make rpms                 <--- make all rpms and sign them";\
-	    echo "make rpms_dom0            <--- create binary rpms for dom0"; \
-	    echo "make rpms_appvm           <--- create binary rpms for appvm"; \
+	    echo "make rpms-dom0            <--- create binary rpms for dom0"; \
+	    echo "make rpms-vm              <--- create binary rpms for appvm"; \
 	    echo; \
 	    echo "make clean                <--- clean all the binary files";\
 	    echo "make update-repo-current  <-- copy newly generated rpms to qubes yum repo";\
@@ -63,17 +63,14 @@ xf86-input-mfndev/src/.libs/qubes_drv.so:
 pulse/module-vchan-sink.so:
 	$(MAKE) -C pulse module-vchan-sink.so
 
-make rpms:
-	@make rpms_dom0
-	@make rpms_appvm
-
+rpms: rpms-dom0 rpms-vm
 	rpm --addsign rpm/x86_64/*$(VERSION)*.rpm
 	(if [ -d rpm/i686 ] ; then rpm --addsign rpm/i686/*$(VERSION)*.rpm; fi)
 
-rpms_appvm:
+rpms-vm:
 	rpmbuild --define "_rpmdir rpm/" -bb rpm_spec/gui-vm.spec
 
-rpms_dom0:
+rpms-dom0:
 	rpmbuild --define "_rpmdir rpm/" -bb rpm_spec/gui-dom0.spec
 
 tar:
