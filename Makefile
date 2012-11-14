@@ -107,5 +107,11 @@ update-repo-unstable:
 		ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*$$dist*.rpm $$vmrepo/rpm/ ;\
 	done
 
+update-repo-template:
+	for vmrepo in ../template-builder/yum_repo_qubes/* ; do \
+		dist=$$(basename $$vmrepo) ;\
+		ln -f $(RPMS_DIR)/x86_64/qubes-*-vm-*$(VERSION)*$$dist*.rpm $$vmrepo/rpm/ ;\
+	done
+
 update-repo-installer:
 	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*fc13*.rpm ../installer/yum/qubes-dom0/rpm/
