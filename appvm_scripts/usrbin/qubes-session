@@ -62,7 +62,10 @@ for D in /etc/xdg/autostart/*.desktop; do
 		$EXEC | grep '^[^ ]*=[^ ]*$' >> /tmp/qubes-session-env &
 	fi
 done
-fi # ! DispVM
+else # ! DispVM
+    # start only pulseaudio in DispVM
+    /usr/bin/start-pulseaudio-with-vchan
+fi # DispVM
 
 unset EXEC MATCH UPDTYPE D USER_AUTOSTART
 
