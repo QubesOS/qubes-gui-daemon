@@ -8,6 +8,7 @@
         <!-- Signal definitions -->
         <signal name="RecAllowedChanged">
             <arg type="b" name="new_value" />
+            <arg type="s" name="vm_name" />
         </signal>
         <!-- Property definitions -->
         <property name="RecAllowed" type="b" access="readwrite"/>

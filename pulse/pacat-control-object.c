@@ -59,7 +59,7 @@ static void pacat_control_set_property (GObject      *object,
 				pa_stream_cork(p->u->rec_stream, 1, NULL, NULL);
 			}
 			/* notify about the change */
-			g_signal_emit(object, signals[SIGNAL_REC_ALLOWED_CHANGED], 0, p->u->rec_allowed);
+			g_signal_emit(object, signals[SIGNAL_REC_ALLOWED_CHANGED], 0, p->u->rec_allowed, p->u->name);
 			break;
 
 		default:
@@ -113,7 +113,7 @@ static void pacat_control_class_init (PacatControlClass *p_class)
 				0,
 				NULL, NULL,
 				g_cclosure_marshal_VOID__BOOLEAN,
-				G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
+				G_TYPE_NONE, 2, G_TYPE_BOOLEAN, G_TYPE_STRING);
 
 }
 
@@ -180,12 +180,8 @@ int dbus_init(struct userdata *u) {
 	pc = PACAT_CONTROL(u->pacat_control);
 	pc->u = u;
 
-	if (snprintf(obj_path, sizeof(obj_path), "/org/qubesos/audio/%s", u->name) >= sizeof(obj_path)) {
-		pacat_log("VM name too long");
-		goto fail;
-	}
 	dbus_g_connection_register_g_object (u->dbus,
-			obj_path, u->pacat_control);
+			"/org/qubesos/audio", u->pacat_control);
 
 	ret = 0;
 	goto finish;
