@@ -69,6 +69,7 @@ make dom0
 rm -rf $RPM_BUILD_ROOT
 install -D gui-daemon/qubes_guid $RPM_BUILD_ROOT/usr/bin/qubes_guid
 install -D pulse/pacat-simple-vchan $RPM_BUILD_ROOT/usr/bin/pacat-simple-vchan
+install -D pulse/pacat-control-api.xml $RPM_BUILD_ROOT/usr/share/dbus-1/interfaces/org.QubesOS.Audio.xml
 install -D shmoverride/X_wrapper_qubes $RPM_BUILD_ROOT/usr/bin/X_wrapper_qubes
 install -D shmoverride/shmoverride.so $RPM_BUILD_ROOT/%{_libdir}/shmoverride.so
 install -D gui-daemon/guid.conf $RPM_BUILD_ROOT/%{_sysconfdir}/qubes/guid.conf
@@ -96,3 +97,4 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{_sysconfdir}/qubes/guid.conf
 %config(noreplace) %{_sysconfdir}/qubes_rpc/policy/qubes.ClipboardPaste
 /etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
+/usr/share/dbus-1/interfaces/org.QubesOS.Audio.xml
