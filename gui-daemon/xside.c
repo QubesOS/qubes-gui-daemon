@@ -463,10 +463,13 @@ int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 			perror("fork");
 			exit(1);
 		case 0:
-			fd = open(path_stdout, O_WRONLY);
+			/* in case of error do not use exit(1) in child to not fire
+			 * atexit() registered functions; use _exit() instead (which do not
+			 * fire that functions) */
+			fd = open(path_stdout, O_WRONLY|O_CREAT, 0644);
 			if (fd < 0) {
 				perror("open");
-				exit(1);
+				_exit(1);
 			}
 			if (op == CLIPBOARD_COPY) {
 				rl.rlim_cur = MAX_CLIPBOARD_SIZE;
@@ -482,7 +485,7 @@ int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 			snprintf(domid_str, sizeof(domid_str), "%d", g->target_domid);
 			execl(QREXEC_CLIENT_PATH, "qrexec_client", "-d", domid_str, service_call, (char*)NULL);
 			perror("execl");
-			exit(1);
+			_exit(1);
 		default:
 			waitpid(pid, &status, 0);
 	}
@@ -593,7 +596,7 @@ int evaluate_clipboard_policy(Ghandles * g) {
 		case 0:
 			execl(QREXEC_POLICY_PATH, "qrexec_policy", "--assume-yes-for-ask", "--just-evaluate", source_vm, g->vmname, "qubes.ClipboardPaste", "0", (char*)NULL);
 			perror("execl");
-			exit(1);
+			_exit(1);
 		default:
 			waitpid(pid, &status, 0);
 	}
@@ -2095,7 +2098,7 @@ void exec_pacat(Ghandles * g)
 		execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
 		      domid_txt, NULL);
 		perror("execl");
-		exit(1);
+		_exit(1);
 	default:
 		g->pulseaudio_pid = pid;
 	}
