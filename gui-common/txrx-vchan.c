@@ -279,6 +279,13 @@ void peer_client_init(int dom, int port)
 	}
 }
 
+int peer_server_reinitialize(int port)
+{
+	if (libvchan_cleanup(ctrl) < 0)
+		return -1;
+	return peer_server_init(port);
+}
+
 void vchan_close()
 {
 	if (!vchan_is_closed)
@@ -307,4 +314,12 @@ void vchan_unmask_channel()
 {
 	libvchan_prepare_to_select(ctrl);
 }
+
+/* only for stubdom, because eof is handled in wait_for_vchan_or_argfd in other
+ * cases */
+int vchan_is_eof()
+{
+	return libvchan_is_eof(ctrl);
+}
+
 #endif

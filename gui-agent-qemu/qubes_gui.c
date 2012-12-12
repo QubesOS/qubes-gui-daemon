@@ -398,6 +398,16 @@ static void qubesgui_message_handler(void *opaque)
 		qubesgui_init_connection(qs);
 		goto out;
 	}
+	if (vchan_is_eof()) {
+		qs->init_done = 0;
+		qs->init_state = 0;
+		qemu_set_fd_handler(vchan_fd(), NULL, NULL, NULL);
+		peer_server_reinitialize(6000);
+		qemu_set_fd_handler(vchan_fd(), qubesgui_message_handler, NULL, qs);
+		fprintf(stderr, "qubes_gui: viewer disconnected, waiting for new connection\n");
+		return;
+	}
+
 	write_data(NULL, 0);    // trigger write of queued data, if any present
 	if (read_ready() == 0) {
 		goto out; // no data

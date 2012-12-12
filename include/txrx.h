@@ -37,6 +37,7 @@ void wait_for_vchan_or_argfd(int nfd, int *fd, fd_set * retset);
 int peer_server_init(int port);
 char *get_vm_name(int dom, int *target_domid);
 void peer_client_init(int dom, int port);
+int peer_server_reinitialize(int port);
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void));
 void vchan_close();
 int vchan_fd();
@@ -46,6 +47,9 @@ int vchan_fd();
 int vchan_handle_connected();
 void vchan_handler_called();
 void vchan_unmask_channel();
+/* only for stubdom, because eof is handled in wait_for_vchan_or_argfd in other
+ * cases */
+int vchan_is_eof();
 #endif
 
 
