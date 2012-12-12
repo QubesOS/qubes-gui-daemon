@@ -69,6 +69,10 @@ The Qubes GUI agent that needs to be installed in VM in order to provide the Qub
 
 %prep
 # we operate on the current directory, so no need to unpack anything
+# symlink is to generate useful debuginfo packages
+rm -f %{name}-%{version}
+ln -sf . %{name}-%{version}
+%setup -T -D
 
 rm -f pulse/pulsecore
 ln -s pulsecore-%{pa_ver} pulse/pulsecore
@@ -128,6 +132,7 @@ echo autospawn=no >> /etc/pulse/client.conf
 
 %clean
 rm -rf $RPM_BUILD_ROOT
+rm -f %{name}-%{version}
 
 
 %files

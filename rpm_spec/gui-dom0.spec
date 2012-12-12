@@ -58,6 +58,10 @@ The Qubes GUI virtualization infrastructure that needs to be installed in Dom0.
 
 %prep
 # we operate on the current directory, so no need to unpack anything
+# symlink is to generate useful debuginfo packages
+rm -f %{name}-%{version}
+ln -sf . %{name}-%{version}
+%setup -T -D
 
 %build
 make clean
@@ -87,6 +91,7 @@ fi
 
 %clean
 rm -rf $RPM_BUILD_ROOT
+rm -f %{name}-%{version}
 
 %files
 %defattr(-,root,root,-)
