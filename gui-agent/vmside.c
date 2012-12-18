@@ -681,8 +681,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 				return;
 			}
 			if (act_type != g->xembed_info) {
-				fprintf(stderr, "window havn't proper _XEMBED_INFO property, aborting dock\n");
-				return;
+				fprintf(stderr, "window 0x%x havn't proper _XEMBED_INFO property, assuming defaults (workaround for buggy applications)\n", (unsigned int)w);
 			}
 			if (act_type == g->xembed_info && nitems == 2) {
 				mapwindow = ((int*)data)[1] & XEMBED_MAPPED;
