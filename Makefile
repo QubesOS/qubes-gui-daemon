@@ -52,7 +52,7 @@ pulse/pacat-simple-vchan:
 	$(MAKE) -C pulse pacat-simple-vchan
 
 relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so:
-	$(MAKE) -C relaxed_xf86ValidateModes
+	(cd relaxed_xf86ValidateModes; $(MAKE))
 	
 gui-agent/qubes-gui:
 	(cd gui-agent; $(MAKE))
