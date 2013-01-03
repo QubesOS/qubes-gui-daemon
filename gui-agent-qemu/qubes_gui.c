@@ -35,8 +35,8 @@ static DisplayChangeListener *dcl;
 extern uint32_t vga_ram_size;
 
 
-void process_pv_update(QubesGuiState *qs,
-			   int x, int y, int width, int height)
+void process_pv_update(QubesGuiState * qs,
+		       int x, int y, int width, int height)
 {
 	struct msg_shmimage mx;
 	struct msghdr hdr;
@@ -51,12 +51,12 @@ void process_pv_update(QubesGuiState *qs,
 }
 
 
-void qubes_create_window(QubesGuiState *qs, int w, int h)
+void qubes_create_window(QubesGuiState * qs, int w, int h)
 {
 	struct msghdr hdr;
 	struct msg_create crt;
 	int ret;
-	
+
 	// the following hopefully avoids missed damage events
 	hdr.type = MSG_CREATE;
 	hdr.window = QUBES_MAIN_WINDOW;
@@ -69,30 +69,30 @@ void qubes_create_window(QubesGuiState *qs, int w, int h)
 	write_message(hdr, crt);
 }
 
-void send_pixmap_mfns(QubesGuiState *qs)
+void send_pixmap_mfns(QubesGuiState * qs)
 {
 	struct shm_cmd shmcmd;
 	struct msghdr hdr;
 	uint32_t *mfns;
-    int n = vga_ram_size / XC_PAGE_SIZE;
+	int n = vga_ram_size / XC_PAGE_SIZE;
 	int i;
 	void *data;
-	int offset,copy_offset;
+	int offset, copy_offset;
 
-    if (!(qs->ds->surface->flags & QEMU_ALLOCATED_FLAG)) {
+	if (!(qs->ds->surface->flags & QEMU_ALLOCATED_FLAG)) {
 		data = ((void *) ds_get_data(qs->ds));
 	} else {
 		data = qs->nonshared_vram;
 	}
 
-	offset = (long)data & (XC_PAGE_SIZE - 1);
+	offset = (long) data & (XC_PAGE_SIZE - 1);
 
-    mfns = malloc(n * sizeof(*mfns));
-    for (i = 0; i < n; i++)
-        mfns[i] = virtual_to_mfn(data + i * XC_PAGE_SIZE);
+	mfns = malloc(n * sizeof(*mfns));
+	for (i = 0; i < n; i++)
+		mfns[i] = virtual_to_mfn(data + i * XC_PAGE_SIZE);
 	hdr.type = MSG_MFNDUMP;
 	hdr.window = QUBES_MAIN_WINDOW;
-	hdr.untrusted_len = sizeof(shmcmd) + n  * sizeof(*mfns);
+	hdr.untrusted_len = sizeof(shmcmd) + n * sizeof(*mfns);
 	shmcmd.width = ds_get_width(qs->ds);
 	shmcmd.height = ds_get_height(qs->ds);
 	shmcmd.num_mfn = n;
@@ -100,11 +100,11 @@ void send_pixmap_mfns(QubesGuiState *qs)
 	shmcmd.bpp = ds_get_bits_per_pixel(qs->ds);
 	write_struct(hdr);
 	write_struct(shmcmd);
-	write_data((char *) mfns, n  * sizeof(*mfns));
-    free(mfns);
+	write_data((char *) mfns, n * sizeof(*mfns));
+	free(mfns);
 }
 
-void send_wmname(QubesGuiState *qs, const char *wmname)
+void send_wmname(QubesGuiState * qs, const char *wmname)
 {
 	struct msghdr hdr;
 	struct msg_wmname msg;
@@ -114,7 +114,7 @@ void send_wmname(QubesGuiState *qs, const char *wmname)
 	write_message(hdr, msg);
 }
 
-void send_wmhints(QubesGuiState *qs)
+void send_wmhints(QubesGuiState * qs)
 {
 	struct msghdr hdr;
 	struct msg_window_hints msg;
@@ -130,7 +130,7 @@ void send_wmhints(QubesGuiState *qs)
 	write_message(hdr, msg);
 }
 
-void send_map(QubesGuiState *qs)
+void send_map(QubesGuiState * qs)
 {
 	struct msghdr hdr;
 	struct msg_map_info map_info;
@@ -142,7 +142,8 @@ void send_map(QubesGuiState *qs)
 	write_message(hdr, map_info);
 }
 
-void process_pv_resize(QubesGuiState *qs, int width, int height, int linesize)
+void process_pv_resize(QubesGuiState * qs, int width, int height,
+		       int linesize)
 {
 	struct msghdr hdr;
 	struct msg_configure conf;
@@ -161,7 +162,7 @@ void process_pv_resize(QubesGuiState *qs, int width, int height, int linesize)
 	send_wmhints(qs);
 }
 
-void handle_configure(QubesGuiState *qs)
+void handle_configure(QubesGuiState * qs)
 {
 	struct msg_configure r;
 	read_data((char *) &r, sizeof(r));
@@ -195,21 +196,24 @@ int is_bitset(unsigned char *keys, int num)
 void setbit(unsigned char *keys, int num, int value)
 {
 	if (value)
-		keys[num / 8] |= 1<<(num % 8);
+		keys[num / 8] |= 1 << (num % 8);
 	else
-		keys[num / 8] &= ~(1<<(num % 8));
+		keys[num / 8] &= ~(1 << (num % 8));
 }
 
-void send_keycode(QubesGuiState *qs, int keycode, int release)
+void send_keycode(QubesGuiState * qs, int keycode, int release)
 {
 	uint32_t scancode = qubes_keycode2scancode[keycode];
 
 	setbit(qs->local_keys, keycode, !release);
 
 	if (qs->log_level > 1)
-		fprintf(stderr, "Received keycode %d(0x%x), converted to %d(0x%x)\n", keycode, keycode, scancode, scancode);
+		fprintf(stderr,
+			"Received keycode %d(0x%x), converted to %d(0x%x)\n",
+			keycode, keycode, scancode, scancode);
 	if (!scancode) {
-		fprintf(stderr, "Can't convert keycode %x to scancode\n", keycode);
+		fprintf(stderr, "Can't convert keycode %x to scancode\n",
+			keycode);
 		return;
 	}
 	if (release && (scancode & 0x80))
@@ -226,7 +230,7 @@ void send_keycode(QubesGuiState *qs, int keycode, int release)
 	kbd_put_keycode(scancode & 0xff);
 }
 
-void handle_keypress(QubesGuiState *qs)
+void handle_keypress(QubesGuiState * qs)
 {
 	struct msg_keypress key;
 	uint32_t scancode;
@@ -236,7 +240,7 @@ void handle_keypress(QubesGuiState *qs)
 	send_keycode(qs, key.keycode, key.type != KeyPress);
 }
 
-void handle_button(QubesGuiState *qs)
+void handle_button(QubesGuiState * qs)
 {
 	struct msg_button key;
 	int button = 0;
@@ -261,23 +265,24 @@ void handle_button(QubesGuiState *qs)
 
 	if (button || z) {
 		if (key.type == ButtonPress)
-			qs->buttons |=  button;
+			qs->buttons |= button;
 		else
 			qs->buttons &= ~button;
 		if (kbd_mouse_is_absolute())
-			kbd_mouse_event(
-					qs->x * 0x7FFF / (ds_get_width(qs->ds) - 1),
-					qs->y * 0x7FFF / (ds_get_height(qs->ds) - 1),
-					z,
+			kbd_mouse_event(qs->x * 0x7FFF /
+					(ds_get_width(qs->ds) - 1),
+					qs->y * 0x7FFF /
+					(ds_get_height(qs->ds) - 1), z,
 					qs->buttons);
 		else
 			kbd_mouse_event(0, 0, 0, qs->buttons);
 	} else {
-		fprintf(stderr, "send buttonevent: unknown button %d\n", key.button);
+		fprintf(stderr, "send buttonevent: unknown button %d\n",
+			key.button);
 	}
 }
 
-void handle_motion(QubesGuiState *qs)
+void handle_motion(QubesGuiState * qs)
 {
 	struct msg_motion key;
 	int new_x, new_y;
@@ -291,16 +296,10 @@ void handle_motion(QubesGuiState *qs)
 	if (new_y >= ds_get_height(qs->ds))
 		new_y = ds_get_height(qs->ds) - 1;
 	if (kbd_mouse_is_absolute()) {
-		kbd_mouse_event(
-				new_x * 0x7FFF / (ds_get_width(qs->ds) - 1),
-				new_y * 0x7FFF / (ds_get_height(qs->ds) - 1),
-				0, /* TODO? */
+		kbd_mouse_event(new_x * 0x7FFF / (ds_get_width(qs->ds) - 1), new_y * 0x7FFF / (ds_get_height(qs->ds) - 1), 0,	/* TODO? */
 				qs->buttons);
 	} else {
-		kbd_mouse_event(
-				new_x - qs->x,
-				new_y - qs->y,
-				0, /* TODO? */
+		kbd_mouse_event(new_x - qs->x, new_y - qs->y, 0,	/* TODO? */
 				qs->buttons);
 	}
 	qs->x = new_x;
@@ -309,7 +308,7 @@ void handle_motion(QubesGuiState *qs)
 
 
 
-void handle_clipboard_data(QubesGuiState *qs, int len)
+void handle_clipboard_data(QubesGuiState * qs, int len)
 {
 
 	if (qs->clipboard_data)
@@ -325,13 +324,14 @@ void handle_clipboard_data(QubesGuiState *qs, int len)
 	qs->clipboard_data[len] = 0;
 }
 
-void handle_keymap_notify(QubesGuiState *qs)
+void handle_keymap_notify(QubesGuiState * qs)
 {
 	int i;
 	unsigned char remote_keys[32];
 	read_struct(remote_keys);
 	for (i = 0; i < 256; i++) {
-		if (!is_bitset(remote_keys, i) && is_bitset(qs->local_keys, i)) {
+		if (!is_bitset(remote_keys, i)
+		    && is_bitset(qs->local_keys, i)) {
 			send_keycode(qs, i, 1);
 			if (qs->log_level > 1)
 				fprintf(stderr,
@@ -340,8 +340,9 @@ void handle_keymap_notify(QubesGuiState *qs)
 		}
 	}
 }
+
 void send_protocol_version()
-{   
+{
 	uint32_t version = QUBES_GUID_PROTOCOL_VERSION;
 	write_struct(version);
 }
@@ -349,46 +350,51 @@ void send_protocol_version()
 
 /* end of based on gui-agent/vmside.c */
 
-static void qubesgui_pv_update(DisplayState *ds, int x, int y, int w, int h)
+static void qubesgui_pv_update(DisplayState * ds, int x, int y, int w,
+			       int h)
 {
-    QubesGuiState *qs = ds->opaque;
+	QubesGuiState *qs = ds->opaque;
 	if (!qs->init_done)
 		return;
 	// ignore one-line updates, Windows send them constantly at no reason
 	if (h == 1)
 		return;
-    process_pv_update(qs, x, y, w, h);
+	process_pv_update(qs, x, y, w, h);
 }
 
-static void qubesgui_pv_resize(DisplayState *ds)
+static void qubesgui_pv_resize(DisplayState * ds)
 {
-    QubesGuiState *qs = ds->opaque;
+	QubesGuiState *qs = ds->opaque;
 
-    fprintf(stderr,"resize to %dx%d@%d, %d required\n", ds_get_width(ds), ds_get_height(ds), ds_get_bits_per_pixel(ds), ds_get_linesize(ds));
+	fprintf(stderr, "resize to %dx%d@%d, %d required\n",
+		ds_get_width(ds), ds_get_height(ds),
+		ds_get_bits_per_pixel(ds), ds_get_linesize(ds));
 	if (!qs->init_done)
 		return;
 
-    process_pv_resize(qs, ds_get_width(ds), ds_get_height(ds), ds_get_linesize(ds));
+	process_pv_resize(qs, ds_get_width(ds), ds_get_height(ds),
+			  ds_get_linesize(ds));
 }
 
-static void qubesgui_pv_setdata(DisplayState *ds)
+static void qubesgui_pv_setdata(DisplayState * ds)
 {
-    QubesGuiState *qs = ds->opaque;
+	QubesGuiState *qs = ds->opaque;
 
 	if (!qs->init_done)
 		return;
-	process_pv_resize(qs, ds_get_width(ds), ds_get_height(ds), ds_get_linesize(ds));
+	process_pv_resize(qs, ds_get_width(ds), ds_get_height(ds),
+			  ds_get_linesize(ds));
 }
 
-static void qubesgui_pv_refresh(DisplayState *ds)
+static void qubesgui_pv_refresh(DisplayState * ds)
 {
-    vga_hw_update();
+	vga_hw_update();
 }
 
 static void qubesgui_message_handler(void *opaque)
 {
 #define KBD_NUM_BATCH 64
-    QubesGuiState *qs = opaque;
+	QubesGuiState *qs = opaque;
 	struct msghdr hdr;
 	char discard[256];
 
@@ -403,182 +409,196 @@ static void qubesgui_message_handler(void *opaque)
 		qs->init_state = 0;
 		qemu_set_fd_handler(vchan_fd(), NULL, NULL, NULL);
 		peer_server_reinitialize(6000);
-		qemu_set_fd_handler(vchan_fd(), qubesgui_message_handler, NULL, qs);
-		fprintf(stderr, "qubes_gui: viewer disconnected, waiting for new connection\n");
+		qemu_set_fd_handler(vchan_fd(), qubesgui_message_handler,
+				    NULL, qs);
+		fprintf(stderr,
+			"qubes_gui: viewer disconnected, waiting for new connection\n");
 		return;
 	}
 
-	write_data(NULL, 0);    // trigger write of queued data, if any present
+	write_data(NULL, 0);	// trigger write of queued data, if any present
 	if (read_ready() == 0) {
-		goto out; // no data
+		goto out;	// no data
 	}
 	read_data((char *) &hdr, sizeof(hdr));
 
 	switch (hdr.type) {
-		case MSG_KEYPRESS:
-			handle_keypress(qs);
-			break;
-		case MSG_MAP:
-			//ignore
-			read_data(discard, sizeof(struct msg_map_info));
-			break;
-		case MSG_CLOSE:
-			//ignore
-			// no additional data
-			break;
-		case MSG_CROSSING:
-			//ignore
-			read_data(discard, sizeof(struct msg_crossing));
-			break;
-		case MSG_FOCUS:
-			//ignore
-			read_data(discard, sizeof(struct msg_focus));
-			break;
-		case MSG_EXECUTE:
-			//ignore
-			read_data(discard, sizeof(struct msg_execute));
-			break;
-		case MSG_BUTTON:
-			handle_button(qs);
-			break;
-		case MSG_MOTION:
-			handle_motion(qs);
-			break;
-		case MSG_CLIPBOARD_REQ:
-			// TODO ?
-			break;
-		case MSG_CLIPBOARD_DATA:
-			handle_clipboard_data(qs, hdr.window);
-			break;
-		case MSG_KEYMAP_NOTIFY:
-			handle_keymap_notify(qs);
-			break;
-		case MSG_CONFIGURE:
-			handle_configure(qs);
-			break;
-		default:
-			fprintf(stderr, "got unknown msg type %d, ignoring\n", hdr.type);
-			while (hdr.untrusted_len > 0) {
-					hdr.untrusted_len -= read_data(discard, min(hdr.untrusted_len, sizeof(discard)));
-			}
-			goto out;
+	case MSG_KEYPRESS:
+		handle_keypress(qs);
+		break;
+	case MSG_MAP:
+		//ignore
+		read_data(discard, sizeof(struct msg_map_info));
+		break;
+	case MSG_CLOSE:
+		//ignore
+		// no additional data
+		break;
+	case MSG_CROSSING:
+		//ignore
+		read_data(discard, sizeof(struct msg_crossing));
+		break;
+	case MSG_FOCUS:
+		//ignore
+		read_data(discard, sizeof(struct msg_focus));
+		break;
+	case MSG_EXECUTE:
+		//ignore
+		read_data(discard, sizeof(struct msg_execute));
+		break;
+	case MSG_BUTTON:
+		handle_button(qs);
+		break;
+	case MSG_MOTION:
+		handle_motion(qs);
+		break;
+	case MSG_CLIPBOARD_REQ:
+		// TODO ?
+		break;
+	case MSG_CLIPBOARD_DATA:
+		handle_clipboard_data(qs, hdr.window);
+		break;
+	case MSG_KEYMAP_NOTIFY:
+		handle_keymap_notify(qs);
+		break;
+	case MSG_CONFIGURE:
+		handle_configure(qs);
+		break;
+	default:
+		fprintf(stderr, "got unknown msg type %d, ignoring\n",
+			hdr.type);
+		while (hdr.untrusted_len > 0) {
+			hdr.untrusted_len -=
+			    read_data(discard,
+				      min(hdr.untrusted_len,
+					  sizeof(discard)));
+		}
+		goto out;
 	}
-out:
+      out:
 	// allow the handler to be called again
 	vchan_unmask_channel();
 }
 
-static DisplaySurface* qubesgui_create_displaysurface(int width, int height)
+static DisplaySurface *qubesgui_create_displaysurface(int width,
+						      int height)
 {
-    DisplaySurface *surface = (DisplaySurface*) qemu_mallocz(sizeof(DisplaySurface));
-    if (surface == NULL) {
-        fprintf(stderr, "qubesgui_create_displaysurface: malloc failed\n");
-        exit(1);
-    }
+	DisplaySurface *surface =
+	    (DisplaySurface *) qemu_mallocz(sizeof(DisplaySurface));
+	if (surface == NULL) {
+		fprintf(stderr,
+			"qubesgui_create_displaysurface: malloc failed\n");
+		exit(1);
+	}
 
-    surface->width = width;
-    surface->height = height;
-    surface->linesize = width * 4;
-    surface->pf = qemu_default_pixelformat(32);
+	surface->width = width;
+	surface->height = height;
+	surface->linesize = width * 4;
+	surface->pf = qemu_default_pixelformat(32);
 #ifdef WORDS_BIGENDIAN
-    surface->flags = QEMU_ALLOCATED_FLAG | QEMU_BIG_ENDIAN_FLAG;
+	surface->flags = QEMU_ALLOCATED_FLAG | QEMU_BIG_ENDIAN_FLAG;
 #else
-    surface->flags = QEMU_ALLOCATED_FLAG;
+	surface->flags = QEMU_ALLOCATED_FLAG;
 #endif
-    surface->data = qs->nonshared_vram;
+	surface->data = qs->nonshared_vram;
 
-    return surface;
+	return surface;
 }
 
-static DisplaySurface* qubesgui_resize_displaysurface(DisplaySurface *surface,
-                                          int width, int height)
+static DisplaySurface *qubesgui_resize_displaysurface(DisplaySurface *
+						      surface, int width,
+						      int height)
 {
-    surface->width = width;
-    surface->height = height;
-    surface->linesize = width * 4;
-    surface->pf = qemu_default_pixelformat(32);
+	surface->width = width;
+	surface->height = height;
+	surface->linesize = width * 4;
+	surface->pf = qemu_default_pixelformat(32);
 #ifdef WORDS_BIGENDIAN
-    surface->flags = QEMU_ALLOCATED_FLAG | QEMU_BIG_ENDIAN_FLAG;
+	surface->flags = QEMU_ALLOCATED_FLAG | QEMU_BIG_ENDIAN_FLAG;
 #else
-    surface->flags = QEMU_ALLOCATED_FLAG;
+	surface->flags = QEMU_ALLOCATED_FLAG;
 #endif
-    surface->data = qs->nonshared_vram;
+	surface->data = qs->nonshared_vram;
 
-    return surface;
+	return surface;
 }
 
-static void qubesgui_free_displaysurface(DisplaySurface *surface)
+static void qubesgui_free_displaysurface(DisplaySurface * surface)
 {
-    if (surface == NULL)
-        return;
-    qemu_free(surface);
+	if (surface == NULL)
+		return;
+	qemu_free(surface);
 }
 
 static void qubesgui_pv_display_allocator(void)
 {
-    DisplaySurface *ds;
-    DisplayAllocator *da = qemu_mallocz(sizeof(DisplayAllocator));
-    da->create_displaysurface = qubesgui_create_displaysurface;
-    da->resize_displaysurface = qubesgui_resize_displaysurface;
-    da->free_displaysurface = qubesgui_free_displaysurface;
-    if (register_displayallocator(qs->ds, da) != da) {
-        fprintf(stderr, "qubesgui_pv_display_allocator: could not register DisplayAllocator\n");
-        exit(1);
-    }
+	DisplaySurface *ds;
+	DisplayAllocator *da = qemu_mallocz(sizeof(DisplayAllocator));
+	da->create_displaysurface = qubesgui_create_displaysurface;
+	da->resize_displaysurface = qubesgui_resize_displaysurface;
+	da->free_displaysurface = qubesgui_free_displaysurface;
+	if (register_displayallocator(qs->ds, da) != da) {
+		fprintf(stderr,
+			"qubesgui_pv_display_allocator: could not register DisplayAllocator\n");
+		exit(1);
+	}
 
-    qs->nonshared_vram = qemu_memalign(XC_PAGE_SIZE, vga_ram_size);
-    if (!qs->nonshared_vram) {
-        fprintf(stderr, "qubesgui_pv_display_allocator: could not allocate nonshared_vram\n");
-        exit(1);
-    }
-    /* Touch the pages before sharing them */
-    memset(qs->nonshared_vram, 0xff, vga_ram_size);
+	qs->nonshared_vram = qemu_memalign(XC_PAGE_SIZE, vga_ram_size);
+	if (!qs->nonshared_vram) {
+		fprintf(stderr,
+			"qubesgui_pv_display_allocator: could not allocate nonshared_vram\n");
+		exit(1);
+	}
+	/* Touch the pages before sharing them */
+	memset(qs->nonshared_vram, 0xff, vga_ram_size);
 
-    ds = qubesgui_create_displaysurface(ds_get_width(qs->ds), ds_get_height(qs->ds));
-    defaultallocator_free_displaysurface(qs->ds->surface);
-    qs->ds->surface = ds;
+	ds = qubesgui_create_displaysurface(ds_get_width(qs->ds),
+					    ds_get_height(qs->ds));
+	defaultallocator_free_displaysurface(qs->ds->surface);
+	qs->ds->surface = ds;
 }
 
-int qubesgui_pv_display_init(DisplayState *ds)
+int qubesgui_pv_display_init(DisplayState * ds)
 {
 
 	fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
-    qs = qemu_mallocz(sizeof(QubesGuiState));
-    if (!qs)
-        return -1;
+	qs = qemu_mallocz(sizeof(QubesGuiState));
+	if (!qs)
+		return -1;
 
-    qs->ds = ds;
+	qs->ds = ds;
 	qs->init_done = 0;
 	qs->init_state = 0;
 
 	fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
-    qubesgui_pv_display_allocator();
+	qubesgui_pv_display_allocator();
 
 	fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
-    dcl = qemu_mallocz(sizeof(DisplayChangeListener));
-    if (!dcl)
-        exit(1);
-    ds->opaque = qs;
-    dcl->dpy_update = qubesgui_pv_update;
-    dcl->dpy_resize = qubesgui_pv_resize;
-    dcl->dpy_setdata = qubesgui_pv_setdata;
-    dcl->dpy_refresh = qubesgui_pv_refresh;
+	dcl = qemu_mallocz(sizeof(DisplayChangeListener));
+	if (!dcl)
+		exit(1);
+	ds->opaque = qs;
+	dcl->dpy_update = qubesgui_pv_update;
+	dcl->dpy_resize = qubesgui_pv_resize;
+	dcl->dpy_setdata = qubesgui_pv_setdata;
+	dcl->dpy_refresh = qubesgui_pv_refresh;
 	fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
-    register_displaychangelistener(ds, dcl);
+	register_displaychangelistener(ds, dcl);
 
-    peer_server_init(6000);
-    qemu_set_fd_handler(vchan_fd(), qubesgui_message_handler, NULL, qs);
+	peer_server_init(6000);
+	qemu_set_fd_handler(vchan_fd(), qubesgui_message_handler, NULL,
+			    qs);
 
-    return 0;
+	return 0;
 }
 
 int qubesgui_pv_display_vram(void *data)
 {
-    vga_vram = data;
+	vga_vram = data;
 	return 0;
 }
 
-void qubesgui_init_connection(QubesGuiState *qs)
+void qubesgui_init_connection(QubesGuiState * qs)
 {
 	struct msg_xconf xconf;
 
@@ -589,26 +609,35 @@ void qubesgui_init_connection(QubesGuiState *qs)
 		}
 
 		send_protocol_version();
-		fprintf(stderr, "qubes_gui/init[%d]: version sent, waiting for xorg conf\n", __LINE__);
+		fprintf(stderr,
+			"qubes_gui/init[%d]: version sent, waiting for xorg conf\n",
+			__LINE__);
 		// XXX warning - thread unsafe
 		qs->init_state++;
-	} 
-	if  (qs->init_state == 1) {
+	}
+	if (qs->init_state == 1) {
 		if (!read_ready())
 			return;
 
 		read_struct(xconf);
-		fprintf(stderr, "qubes_gui/init[%d]: got xorg conf, creating window\n", __LINE__);
-		qubes_create_window(qs, ds_get_width(qs->ds), ds_get_height(qs->ds));
+		fprintf(stderr,
+			"qubes_gui/init[%d]: got xorg conf, creating window\n",
+			__LINE__);
+		qubes_create_window(qs, ds_get_width(qs->ds),
+				    ds_get_height(qs->ds));
 
 		send_map(qs);
 		send_wmname(qs, qemu_name);
 
 		fprintf(stderr, "qubes_gui/init: %d\n", __LINE__);
 		/* process_pv_resize will send mfns */
-		process_pv_resize(qs, ds_get_width(qs->ds), ds_get_height(qs->ds), ds_get_linesize(qs->ds));
+		process_pv_resize(qs, ds_get_width(qs->ds),
+				  ds_get_height(qs->ds),
+				  ds_get_linesize(qs->ds));
 
 		qs->init_state++;
 		qs->init_done = 1;
 	}
 }
+
+// vim:ts=4:noet:sw=4:
