@@ -165,6 +165,11 @@ void send_pixmap_mfns(QubesGuiState * qs)
 	/* XXX: hardcoded 4 bytes per pixel - gui-daemon doesn't handle other bpp */
 	n = (4 * ds_get_width(qs->ds) * ds_get_height(qs->ds) + offset + (XC_PAGE_SIZE-1)) / XC_PAGE_SIZE;
 	mfns = malloc(n * sizeof(*mfns));
+	if (!mfns) {
+		fprintf(stderr, "Cannot allocate mfns array, %lu bytes needed\n", n * sizeof(*mfns));
+		return;
+	}
+	fprintf(stderr, "dumping mfns: n=%d, w=%d, h=%d, bpp=%d\n", n, ds_get_width(qs->ds), ds_get_height(qs->ds), bpp);
 	for (i = 0; i < n; i++)
 		mfns[i] = virtual_to_mfn(data + i * XC_PAGE_SIZE);
 	hdr.type = MSG_MFNDUMP;
