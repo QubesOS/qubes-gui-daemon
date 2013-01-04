@@ -34,6 +34,39 @@ static DisplayChangeListener *dcl;
 
 extern uint32_t vga_ram_size;
 
+static void update_24bpp_from_16bpp(uint16_t *src, uint32_t *dst, int
+		src_linesize, int dst_linesize, int x, int y, int width, int height) {
+	int i, j;
+	int r,g,b;
+
+	/* it is really keep as 32bpp for convenient array elements access (same as Xorg
+	 * expect) */
+	for (j=y; j<y+height; j++) {
+		for (i=x; i<x+width; i++) {
+			r=(src[src_linesize*j+i] >> 11)<<3;
+			g=((src[src_linesize*j+i] & ((1<<11)-1)) >> 5) << 2;
+			b=((src[src_linesize*j+i] & ((1<<5)-1))) << 3;
+			dst[dst_linesize*j+i] = (r << 16) | (g << 8) | b;
+		}
+	}
+}
+
+static void update_24bpp_from_8bpp(uint8_t *src, uint32_t *dst, int
+		src_linesize, int dst_linesize, int x, int y, int width, int height) {
+	int i, j;
+	int r,g,b;
+
+	/* it is really keep as 32bpp for convenient array elements access (same as Xorg
+	 * expect) */
+	for (j=y; j<y+height; j++) {
+		for (i=x; i<x+width; i++) {
+			r=(src[src_linesize*j+i] >> 5)<<5;
+			g=((src[src_linesize*j+i] & ((1<<5)-1)) >> 2) << 5;
+			b=((src[src_linesize*j+i] & ((1<<2)-1))) << 6;
+			dst[dst_linesize*j+i] = (r << 16) | (g << 8) | b;
+		}
+	}
+}
 
 void process_pv_update(QubesGuiState * qs,
 		       int x, int y, int width, int height)
@@ -41,6 +74,21 @@ void process_pv_update(QubesGuiState * qs,
 	struct msg_shmimage mx;
 	struct msghdr hdr;
 
+	/* convert to 24bpp if needed */
+	if (is_buffer_shared(qs->ds->surface)) {
+		switch (ds_get_bits_per_pixel(qs->ds)) {
+			case 16:
+				update_24bpp_from_16bpp((uint16_t*)ds_get_data(qs->ds),
+						qs->nonshared_vram, ds_get_linesize(qs->ds)/2,
+						ds_get_width(qs->ds), x, y, width, height);
+				break;
+			case 8:
+				update_24bpp_from_8bpp(ds_get_data(qs->ds), qs->nonshared_vram,
+						ds_get_linesize(qs->ds), ds_get_width(qs->ds), x, y,
+						width, height);
+				break;
+		}
+	}
 	hdr.type = MSG_SHMIMAGE;
 	hdr.window = QUBES_MAIN_WINDOW;
 	mx.x = x;
@@ -74,13 +122,40 @@ void send_pixmap_mfns(QubesGuiState * qs)
 	struct shm_cmd shmcmd;
 	struct msghdr hdr;
 	uint32_t *mfns;
-	int n;
+	int n, bpp;
 	int i;
 	void *data;
 	int offset, copy_offset;
 
-	if (!(qs->ds->surface->flags & QEMU_ALLOCATED_FLAG)) {
+	bpp = ds_get_bits_per_pixel(qs->ds);
+	if (is_buffer_shared(qs->ds->surface)) {
 		data = ((void *) ds_get_data(qs->ds));
+		switch (ds_get_bits_per_pixel(qs->ds)) {
+			case 16:
+				fprintf(stderr, "16bpp detected, converting to 24bpp\n");
+				update_24bpp_from_16bpp(data, qs->nonshared_vram,
+						ds_get_linesize(qs->ds)/2, ds_get_width(qs->ds), 0, 0,
+						ds_get_width(qs->ds), ds_get_height(qs->ds));
+				data = qs->nonshared_vram;
+				bpp = 24;
+				break;
+			case 8:
+				fprintf(stderr, "8bpp detected, converting to 24bpp\n");
+				update_24bpp_from_8bpp(data, qs->nonshared_vram,
+						ds_get_linesize(qs->ds), ds_get_width(qs->ds), 0, 0,
+						ds_get_width(qs->ds), ds_get_height(qs->ds));
+				data = qs->nonshared_vram;
+				bpp = 24;
+				break;
+			case 24:
+			case 32:
+				/* no conversion needed */
+				break;
+			default:
+				fprintf(stderr, 
+						"%dbpp not supported, expect messy display content\n", 
+						ds_get_bits_per_pixel(qs->ds));
+		}
 	} else {
 		data = qs->nonshared_vram;
 	}
@@ -99,7 +174,7 @@ void send_pixmap_mfns(QubesGuiState * qs)
 	shmcmd.height = ds_get_height(qs->ds);
 	shmcmd.num_mfn = n;
 	shmcmd.off = offset;
-	shmcmd.bpp = ds_get_bits_per_pixel(qs->ds);
+	shmcmd.bpp = bpp;
 	write_struct(hdr);
 	write_struct(shmcmd);
 	write_data((char *) mfns, n * sizeof(*mfns));
