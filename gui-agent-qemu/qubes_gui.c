@@ -74,7 +74,7 @@ void send_pixmap_mfns(QubesGuiState * qs)
 	struct shm_cmd shmcmd;
 	struct msghdr hdr;
 	uint32_t *mfns;
-	int n = vga_ram_size / XC_PAGE_SIZE;
+	int n;
 	int i;
 	void *data;
 	int offset, copy_offset;
@@ -87,6 +87,8 @@ void send_pixmap_mfns(QubesGuiState * qs)
 
 	offset = (long) data & (XC_PAGE_SIZE - 1);
 
+	/* XXX: hardcoded 4 bytes per pixel - gui-daemon doesn't handle other bpp */
+	n = (4 * ds_get_width(qs->ds) * ds_get_height(qs->ds) + offset + (XC_PAGE_SIZE-1)) / XC_PAGE_SIZE;
 	mfns = malloc(n * sizeof(*mfns));
 	for (i = 0; i < n; i++)
 		mfns[i] = virtual_to_mfn(data + i * XC_PAGE_SIZE);
