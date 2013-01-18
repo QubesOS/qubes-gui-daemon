@@ -64,6 +64,7 @@ struct _global_handles {
 	Atom wm_state;         /* Atom: _NET_WM_STATE */
 	Atom wm_state_fullscreen; /* Atom: _NET_WM_STATE_FULLSCREEN */
 	Atom wm_state_demands_attention; /* Atom: _NET_WM_STATE_DEMANDS_ATTENTION */
+	Atom wm_take_focus;	/* Atom: WM_TAKE_FOCUS */
 	int xserver_fd;
 	Window stub_win;    /* window for clipboard operations and to simulate LeaveNotify events */
 	unsigned char *clipboard_data;
@@ -75,6 +76,7 @@ struct _global_handles {
 struct window_data {
 	int is_docked; /* is it docked icon window */
 	XID embeder;   /* for docked icon points embeder window */
+	int input_hint; /* the window should get input focus - False=Never */
 };
 
 struct embeder_data {
@@ -107,6 +109,8 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 {
 	struct msghdr hdr;
 	struct msg_create crt;
+	struct window_data *wd;
+
 	XWindowAttributes attr;
 	int ret;
 	ret = XGetWindowAttributes(g->display, ev->window, &attr);
@@ -133,7 +137,17 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 		return;
 	}
 
-	list_insert(windows_list, ev->window, 0);
+	/* Initialize window_data structure */
+	wd = (struct window_data*)malloc(sizeof(struct window_data));
+	if (!wd) {
+		fprintf(stderr, "OUT OF MEMORY\n");
+		return;
+	}
+	/* Default values for window_data. By default, window should receive InputFocus events */
+	wd->is_docked = False;
+	wd->input_hint = True;
+	list_insert(windows_list, ev->window, wd);
+
 	if (attr.class != InputOnly)
 		XDamageCreate(g->display, ev->window,
 			      XDamageReportRawRectangles);
@@ -273,6 +287,38 @@ void send_wmname(Ghandles * g, XID window)
 	write_message(hdr, msg);
 }
 
+/* 	Retrieve the 'real' WMHints.
+	We don't forward the info to dom0 as we only need InputHint and dom0 doesn't care about it
+*/
+void retrieve_wmhints(Ghandles * g, XID window)
+{
+	XWMHints *wm_hints;
+	struct genlist *l;
+
+	if (!((l=list_lookup(windows_list, window)) && (l->data))) {
+		fprintf(stderr, "ERROR retrieve_wmhints: Window 0x%x data not initialized", (int)window);
+		return;
+	}
+
+	if (!(wm_hints = XGetWMHints(g->display, window))) {
+		fprintf(stderr, "ERROR reading WM_HINTS\n");
+		return;
+	}
+
+	if (wm_hints->flags & InputHint) {
+		((struct window_data*)l->data)->input_hint = wm_hints->input;
+
+		if (g->log_level > 1)
+			fprintf(stderr, "Received input hint 0x%x for windows 0x%x\n", wm_hints->input, (int)window);
+	} else {
+		// Default value
+		if (g->log_level > 1)
+			fprintf(stderr, "Received WMHints without input hint set for window 0x%x\n", (int)window);
+		((struct window_data*)l->data)->input_hint = True;
+	}
+	XFree(wm_hints);
+}
+
 void send_wmnormalhints(Ghandles * g, XID window)
 {
 	struct msghdr hdr;
@@ -301,6 +347,7 @@ void send_wmnormalhints(Ghandles * g, XID window)
 	hdr.type = MSG_WINDOW_HINTS;
 	write_message(hdr, msg);
 }
+
 
 static inline uint32_t flags_from_atom(Ghandles * g, Atom a) {
 	if (a == g->wm_state_fullscreen)
@@ -619,6 +666,9 @@ void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 	else if (ev->atom ==
 		 XInternAtom(g->display, "WM_NORMAL_HINTS", False))
 		send_wmnormalhints(g, window);
+	else if (ev->atom ==
+		 XInternAtom(g->display, "WM_HINTS", False))
+		retrieve_wmhints(g,window);
 	else if (ev->atom == g->xembed_info) {
 		struct genlist *l = list_lookup(windows_list, window);
 		Atom act_type;
@@ -668,6 +718,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 			w = ev->data.l[2];
 
 			if (!(l=list_lookup(windows_list, w)))
+				fprintf(stderr, "ERROR process_xevent_message: Window 0x%x not initialized", (int)w);
 				return;
 			if (g->log_level > 0)
 				fprintf(stderr,
@@ -690,12 +741,11 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 			if (ret == Success && nitems > 0)
 				Xfree(data);
 
-			wd = (struct window_data*)malloc(sizeof(struct window_data));
-			if (!wd) {
-				fprintf(stderr, "OUT OF MEMORY\n");
+			if (!(l->data)) {
+				fprintf(stderr, "ERROR process_xevent_message: Window 0x%x data not initialized", (int)w);
 				return;
 			}
-			l->data = wd;
+			wd = (struct window_data*)(l->data);
 			/* TODO: error checking */
 			wd->embeder = XCreateSimpleWindow(g->display, g->root_win,
 					0, 0, 32, 32, /* default icon size, will be changed by dom0 */
@@ -912,6 +962,7 @@ void mkghandles(Ghandles * g)
 	g->wm_state = XInternAtom(g->display, "_NET_WM_STATE", False);
 	g->wm_state_fullscreen = XInternAtom(g->display, "_NET_WM_STATE_FULLSCREEN", False);
 	g->wm_state_demands_attention = XInternAtom(g->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
+	g->wm_take_focus = XInternAtom(g->display, "WM_TAKE_FOCUS", False);
 }
 
 void handle_keypress(Ghandles * g, XID winid)
@@ -1153,9 +1204,30 @@ void handle_crossing(Ghandles * g, XID winid)
 
 }
 
+void take_focus(Ghandles * g, XID winid)
+{
+	// Send
+	XClientMessageEvent ev;
+	memset(&ev, 0, sizeof(ev));
+	ev.type = ClientMessage;
+	ev.display = g->display;
+	ev.window = winid;
+	ev.format = 32;
+	ev.message_type = g->wmProtocols;
+	ev.data.l[0] = g->wm_take_focus;
+	ev.data.l[1] = CurrentTime;
+	XSendEvent(ev.display, ev.window, TRUE, 0, (XEvent *) & ev);
+	if (g->log_level > 0)
+		fprintf(stderr, "wm_TAKE_FOCUS sent for 0x%x\n",
+			(int) winid);
+
+}
+
 void handle_focus(Ghandles * g, XID winid)
 {
 	struct msg_focus key;
+	struct genlist *l;
+	int input_hint;
 //      XFocusChangeEvent event;
 
 	read_data((char *) &key, sizeof(key));
@@ -1173,19 +1245,37 @@ void handle_focus(Ghandles * g, XID winid)
 #endif
 	if (key.type == FocusIn
 	    && (key.mode == NotifyNormal || key.mode == NotifyUngrab)) {
+
 		XRaiseWindow(g->display, winid);
-		XSetInputFocus(g->display, winid, RevertToParent,
+
+		if ( (l=list_lookup(windows_list, winid)) && (l->data) ) {
+			input_hint = ((struct window_data*)l->data)->input_hint;
+		} else {
+			fprintf(stderr, "WARNING handle_focus: Window 0x%x data not initialized", (int)winid);
+			input_hint = True;
+		}
+
+		// Give input focus only to window that set the input hint
+		if (input_hint)
+			XSetInputFocus(g->display, winid, RevertToParent,
 			       CurrentTime);
+
+		// TODO: do not send take focus if the window doesn't support it ?
+		take_focus(g, winid);
+
 		if (g->log_level > 1)
 			fprintf(stderr, "0x%x raised\n", (int) winid);
 	} else if (key.type == FocusOut
 		   && (key.mode == NotifyNormal
 		       || key.mode == NotifyUngrab)) {
+
 		XSetInputFocus(g->display, None, RevertToParent,
 			       CurrentTime);
+
 		if (g->log_level > 1)
 			fprintf(stderr, "0x%x lost focus\n", (int) winid);
 	}
+
 }
 
 int bitset(unsigned char *keys, int num)
