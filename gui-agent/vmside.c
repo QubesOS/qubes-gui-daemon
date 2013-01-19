@@ -77,6 +77,7 @@ struct window_data {
 	int is_docked; /* is it docked icon window */
 	XID embeder;   /* for docked icon points embeder window */
 	int input_hint; /* the window should get input focus - False=Never */
+	int support_take_focus;
 };
 
 struct embeder_data {
@@ -146,6 +147,7 @@ void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 	/* Default values for window_data. By default, window should receive InputFocus events */
 	wd->is_docked = False;
 	wd->input_hint = True;
+	wd->support_take_focus = True;
 	list_insert(windows_list, ev->window, wd);
 
 	if (attr.class != InputOnly)
@@ -287,6 +289,38 @@ void send_wmname(Ghandles * g, XID window)
 	write_message(hdr, msg);
 }
 
+/*	Retrieve the supported WM Protocols
+	We don't forward the info to dom0 as we only need specific client protocols
+*/
+void retrieve_wmprotocols(Ghandles * g, XID window)
+{
+	int nitems;
+	Atom *supported_protocols;
+	int i;
+	struct genlist *l;
+
+	if (XGetWMProtocols(g->display, window, &supported_protocols, &nitems) == 1) {
+		for (i=0; i < nitems; i++) {
+			if (supported_protocols[i] == g->wm_take_focus) {
+				// Retrieve window data and set support_take_focus
+				if (!((l=list_lookup(windows_list, window)) && (l->data))) {
+					fprintf(stderr, "ERROR retrieve_wmprotocols: Window 0x%x data not initialized", (int)window);
+					return;
+				}
+				if (g->log_level > 1)
+					fprintf(stderr, "Protocol take_focus supported for Window 0x%x\n", (int)window);
+
+				((struct window_data*)l->data)->support_take_focus = True;
+			}
+		}
+	} else {
+		fprintf(stderr, "ERROR reading WM_PROTOCOLS\n");
+		return;
+	}
+	XFree(supported_protocols);
+}
+
+
 /* 	Retrieve the 'real' WMHints.
 	We don't forward the info to dom0 as we only need InputHint and dom0 doesn't care about it
 */
@@ -309,11 +343,11 @@ void retrieve_wmhints(Ghandles * g, XID window)
 		((struct window_data*)l->data)->input_hint = wm_hints->input;
 
 		if (g->log_level > 1)
-			fprintf(stderr, "Received input hint 0x%x for windows 0x%x\n", wm_hints->input, (int)window);
+			fprintf(stderr, "Received input hint 0x%x for Window 0x%x\n", wm_hints->input, (int)window);
 	} else {
 		// Default value
 		if (g->log_level > 1)
-			fprintf(stderr, "Received WMHints without input hint set for window 0x%x\n", (int)window);
+			fprintf(stderr, "Received WMHints without input hint set for Window 0x%x\n", (int)window);
 		((struct window_data*)l->data)->input_hint = True;
 	}
 	XFree(wm_hints);
@@ -669,6 +703,9 @@ void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 	else if (ev->atom ==
 		 XInternAtom(g->display, "WM_HINTS", False))
 		retrieve_wmhints(g,window);
+	else if (ev->atom ==
+		 XInternAtom(g->display, "WM_PROTOCOLS", False))
+		retrieve_wmprotocols(g,window);
 	else if (ev->atom == g->xembed_info) {
 		struct genlist *l = list_lookup(windows_list, window);
 		Atom act_type;
@@ -1228,6 +1265,7 @@ void handle_focus(Ghandles * g, XID winid)
 	struct msg_focus key;
 	struct genlist *l;
 	int input_hint;
+	int use_take_focus;
 //      XFocusChangeEvent event;
 
 	read_data((char *) &key, sizeof(key));
@@ -1250,9 +1288,11 @@ void handle_focus(Ghandles * g, XID winid)
 
 		if ( (l=list_lookup(windows_list, winid)) && (l->data) ) {
 			input_hint = ((struct window_data*)l->data)->input_hint;
+			use_take_focus = ((struct window_data*)l->data)->support_take_focus;
 		} else {
 			fprintf(stderr, "WARNING handle_focus: Window 0x%x data not initialized", (int)winid);
 			input_hint = True;
+			use_take_focus = False;
 		}
 
 		// Give input focus only to window that set the input hint
@@ -1260,8 +1300,9 @@ void handle_focus(Ghandles * g, XID winid)
 			XSetInputFocus(g->display, winid, RevertToParent,
 			       CurrentTime);
 
-		// TODO: do not send take focus if the window doesn't support it ?
-		take_focus(g, winid);
+		// Do not send take focus if the window doesn't support it
+		if (use_take_focus)
+			take_focus(g, winid);
 
 		if (g->log_level > 1)
 			fprintf(stderr, "0x%x raised\n", (int) winid);
