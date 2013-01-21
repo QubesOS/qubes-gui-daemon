@@ -273,7 +273,7 @@ void send_wmname(Ghandles * g, XID window)
 	write_message(hdr, msg);
 }
 
-void send_wmhints(Ghandles * g, XID window)
+void send_wmnormalhints(Ghandles * g, XID window)
 {
 	struct msghdr hdr;
 	struct msg_window_hints msg;
@@ -618,7 +618,7 @@ void process_xevent_property(Ghandles * g, XID window, XPropertyEvent * ev)
 		send_wmname(g, window);
 	else if (ev->atom ==
 		 XInternAtom(g->display, "WM_NORMAL_HINTS", False))
-		send_wmhints(g, window);
+		send_wmnormalhints(g, window);
 	else if (ev->atom == g->xembed_info) {
 		struct genlist *l = list_lookup(windows_list, window);
 		Atom act_type;
