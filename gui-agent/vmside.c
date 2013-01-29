@@ -754,9 +754,10 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 		case SYSTEM_TRAY_REQUEST_DOCK:
 			w = ev->data.l[2];
 
-			if (!(l=list_lookup(windows_list, w)))
+			if (!(l=list_lookup(windows_list, w))) {
 				fprintf(stderr, "ERROR process_xevent_message: Window 0x%x not initialized", (int)w);
 				return;
+			}
 			if (g->log_level > 0)
 				fprintf(stderr,
 					"tray request dock for window 0x%x\n",
@@ -790,7 +791,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 						g->screen),
 					WhitePixel(g->display,
 						g->screen));
-			wd->is_docked=1;
+			wd->is_docked=True;
 			if (g->log_level > 1)
 				fprintf(stderr,
 					" created embeder 0x%x\n",
