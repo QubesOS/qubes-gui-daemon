@@ -65,8 +65,8 @@
  * discussion: http://wiki.qubes-os.org/trac/ticket/127 */
 // #define FILL_TRAY_BG
 
-// Mod3 excluded as it is Num_Lock
-#define SPECAL_KEYS_MASK (Mod1Mask | Mod2Mask | Mod4Mask | ShiftMask | ControlMask )
+// Mod2 excluded as it is Num_Lock
+#define SPECAL_KEYS_MASK (Mod1Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
 
 enum clipboard_op {
 	CLIPBOARD_COPY,
