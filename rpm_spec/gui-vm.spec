@@ -52,7 +52,8 @@ BuildRequires:	xorg-x11-server-devel
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
 BuildRequires:	qubes-core-libs
 Requires:	qubes-core-vm >= 2.1.2
-Requires:   xen-qubes-vm-essentials
+Requires:	xen-qubes-vm-essentials
+Requires:	xorg-x11-drv-dummy
 
 # The vchan sink needs .h files from pulseaudio sources
 # that are not exported by any *-devel packages; thus they are internal and
