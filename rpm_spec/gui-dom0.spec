@@ -40,7 +40,6 @@ Source:		.
 Requires:	qubes-core-dom0 >= 1.3.14
 Requires:	xorg-x11-server-Xorg pulseaudio-libs
 Requires:	service(graphical-login)
-Requires:	/usr/bin/kdialog
 Requires:	pulseaudio
 Requires:	libconfig
 BuildRequires:  pulseaudio-libs-devel

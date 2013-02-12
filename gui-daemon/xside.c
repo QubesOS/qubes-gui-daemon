@@ -151,6 +151,7 @@ struct _global_handles {
 	int paste_seq_mask;	/* modifiers mask for secure-paste key sequence */
 	KeySym paste_seq_key;	/* key for secure-paste key sequence */
 	int qrexec_clipboard;	/* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
+	int use_kdialog;	/* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
 };
 
 typedef struct _global_handles Ghandles;
@@ -220,17 +221,26 @@ int ask_whether_verify_failed(Ghandles * g, const char *cond)
 	pid = fork();
 	switch (pid) {
 		case 0:
+			if (g->use_kdialog) {
 #ifdef NEW_KDIALOG
-			execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
+				execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
 #else
-			execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--warningyesno", text, (char*)NULL);
+				execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--warningyesno", text, (char*)NULL);
 #endif
+			} else {
+				execlp("zenity", "zenity", "--question", "--ok-label", "Terminate", "--cancel-label", "Ignore", "--text", text, (char*)NULL);
+			}
 		case -1:
 			perror("fork");
 			exit(1);
 		default:
 			waitpid(pid, &ret, 0);
 			ret = WEXITSTATUS(ret);
+	}
+	if (!g->use_kdialog) {
+		// in zenity we use "OK" as "Terminate" to have it default
+		// so invert the result
+		ret ^= 1;
 	}
 	switch (ret) {
 //	case 2:	/*cancel */
@@ -388,6 +398,10 @@ void mkghandles(Ghandles * g)
 		g->qrexec_clipboard = 1;
 	else
 		g->qrexec_clipboard = 0;
+	if (getenv("KDE_SESSION_UID"))
+		g->use_kdialog = 1;
+	else
+		g->use_kdialog = 0;
 }
 
 /* find if window (given by id) is managed by this guid */
@@ -1430,10 +1444,11 @@ void ask_whether_flooding(Ghandles * g)
 	char text[1024];
 	int ret;
 	snprintf(text, sizeof(text),
-		 "kdialog --yesnocancel "
+		 "%s "
 		 "'VMapp \"%s\" has created %d windows; it looks numerous, "
 		 "so it may be "
 		 "a beginning of a DoS attack. Do you want to continue:'",
+		 g->use_kdialog ? "kdialog --yesnocancel" : "zenity --question --text",
 		 g->vmname, g->windows_count);
 	do {
 		ret = system(text);
@@ -2132,15 +2147,18 @@ void get_protocol_version(Ghandles * g)
 			version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
 		return;
 	if (version_major < QUBES_GUID_PROTOCOL_VERSION_MAJOR)
-		snprintf(message, sizeof message, "kdialog --sorry \""
+		snprintf(message, sizeof message, "%s \""
 				"The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
 				"To start and access the VM or template without GUI virtualization, use the following commands:\n"
 				"qvm-start --no-guid vmname\n"
-				"sudo xl console vmname\"", g->vmname, version_major, version_minor);
+				"sudo xl console vmname\"",
+				g->use_kdialog ? "kdialog --sorry" : "zenity --error --text ",
+				g->vmname, version_major, version_minor);
 	else
-		snprintf(message, sizeof message, "kdialog --sorry \""
+		snprintf(message, sizeof message, "%s \""
 				"The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
 				"To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
+				g->use_kdialog ? "kdialog --sorry" : "zenity --error --text ",
 				version_major, version_minor, g->vmname);
 	system(message);
 	exit(1);
