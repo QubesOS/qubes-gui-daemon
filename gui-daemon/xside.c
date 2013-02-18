@@ -51,6 +51,7 @@
 #include "shm_cmd.h"
 #include "qlimits.h"
 #include "tray.h"
+#include "png.h"
 
 /* some configuration */
 
@@ -127,6 +128,8 @@ struct _global_handles {
 	int target_domid;		/* Xen domain id (VM) - can differ from domid when GUI is stubdom */
 	char *cmdline_color;	/* color of frame */
 	char *cmdline_icon;	/* icon hint for WM */
+	unsigned long *icon_data; /* loaded icon image, ready for _NEW_WM_ICON property */
+	int icon_data_len; /* size of icon_data, in sizeof(*icon_data) units */
 	int label_index;	/* label (frame color) hint for WM */
 	/* lists of windows: */
 	/*   indexed by remote window id */
@@ -331,7 +334,18 @@ Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 			    PointerMotionMask | EnterWindowMask | LeaveWindowMask |
 			    FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
 	XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
-	if (g->cmdline_icon) {
+	if (g->icon_data) {
+		Atom atom_icon = XInternAtom(g->display, "_NET_WM_ICON", 0);
+		XChangeProperty(g->display, child_win, atom_icon, XA_CARDINAL, 32,
+				PropModeReplace, (unsigned char *) g->icon_data,
+				g->icon_data_len);
+		XClassHint class_hint =
+		    { g->vmname, g->vmname };
+		XSetClassHint(g->display, child_win, &class_hint);
+		// perhaps set also icon_pixmap property in WM_HINTS (two Pixmaps -
+		// icon and the mask), but hopefully all window managers supports
+		// _NET_WM_ICON
+	} else if (g->cmdline_icon) {
 		XClassHint class_hint =
 		    { g->cmdline_icon, g->cmdline_icon };
 		XSetClassHint(g->display, child_win, &class_hint);
@@ -402,6 +416,17 @@ void mkghandles(Ghandles * g)
 		g->use_kdialog = 1;
 	else
 		g->use_kdialog = 0;
+
+	g->icon_data = NULL;
+	g->icon_data_len = 0;
+	if (g->cmdline_icon && g->cmdline_icon[0] == '/') {
+		/* in case of error g->icon_data will remain NULL so cmdline_icon will
+		 * be used instead (as icon label) */
+		g->icon_data = load_png(g->cmdline_icon, &g->icon_data_len);
+		if (g->icon_data) {
+			fprintf(stderr, "Icon size: %dx%d\n", g->icon_data[0], g->icon_data[1]);
+		}
+	}
 }
 
 /* find if window (given by id) is managed by this guid */
@@ -2213,7 +2238,7 @@ void wait_for_connection_in_parent(int *pipe_notify)
 void usage()
 {
 	fprintf(stderr,
-		"usage: qubes_quid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix] [-v] [-q]\n");
+		"usage: qubes_quid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "\n");
