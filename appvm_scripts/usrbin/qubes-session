@@ -29,9 +29,10 @@ xsetroot -solid white
 # Save user environment
 umask 0077
 rm -f /tmp/qubes-session-env
-env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
 
 if [ ! -f /etc/this_is_dvm ]; then
+
+env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
 
 # Process XDG Autostart files
 shopt -s nullglob
@@ -62,12 +63,34 @@ for D in /etc/xdg/autostart/*.desktop; do
 		$EXEC | grep '^[^ ]*=[^ ]*$' >> /tmp/qubes-session-env &
 	fi
 done
-else # ! DispVM
-    # start only pulseaudio in DispVM
-    /usr/bin/start-pulseaudio-with-vchan
-fi # DispVM
 
 unset EXEC MATCH UPDTYPE D USER_AUTOSTART
+
+else # ! DispVM
+	# DispVM do not load system xinitrc, so manually load selected services
+
+	# Set up i18n environment
+	if [ -r /etc/profile.d/lang.sh ]; then
+		. /etc/profile.d/lang.sh
+	fi
+
+	[ -r $HOME/.profile ] && . $HOME/.profile
+
+	if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+		eval `dbus-launch --sh-syntax --exit-with-session`
+	fi
+
+	[ -x /usr/bin/xhost ] && [ -x /usr/bin/id ] &&
+		xhost +si:localuser:`id -un` >& /dev/null
+
+	. /etc/X11/xinit/xinitrc.d/qubes_keymap.sh
+
+	# start pulseaudio in DispVM (normally done from /etc/xdg/autostart)
+	/usr/bin/start-pulseaudio-with-vchan
+
+	# and save environment
+	env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
+fi # DispVM
 
 # Wake waiting for environment processes
 [ -s /tmp/qubes-session-waiter ] && kill -KILL `cat /tmp/qubes-session-waiter`
