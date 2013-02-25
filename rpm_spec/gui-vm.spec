@@ -90,6 +90,7 @@ install -D appvm_scripts/usrbin/qubes_run_xorg.sh $RPM_BUILD_ROOT/usr/bin/qubes_
 install -D appvm_scripts/usrbin/qubes_xorg_wrapper.sh $RPM_BUILD_ROOT/usr/bin/qubes_xorg_wrapper.sh
 install -D appvm_scripts/usrbin/qubes-change-keyboard-layout $RPM_BUILD_ROOT/usr/bin/qubes-change-keyboard-layout
 install -D pulse/start-pulseaudio-with-vchan $RPM_BUILD_ROOT/usr/bin/start-pulseaudio-with-vchan
+install -D pulse/qubes-default.pa $RPM_BUILD_ROOT/etc/pulse/qubes-default.pa
 install -D pulse/module-vchan-sink.so $RPM_BUILD_ROOT/%{_libdir}/pulse-%{pa_ver}/modules/module-vchan-sink.so
 install -D xf86-input-mfndev/src/.libs/qubes_drv.so $RPM_BUILD_ROOT/%{_libdir}/xorg/modules/drivers/qubes_drv.so
 install -D relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so $RPM_BUILD_ROOT/%{_libdir}/relaxed_xf86ValidateModes.so
@@ -150,6 +151,7 @@ rm -f %{name}-%{version}
 /etc/profile.d/qubes_gui.sh
 /etc/profile.d/qubes_gui.csh
 /etc/profile.d/qubes-session.sh
+/etc/pulse/qubes-default.pa
 /etc/xdg/autostart/qubes-pulseaudio.desktop
 /etc/X11/xinit/xinitrc.d/qubes_keymap.sh
 %config /etc/sysconfig/desktop

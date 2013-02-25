@@ -20,5 +20,5 @@
 #
 #
 pulseaudio --start \
-	-L "module-x11-publish display=$DISPLAY" -L module-vchan-sink \
+    -n --file=/etc/pulse/qubes-default.pa \
 	--exit-idle-time=-1
