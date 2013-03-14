@@ -48,7 +48,7 @@
 #include "txrx.h"
 #include "list.h"
 #include "error.h"
-#include "shm_cmd.h"
+#include "shm-cmd.h"
 #include "qlimits.h"
 #include "tray.h"
 #include "png.h"
@@ -2431,7 +2431,7 @@ void parse_config(Ghandles * g)
 char *guid_fs_flag(char *type, int domid)
 {
 	static char buf[256];
-	snprintf(buf, sizeof(buf), "/var/run/qubes/guid_%s.%d",
+	snprintf(buf, sizeof(buf), "/var/run/qubes/guid-%s.%d",
 		 type, domid);
 	return buf;
 }

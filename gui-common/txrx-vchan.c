@@ -26,7 +26,7 @@
 #include <xs.h>
 #include <xenctrl.h>
 #include <sys/select.h>
-#include "double_buffer.h"
+#include "double-buffer.h"
 
 struct libvchan *ctrl;
 int double_buffered = 0;

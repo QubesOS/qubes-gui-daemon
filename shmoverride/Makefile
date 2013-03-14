@@ -23,7 +23,7 @@
 CFLAGS+=-I../include/ -fPIC
 CC=gcc
 
-all: shmoverride.so X_wrapper_qubes
+all: shmoverride.so X-wrapper-qubes
 
 shmoverride.so: shmoverride.o list.o
 	gcc -shared -o shmoverride.so shmoverride.o list.o -ldl -lxenctrl
@@ -31,7 +31,7 @@ shmoverride.so: shmoverride.o list.o
 list.o: ../common/list.c
 	$(CC) $(CFLAGS) -shared -c -o list.o ../common/list.c
 
-X_wrapper_qubes: X_wrapper_qubes.o
+X-wrapper-qubes: X-wrapper-qubes.o
 
 clean:
-	rm -f *~ *.o shmoverride.so X_wrapper_qubes
+	rm -f *~ *.o shmoverride.so X-wrapper-qubes

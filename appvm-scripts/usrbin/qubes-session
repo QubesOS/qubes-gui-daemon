@@ -21,7 +21,7 @@
 #
 
 # Switch user to 'user'
-[[ ! -f /etc/this_is_dvm && "$USER" != "user" ]] && exec su user -c $0
+[[ ! -f /etc/this-is-dvm && "$USER" != "user" ]] && exec su user -c $0
 
 # Set desktop background
 xsetroot -solid white
@@ -30,7 +30,7 @@ xsetroot -solid white
 umask 0077
 rm -f /tmp/qubes-session-env
 
-if [ ! -f /etc/this_is_dvm ]; then
+if [ ! -f /etc/this-is-dvm ]; then
 
 env | grep -v "^\(PWD\|TERM\|SHELL\|RUNLEVEL\|PATH\|SHLVL\|LOGNAME\|USER\|MEM\|_\)=" > /tmp/qubes-session-env
 
@@ -83,7 +83,7 @@ else # ! DispVM
 	[ -x /usr/bin/xhost ] && [ -x /usr/bin/id ] &&
 		xhost +si:localuser:`id -un` >& /dev/null
 
-	. /etc/X11/xinit/xinitrc.d/qubes_keymap.sh
+	. /etc/X11/xinit/xinitrc.d/qubes-keymap.sh
 
 	# start pulseaudio in DispVM (normally done from /etc/xdg/autostart)
 	/usr/bin/start-pulseaudio-with-vchan

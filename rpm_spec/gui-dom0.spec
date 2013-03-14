@@ -71,17 +71,17 @@ make dom0
 
 %install
 rm -rf $RPM_BUILD_ROOT
-install -D gui-daemon/qubes_guid $RPM_BUILD_ROOT/usr/bin/qubes_guid
+install -D gui-daemon/qubes-guid $RPM_BUILD_ROOT/usr/bin/qubes-guid
 install -D pulse/pacat-simple-vchan $RPM_BUILD_ROOT/usr/bin/pacat-simple-vchan
 install -D pulse/pacat-control-api.xml $RPM_BUILD_ROOT/usr/share/dbus-1/interfaces/org.QubesOS.Audio.xml
-install -D shmoverride/X_wrapper_qubes $RPM_BUILD_ROOT/usr/bin/X_wrapper_qubes
+install -D shmoverride/X-wrapper-qubes $RPM_BUILD_ROOT/usr/bin/X-wrapper-qubes
 install -D shmoverride/shmoverride.so $RPM_BUILD_ROOT/%{_libdir}/shmoverride.so
 install -D gui-daemon/guid.conf $RPM_BUILD_ROOT/%{_sysconfdir}/qubes/guid.conf
 install -D gui-daemon/qubes-localgroup.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
-install -D gui-daemon/qubes.ClipboardPaste.policy $RPM_BUILD_ROOT%{_sysconfdir}/qubes_rpc/policy/qubes.ClipboardPaste
+install -D gui-daemon/qubes.ClipboardPaste.policy $RPM_BUILD_ROOT%{_sysconfdir}/qubes-rpc/policy/qubes.ClipboardPaste
 
 %triggerin -- xorg-x11-server-Xorg
-ln -sf /usr/bin/X_wrapper_qubes /usr/bin/X
+ln -sf /usr/bin/X-wrapper-qubes /usr/bin/X
 
 %postun
 if [ "$1" = 0 ] ; then
@@ -95,11 +95,11 @@ rm -f %{name}-%{version}
 
 %files
 %defattr(-,root,root,-)
-%attr(4750,root,qubes) /usr/bin/qubes_guid
+%attr(4750,root,qubes) /usr/bin/qubes-guid
 /usr/bin/pacat-simple-vchan
-/usr/bin/X_wrapper_qubes
+/usr/bin/X-wrapper-qubes
 %{_libdir}/shmoverride.so
 %config(noreplace) %{_sysconfdir}/qubes/guid.conf
-%config(noreplace) %{_sysconfdir}/qubes_rpc/policy/qubes.ClipboardPaste
+%config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.ClipboardPaste
 /etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
 /usr/share/dbus-1/interfaces/org.QubesOS.Audio.xml

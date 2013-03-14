@@ -1,8 +1,8 @@
-#!/bin/sh
 #
 # The Qubes OS Project, http://www.qubes-os.org
 #
 # Copyright (C) 2010  Rafal Wojtczuk  <rafal@invisiblethingslab.com>
+# Copyright (C) 2010  Joanna Rutkowska <joanna@invisiblethingslab.com>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -20,4 +20,13 @@
 #
 #
 
-LD_PRELOAD=relaxed_xf86ValidateModes.so exec /usr/bin/Xorg $@
+CFLAGS+=-g -fPIC
+CC=gcc
+
+all: relaxed-xf86ValidateModes.so
+
+relaxed-xf86ValidateModes.so: relaxed-xf86ValidateModes.o
+	gcc -g -shared -o relaxed-xf86ValidateModes.so relaxed-xf86ValidateModes.o
+clean:
+	rm -f *~ *.o relaxed-xf86ValidateModes.so
+

@@ -34,7 +34,7 @@
 #include <sys/mman.h>
 #include <alloca.h>
 #include "list.h"
-#include "shm_cmd.h"
+#include "shm-cmd.h"
 #include "qlimits.h"
 
 static void *(*real_shmat) (int shmid, const void *shmaddr, int shmflg);

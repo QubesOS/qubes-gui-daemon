@@ -38,7 +38,7 @@
 #include "txrx.h"
 #include "list.h"
 #include "error.h"
-#include "shm_cmd.h"
+#include "shm-cmd.h"
 #include "qlimits.h"
 #include "libvchan.h"
 #include "u2mfnlib.h"
@@ -1599,7 +1599,7 @@ void get_xconf_and_run_x()
 	setenv("MEM", val, 1);
 	snprintf(val, sizeof(val), "%d", xconf.depth);
 	setenv("DEPTH", val, 1);
-	do_execute(NULL, "/usr/bin/qubes_run_xorg.sh");
+	do_execute(NULL, "/usr/bin/qubes-run-xorg.sh");
 }
 
 void send_protocol_version()
@@ -1615,7 +1615,7 @@ void handle_guid_disconnect()
 	unlink("/tmp/qubes-session-env");
 	unlink("/tmp/qubes-session-waiter");
 	/* start new gui agent */
-	execv("/usr/bin/qubes_gui", saved_argv);
+	execv("/usr/bin/qubes-gui", saved_argv);
 	perror("execv");
 	exit(1);
 }

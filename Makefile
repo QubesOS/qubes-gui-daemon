@@ -37,9 +37,9 @@ help:
 	    echo "make update-repo-installer -- copy dom0 rpms to installer repo"
 	    @exit 0;
 
-dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X_wrapper_qubes pulse/pacat-simple-vchan
+dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X-wrapper-qubes pulse/pacat-simple-vchan
 
-appvm: gui-agent/qubes-gui xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so
+appvm: gui-agent/qubes-gui xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed-xf86ValidateModes/relaxed-xf86ValidateModes.so
 
 gui-daemon/qubes-guid:
 	(cd gui-daemon; $(MAKE))
@@ -47,14 +47,14 @@ gui-daemon/qubes-guid:
 shmoverride/shmoverride.so:
 	(cd shmoverride; $(MAKE) shmoverride.so)
 
-shmoverride/X_wrapper_qubes:
-	(cd shmoverride; $(MAKE) X_wrapper_qubes)
+shmoverride/X-wrapper-qubes:
+	(cd shmoverride; $(MAKE) X-wrapper-qubes)
 	
 pulse/pacat-simple-vchan:
 	$(MAKE) -C pulse pacat-simple-vchan
 
-relaxed_xf86ValidateModes/relaxed_xf86ValidateModes.so:
-	(cd relaxed_xf86ValidateModes; $(MAKE))
+relaxed-xf86ValidateModes/relaxed-xf86ValidateModes.so:
+	(cd relaxed-xf86ValidateModes; $(MAKE))
 	
 gui-agent/qubes-gui:
 	(cd gui-agent; $(MAKE))
@@ -86,7 +86,7 @@ clean:
 	(cd shmoverride; $(MAKE) clean)
 	$(MAKE) -C pulse clean
 	(cd xf86-input-mfndev; if [ -e Makefile ] ; then $(MAKE) distclean; fi; ./bootstrap --clean || echo )
-	$(MAKE) -C relaxed_xf86ValidateModes clean
+	$(MAKE) -C relaxed-xf86ValidateModes clean
 
 update-repo-current:
 	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*$(DIST_DOM0)*.rpm ../yum/current-release/current/dom0/rpm/

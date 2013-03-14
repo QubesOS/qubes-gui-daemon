@@ -92,7 +92,7 @@
 #include <X11/Xlib.h>
 
 #include "qubes.h"
-#include "shm_cmd.h"
+#include "shm-cmd.h"
 
 #if GET_ABI_MAJOR(ABI_XINPUT_VERSION) >= 12
 static int QubesPreInit(InputDriverPtr drv, InputInfoPtr pInfo,

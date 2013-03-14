@@ -22,6 +22,6 @@ pacat-simple-vchan: pacat-simple-vchan.o vchanio.o pacat-control-object.o
 # Do not autogenerate because dbus-binding-tool from dbus-glib-0.86 (in chroot)
 # produces output incompatible with dbus-glib-0.84 (in Qubes dom0).
 #pacat-control-stub.h: pacat-control-api.xml
-#	dbus-binding-tool --mode=glib-server --prefix=pacat_control $< > $@
+#	dbus-binding-tool --mode=glib-server --prefix=pacat-control $< > $@
 clean:
 	rm -f *.so *.o pacat-simple-vchan *~

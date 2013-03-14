@@ -22,14 +22,14 @@
 CC=gcc
 CFLAGS+=-I../include/ -g -Wall `pkg-config --cflags libconfig` \
 	`pkg-config --cflags libpng` -pie -fPIC
-OBJS=xside.o png.o ../gui-common/double_buffer.o ../gui-common/txrx-vchan.o \
+OBJS=xside.o png.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
 	../gui-common/error.o ../common/list.o 
 
-all: qubes_guid
-qubes_guid: $(OBJS)
-	$(CC) -g -pie -o qubes_guid $(OBJS) \
+all: qubes-guid
+qubes-guid: $(OBJS)
+	$(CC) -g -pie -o qubes-guid $(OBJS) \
 		-lX11 -lXext -lvchan -lxenstore -lxenctrl -Wall \
 		`pkg-config --libs libpng` \
 		`pkg-config --libs libconfig`
 clean:
-	rm -f qubes_guid *.o *~
+	rm -f qubes-guid *.o *~

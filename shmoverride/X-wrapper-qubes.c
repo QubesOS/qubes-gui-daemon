@@ -28,5 +28,5 @@
 int main (int argc, char **argv) {
 	putenv ("LD_PRELOAD=" SHMOVERRIDE_LIB_PATH);
 	execv (XORG_PATH, argv);
-	perror("X_wrapper_qubes: execv");
+	perror("X-wrapper-qubes: execv");
 }

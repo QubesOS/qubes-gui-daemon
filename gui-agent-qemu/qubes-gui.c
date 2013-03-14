@@ -14,9 +14,9 @@
 #include <fbfront.h>
 #include <sysemu.h>
 
-#include <qubes_gui_qemu.h>
+#include <qubes-gui-qemu.h>
 #include <messages.h>
-#include <shm_cmd.h>
+#include <shm-cmd.h>
 #include <libvchan.h>
 #include <txrx.h>
 #include <qlimits.h>

@@ -14,7 +14,7 @@ start()
 	/usr/bin/ck-list-sessions > /dev/null 2>&1
 	# pretend tha user is at local console
 	touch /var/run/console/user
-	DISPLAY=:0 /usr/bin/qubes_gui 2> /var/log/qubes/gui_agent.log &
+	DISPLAY=:0 /usr/bin/qubes-gui 2> /var/log/qubes/gui-agent.log &
 	export DISPLAY=:0
 	success
 	echo ""
@@ -24,7 +24,7 @@ start()
 stop()
 {
 	echo -n "Stopping Qubes GUI agent:"
-	killall qubes_gui && success || failure
+	killall qubes-gui && success || failure
 	echo ""
 	return 0
 }

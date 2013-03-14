@@ -25,7 +25,7 @@
 #define MAX_WINDOW_HEIGHT 3072
 
 //not arbitrary
-#include "shm_cmd.h"
+#include "shm-cmd.h"
 #define DUMMY_DRV_FB_BPP 32
 #define SIZEOF_SHARED_MFN 4
 #define MAX_WINDOW_MEM (MAX_WINDOW_HEIGHT*MAX_WINDOW_WIDTH*DUMMY_DRV_FB_BPP/8)
