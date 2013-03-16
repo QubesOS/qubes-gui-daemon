@@ -1,6 +1,6 @@
 #!/bin/sh
 
-QUBES_KEYMAP="`/usr/bin/xenstore-read qubes_keyboard`"
+QUBES_KEYMAP="`/usr/bin/xenstore-read qubes-keyboard`"
 QUBES_KEYMAP="`echo -e $QUBES_KEYMAP`"
 GSETTINGS_LAYOUT=`gsettings get org.gnome.libgnomekbd.keyboard layouts 2> /dev/null | sed 's/@as //'`
 if [ -n "$GSETTINGS_LAYOUT" -a "x$GSETTINGS_LAYOUT" != "x[]" ]; then

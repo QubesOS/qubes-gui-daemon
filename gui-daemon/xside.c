@@ -2586,7 +2586,7 @@ int main(int argc, char **argv)
 	/* provide keyboard map before VM Xserver starts */
 
 	if (snprintf(cmd_tmp, sizeof(cmd_tmp), "/usr/bin/xenstore-write	"
-		     "/local/domain/%d/qubes_keyboard \"`/usr/bin/setxkbmap -print`\"",
+		     "/local/domain/%d/qubes-keyboard \"`/usr/bin/setxkbmap -print`\"",
 		     ghandles.domid) < sizeof(cmd_tmp)) {
 		/* intentionally ignore return value - don't fail gui-daemon if only
 		 * keyboard layout fails */
