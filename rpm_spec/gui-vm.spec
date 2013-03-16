@@ -111,7 +111,7 @@ install -d $RPM_BUILD_ROOT/var/log/qubes
 if [ -x /bin/systemctl ] && readlink /sbin/init | grep -q systemd; then
     /bin/systemctl enable qubes-gui-agent.service 2> /dev/null
     # For clean upgrades
-    chkconfig qubes_gui off
+    chkconfig qubes_gui off 2>/dev/null
 else
     chkconfig qubes-gui-agent on
 fi
