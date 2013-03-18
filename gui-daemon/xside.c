@@ -44,13 +44,11 @@
 #include <X11/extensions/XShm.h>
 #include <X11/Xatom.h>
 #include <libconfig.h>
-#include "messages.h"
+#include <qubes-gui-protocol.h>
+#include <qubes-xorg-tray-defs.h>
 #include "txrx.h"
 #include "list.h"
 #include "error.h"
-#include "shm-cmd.h"
-#include "qlimits.h"
-#include "tray.h"
 #include "png.h"
 
 /* some configuration */

@@ -34,15 +34,14 @@
 #include <X11/XKBlib.h>
 #include <X11/Xlibint.h>
 #include <X11/Xatom.h>
-#include "messages.h"
+#include <qubes-gui-protocol.h>
+#include <qubes-xorg-tray-defs.h>
+#include "xdriver-shm-cmd.h"
 #include "txrx.h"
 #include "list.h"
 #include "error.h"
-#include "shm-cmd.h"
-#include "qlimits.h"
 #include "libvchan.h"
 #include "u2mfnlib.h"
-#include "tray.h"
 
 #define QUBES_GUI_PROTOCOL_VERSION_LINUX (1 << 16 | 0)
 

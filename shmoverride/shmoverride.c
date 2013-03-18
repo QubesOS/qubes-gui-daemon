@@ -34,8 +34,7 @@
 #include <sys/mman.h>
 #include <alloca.h>
 #include "list.h"
-#include "shm-cmd.h"
-#include "qlimits.h"
+#include <qubes-gui-protocol.h>
 
 static void *(*real_shmat) (int shmid, const void *shmaddr, int shmflg);
 static int (*real_shmdt) (const void *shmaddr);

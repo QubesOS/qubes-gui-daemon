@@ -19,17 +19,18 @@
  *
  */
 
-//arbitrary
-#define MAX_CLIPBOARD_SIZE 65000
-#define MAX_WINDOW_WIDTH 8192
-#define MAX_WINDOW_HEIGHT 3072
+#ifndef SHM_CMD_H
+#define SHM_CMD_H
+#include <stdint.h>
 
-//not arbitrary
-#include "shm-cmd.h"
-#define DUMMY_DRV_FB_BPP 32
-#define SIZEOF_SHARED_MFN 4
-#define MAX_WINDOW_MEM (MAX_WINDOW_HEIGHT*MAX_WINDOW_WIDTH*DUMMY_DRV_FB_BPP/8)
-#define NUM_PAGES(x) ((x+4095)>>12)
-//finally, used stuff
-#define MAX_MFN_COUNT NUM_PAGES(MAX_WINDOW_MEM)
-#define SHM_CMD_NUM_PAGES NUM_PAGES(MAX_MFN_COUNT*SIZEOF_SHARED_MFN+sizeof(struct shm_cmd))
+/* Messages are described here:
+ * http://wiki.qubes-os.org/trac/wiki/GUIdocs
+ */
+
+/* VM: gui-agent -> xdriver(xf86-input-mfndev( */
+struct xdriver_cmd {
+	uint32_t type;
+	uint32_t arg1;
+	uint32_t arg2;
+};
+#endif

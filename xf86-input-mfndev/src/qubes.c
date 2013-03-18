@@ -91,8 +91,9 @@
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 
+#include <qubes-gui-protocol.h>
+#include "xdriver-shm-cmd.h"
 #include "qubes.h"
-#include "shm-cmd.h"
 
 #if GET_ABI_MAJOR(ABI_XINPUT_VERSION) >= 12
 static int QubesPreInit(InputDriverPtr drv, InputInfoPtr pInfo,
