@@ -1,6 +1,0 @@
-sdkdir=@sdkdir@
-
-Name: xorg-evdev
-Description: X.Org Qubes input driver.
-Version: @PACKAGE_VERSION@
-Cflags: -I${sdkdir}

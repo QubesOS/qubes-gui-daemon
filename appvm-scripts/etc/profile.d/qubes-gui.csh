@@ -1,1 +1,0 @@
-setenv DISPLAY ":0"

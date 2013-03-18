@@ -39,8 +39,6 @@ help:
 
 dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X-wrapper-qubes pulse/pacat-simple-vchan
 
-appvm: gui-agent/qubes-gui xf86-input-mfndev/src/.libs/qubes_drv.so pulse/module-vchan-sink.so relaxed-xf86ValidateModes/relaxed-xf86ValidateModes.so
-
 gui-daemon/qubes-guid:
 	(cd gui-daemon; $(MAKE))
 
@@ -52,18 +50,6 @@ shmoverride/X-wrapper-qubes:
 	
 pulse/pacat-simple-vchan:
 	$(MAKE) -C pulse pacat-simple-vchan
-
-relaxed-xf86ValidateModes/relaxed-xf86ValidateModes.so:
-	(cd relaxed-xf86ValidateModes; $(MAKE))
-	
-gui-agent/qubes-gui:
-	(cd gui-agent; $(MAKE))
-
-xf86-input-mfndev/src/.libs/qubes_drv.so:
-	(cd xf86-input-mfndev && ./bootstrap && ./configure && make LDFLAGS=-lu2mfn)
-
-pulse/module-vchan-sink.so:
-	$(MAKE) -C pulse module-vchan-sink.so
 
 rpms: rpms-dom0 rpms-vm
 	rpm --addsign rpm/x86_64/*$(VERSION)*.rpm
@@ -80,13 +66,10 @@ tar:
 
 clean:
 	(cd common; $(MAKE) clean)
-	(cd gui-agent; $(MAKE) clean)
 	(cd gui-common; $(MAKE) clean)
 	(cd gui-daemon; $(MAKE) clean)
 	(cd shmoverride; $(MAKE) clean)
 	$(MAKE) -C pulse clean
-	(cd xf86-input-mfndev; if [ -e Makefile ] ; then $(MAKE) distclean; fi; ./bootstrap --clean || echo )
-	$(MAKE) -C relaxed-xf86ValidateModes clean
 
 update-repo-current:
 	ln -f $(RPMS_DIR)/x86_64/qubes-gui-dom0-*$(VERSION)*$(DIST_DOM0)*.rpm ../yum/current-release/current/dom0/rpm/
