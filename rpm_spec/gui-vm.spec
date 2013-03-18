@@ -51,6 +51,7 @@ BuildRequires:	xen-devel
 BuildRequires:	xorg-x11-server-devel
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
 BuildRequires:	qubes-core-libs
+BuildRequires:	qubes-gui-common-devel
 Requires:	qubes-core-vm >= 2.1.2
 Requires:	xen-qubes-vm-essentials
 Requires:	xorg-x11-drv-dummy

@@ -42,14 +42,17 @@ Requires:	xorg-x11-server-Xorg pulseaudio-libs
 Requires:	service(graphical-login)
 Requires:	pulseaudio
 Requires:	libconfig
-BuildRequires:  pulseaudio-libs-devel
-BuildRequires:  xen-devel
-BuildRequires:  libXt-devel
-BuildRequires:  libXext-devel
+BuildRequires:	pulseaudio-libs-devel
+BuildRequires:	xen-devel
+BuildRequires:	libXt-devel
+BuildRequires:	libXext-devel
 BuildRequires:	libconfig-devel
+BuildRequires:	libpng-devel
+BuildRequires:	dbus-glib-devel
 BuildRequires:	gcc
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
 BuildRequires:	qubes-core-libs
+BuildRequires:	qubes-gui-common-devel
 
 %define _builddir %(pwd)
 
