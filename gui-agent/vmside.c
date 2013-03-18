@@ -94,7 +94,7 @@ void process_xevent_damage(Ghandles * g, XID window,
 			   int x, int y, int width, int height)
 {
 	struct msg_shmimage mx;
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	SKIP_NONMANAGED_WINDOW;
 
 	hdr.type = MSG_SHMIMAGE;
@@ -108,7 +108,7 @@ void process_xevent_damage(Ghandles * g, XID window,
 
 void process_xevent_createnotify(Ghandles * g, XCreateWindowEvent * ev)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_create crt;
 	struct window_data *wd;
 
@@ -215,7 +215,7 @@ void read_discarding(int fd, int size)
 void send_pixmap_mfns(Ghandles * g, XID window)
 {
 	struct shm_cmd shmcmd;
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	uint32_t *mfnbuf;
 	int ret, rcvd = 0, size;
 
@@ -281,7 +281,7 @@ void getwmname_tochar(Ghandles * g, XID window, char *outbuf, int bufsize)
 
 void send_wmname(Ghandles * g, XID window)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_wmname msg;
 	getwmname_tochar(g, window, msg.data, sizeof(msg.data));
 	hdr.window = window;
@@ -355,7 +355,7 @@ void retrieve_wmhints(Ghandles * g, XID window)
 
 void send_wmnormalhints(Ghandles * g, XID window)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_window_hints msg;
 	XSizeHints size_hints;
 	long supplied_hints;
@@ -401,7 +401,7 @@ void send_window_state(Ghandles * g, XID window)
 	Atom act_type;
 	int act_fmt;
 	unsigned long nitems, bytesleft;
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_window_flags flags;
 
 	/* FIXME: only first 10 elements are parsed */
@@ -424,7 +424,7 @@ void send_window_state(Ghandles * g, XID window)
 void process_xevent_map(Ghandles * g, XID window)
 {
 	XWindowAttributes attr;
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_map_info map_info;
 	Window transient;
 	SKIP_NONMANAGED_WINDOW;
@@ -448,7 +448,7 @@ void process_xevent_map(Ghandles * g, XID window)
 
 void process_xevent_unmap(Ghandles * g, XID window)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	SKIP_NONMANAGED_WINDOW;
 
 	if (g->log_level > 1)
@@ -462,7 +462,7 @@ void process_xevent_unmap(Ghandles * g, XID window)
 
 void process_xevent_destroy(Ghandles * g, XID window)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct genlist *l;
 	/* embeders are not manged windows, so must be handled before SKIP_NONMANAGED_WINDOW */
 	if ((l = list_lookup(embeder_list, window))) {
@@ -492,7 +492,7 @@ void process_xevent_destroy(Ghandles * g, XID window)
 void process_xevent_configure(Ghandles * g, XID window,
 			      XConfigureEvent * ev)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_configure conf;
 	struct genlist *l;
 	/* SKIP_NONMANAGED_WINDOW; */
@@ -549,7 +549,7 @@ void process_xevent_configure(Ghandles * g, XID window,
 
 void send_clipboard_data(char *data, int len)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	hdr.type = MSG_CLIPBOARD_DATA;
 	if (len > MAX_CLIPBOARD_SIZE)
 		hdr.window = MAX_CLIPBOARD_SIZE;
@@ -740,7 +740,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 		XClientMessageEvent resp;
 		Window w;
 		int ret;
-		struct msghdr hdr;
+		struct msg_hdr hdr;
 		Atom act_type;
 		int act_fmt;
 		int mapwindow = 0;
@@ -848,7 +848,7 @@ void process_xevent_message(Ghandles * g, XClientMessageEvent * ev)
 				ev->data.l[1]);
 		}
 	} else if (ev->message_type == g->wm_state) {
-		struct msghdr hdr;
+		struct msg_hdr hdr;
 		struct msg_window_flags msg;
 
 		/* SKIP_NONMANAGED_WINDOW */
@@ -1533,7 +1533,7 @@ void handle_window_flags(Ghandles *g, XID winid)
 
 void handle_message(Ghandles * g)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	char discard[256];
 	read_data((char *) &hdr, sizeof(hdr));
 	if (g->log_level > 1)

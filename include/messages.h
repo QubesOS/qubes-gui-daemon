@@ -29,7 +29,7 @@
 #define QUBES_GUID_PROTOCOL_VERSION_MAJOR 1
 #define QUBES_GUID_PROTOCOL_VERSION_MINOR 0
 #define QUBES_GUID_PROTOCOL_VERSION (QUBES_GUID_PROTOCOL_VERSION_MAJOR << 16 | QUBES_GUID_PROTOCOL_VERSION_MINOR)
-struct msghdr {
+struct msg_hdr {
 	uint32_t type;
 	uint32_t window;
 	/* This field is intended for use by gui_agents to skip unknown

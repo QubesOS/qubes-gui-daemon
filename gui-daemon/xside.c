@@ -647,7 +647,7 @@ int evaluate_clipboard_policy(Ghandles * g) {
  */
 int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	char *data;
 	int len;
 	if ((ev->state & SPECAL_KEYS_MASK) ==
@@ -711,7 +711,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
  */
 void process_xevent_keypress(Ghandles * g, XKeyEvent * ev)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_keypress k;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	g->last_input_window = vm_window;
@@ -751,7 +751,7 @@ void dump_mapped(Ghandles * g)
  * same as XKeyEvent - send to relevant window in VM */
 void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_button k;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
@@ -776,7 +776,7 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
  * send to relevant window in VM */
 void process_xevent_close(Ghandles * g, XID window)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	CHECK_NONMANAGED_WINDOW(g, window);
 	hdr.type = MSG_CLOSE;
 	hdr.window = vm_window->remote_winid;
@@ -788,7 +788,7 @@ void process_xevent_close(Ghandles * g, XID window)
 void send_configure(struct windowdata *vm_window, int x, int y, int w,
 		    int h)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_configure msg;
 	hdr.type = MSG_CONFIGURE;
 	hdr.window = vm_window->remote_winid;
@@ -1016,7 +1016,7 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
  * window position */
 void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_crossing k;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
@@ -1049,7 +1049,7 @@ void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
  * send to relevant window in VM */
 void process_xevent_motion(Ghandles * g, XMotionEvent * ev)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_motion k;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 
@@ -1067,7 +1067,7 @@ void process_xevent_motion(Ghandles * g, XMotionEvent * ev)
  * send to relevant window in VM */
 void process_xevent_focus(Ghandles * g, XFocusChangeEvent * ev)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_focus k;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	if (ev->type == FocusIn) {
@@ -1291,7 +1291,7 @@ void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
 				(int) vm_window->local_winid);
 	} else {
 		/* Tray windows shall be visible always */
-		struct msghdr hdr;
+		struct msg_hdr hdr;
 		struct msg_map_info map_info;
 		map_info.override_redirect = attr.override_redirect;
 		hdr.type = MSG_MAP;
@@ -1326,7 +1326,7 @@ void process_xevent_propertynotify(Ghandles *g, XPropertyEvent * ev)
 	unsigned long nitems, bytesleft;
 	int ret, act_fmt, i;
 	uint32_t flags;
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_window_flags msg;
 
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
@@ -1989,7 +1989,7 @@ void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 /* VM message dispatcher */
 void handle_message(Ghandles * g)
 {
-	struct msghdr untrusted_hdr;
+	struct msg_hdr untrusted_hdr;
 	uint32_t type;
 	XID window;
 	struct genlist *l;

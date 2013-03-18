@@ -72,7 +72,7 @@ void process_pv_update(QubesGuiState * qs,
 		       int x, int y, int width, int height)
 {
 	struct msg_shmimage mx;
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 
 	/* convert to 24bpp if needed */
 	if (is_buffer_shared(qs->ds->surface)) {
@@ -101,7 +101,7 @@ void process_pv_update(QubesGuiState * qs,
 
 void qubes_create_window(QubesGuiState * qs, int w, int h)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_create crt;
 	int ret;
 
@@ -120,7 +120,7 @@ void qubes_create_window(QubesGuiState * qs, int w, int h)
 void send_pixmap_mfns(QubesGuiState * qs)
 {
 	struct shm_cmd shmcmd;
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	uint32_t *mfns;
 	int n, bpp;
 	int i;
@@ -188,7 +188,7 @@ void send_pixmap_mfns(QubesGuiState * qs)
 
 void send_wmname(QubesGuiState * qs, const char *wmname)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_wmname msg;
 	strncpy(msg.data, wmname, sizeof(msg.data));
 	hdr.window = QUBES_MAIN_WINDOW;
@@ -198,7 +198,7 @@ void send_wmname(QubesGuiState * qs, const char *wmname)
 
 void send_wmhints(QubesGuiState * qs)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_window_hints msg;
 
 	// pass only some hints
@@ -214,7 +214,7 @@ void send_wmhints(QubesGuiState * qs)
 
 void send_map(QubesGuiState * qs)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_map_info map_info;
 
 	map_info.override_redirect = 0;
@@ -227,7 +227,7 @@ void send_map(QubesGuiState * qs)
 void process_pv_resize(QubesGuiState * qs, int width, int height,
 		       int linesize)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	struct msg_configure conf;
 	if (qs->log_level > 1)
 		fprintf(stderr,
@@ -259,7 +259,7 @@ void handle_configure(QubesGuiState * qs)
 /* currently unused */
 void send_clipboard_data(char *data, int len)
 {
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	hdr.type = MSG_CLIPBOARD_DATA;
 	if (len > MAX_CLIPBOARD_SIZE)
 		hdr.window = MAX_CLIPBOARD_SIZE;
@@ -477,7 +477,7 @@ static void qubesgui_message_handler(void *opaque)
 {
 #define KBD_NUM_BATCH 64
 	QubesGuiState *qs = opaque;
-	struct msghdr hdr;
+	struct msg_hdr hdr;
 	char discard[256];
 
 
