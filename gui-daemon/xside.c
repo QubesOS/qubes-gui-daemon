@@ -54,7 +54,7 @@
 
 /* default width of forced colorful border */
 #define BORDER_WIDTH 2
-#define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes_clipboard.bin"
+#define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes-clipboard.bin"
 #define QREXEC_CLIENT_PATH "/usr/lib/qubes/qrexec_client"
 #define QREXEC_POLICY_PATH "/usr/lib/qubes/qrexec_policy"
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
