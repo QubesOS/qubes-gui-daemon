@@ -60,7 +60,6 @@
 #include <libvchan.h>
 
 #include "pacat-simple-vchan.h"
-#include "vchanio.h"
 #include "qubes-vchan-sink.h"
 #include "pacat-control-object.h"
 
@@ -261,7 +260,7 @@ static void vchan_play_callback(pa_mainloop_api *UNUSED(a),
 	/* receive event */
 	libvchan_wait(u->play_ctrl);
 
-	if (libvchan_is_eof(u->play_ctrl)) {
+	if (!libvchan_is_open(u->play_ctrl)) {
 		pacat_log("vchan_is_eof");
 		start_drain(u, u->play_stream);
 		return;
@@ -280,7 +279,7 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
 	/* receive event */
 	libvchan_wait(u->rec_ctrl);
 
-	if (libvchan_is_eof(u->rec_ctrl)) {
+	if (!libvchan_is_open(u->rec_ctrl)) {
 		pacat_log("vchan_is_eof");
 		quit(u, 0);
 		return;
@@ -526,22 +525,6 @@ fail:
 
 }
 
-
-static void check_vchan_eof_timer(pa_mainloop_api*a, pa_time_event* e,
-		const struct timeval *UNUSED(tv), void *userdata)
-{
-	struct userdata *u = userdata;
-	struct timeval restart_tv = { 5, 0 };
-	assert(u);
-
-	/* this call will exit if detect the other end dead */
-	slow_check_for_libvchan_is_eof(u->play_ctrl);
-
-	pa_gettimeofday(&restart_tv);
-	pa_timeval_add(&restart_tv, (pa_usec_t) 5 * 1000 * PA_USEC_PER_MSEC);
-	a->time_restart(e, &restart_tv);
-}
-
 int main(int argc, char *argv[])
 {
 	struct timeval tv;
@@ -551,7 +534,6 @@ int main(int argc, char *argv[])
 	char *server = NULL;
 	int domid = 0;
 	int i;
-
 
 	if (argc <= 1) {
 		fprintf(stderr, "usage: %s [-l] domid\n", argv[0]);
@@ -577,17 +559,21 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+    domid = atoi(argv[1]);
+
 	memset(&u, 0, sizeof(u));
 	u.ret = 1;
 
 	g_mutex_init(&u.prop_mutex);
 
-	u.play_ctrl = peer_client_init(domid, QUBES_PA_SINK_VCHAN_PORT, &u.name);
+    u.name = libvchan_get_domain_name(domid);
+
+	u.play_ctrl = libvchan_client_init(domid, QUBES_PA_SINK_VCHAN_PORT);
 	if (!u.play_ctrl) {
 		perror("libvchan_client_init");
 		exit(1);
 	}
-	u.rec_ctrl = peer_client_init(domid, QUBES_PA_SOURCE_VCHAN_PORT, NULL);
+	u.rec_ctrl = libvchan_client_init(domid, QUBES_PA_SOURCE_VCHAN_PORT);
 	if (!u.rec_ctrl) {
 		perror("libvchan_client_init");
 		exit(1);
@@ -633,12 +619,6 @@ int main(int argc, char *argv[])
 
 	pa_gettimeofday(&tv);
 	pa_timeval_add(&tv, (pa_usec_t) 5 * 1000 * PA_USEC_PER_MSEC);
-	time_event = u.mainloop_api->time_new(u.mainloop_api, &tv, check_vchan_eof_timer, &u);
-	if (!time_event) {
-		pacat_log("time_event create failed");
-		goto quit;
-	}
-
 	if (!(u.context = pa_context_new_with_proplist(u.mainloop_api, NULL, u.proplist))) {
 		pacat_log("pa_context_new() failed.");
 		goto quit;

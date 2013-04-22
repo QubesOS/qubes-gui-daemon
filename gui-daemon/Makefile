@@ -20,15 +20,21 @@
 #
 
 CC=gcc
-CFLAGS+=-I../include/ -g -O2 -Wall -Wextra -Werror \
-	`pkg-config --cflags libconfig libpng libnotify` -pie -fPIC
+CFLAGS+=-I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
+		`pkg-config --cflags libconfig` \
+		`pkg-config --cflags libnotify` \
+		`pkg-config --cflags libpng` \
+		`pkg-config --cflags vchan-$(BACKEND_VMM)`
 OBJS=xside.o png.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
 	../gui-common/error.o ../common/list.o
 
 all: qubes-guid
 qubes-guid: $(OBJS)
 	$(CC) -g -pie -o qubes-guid $(OBJS) \
-		-lX11 -lXext -lvchan -lxenstore -lxenctrl -Wall \
-		`pkg-config --libs libpng libnotify libconfig`
+		-lX11 -lXext -Wall \
+		`pkg-config --libs vchan-$(BACKEND_VMM)` \
+		`pkg-config --libs libpng` \
+		`pkg-config --libs libconfig` \
+		`pkg-config --libs libnotify`
 clean:
 	rm -f qubes-guid *.o *~

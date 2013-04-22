@@ -47,6 +47,7 @@
 #include <libnotify/notify.h>
 #include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
+#include <libvchan.h>
 #include "txrx.h"
 #include "list.h"
 #include "error.h"
@@ -138,6 +139,7 @@ struct _global_handles {
 	uint32_t cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
 	int inter_appviewer_lock_fd; /* FD of lock file used to synchronize shared memory access */
 	/* Client VM parameters */
+	libvchan_t *vchan;
 	char vmname[32];	/* name of VM */
 	int domid;		/* Xen domain id (GUI) */
 	int target_domid;		/* Xen domain id (VM) - can differ from domid when GUI is stubdom */
@@ -482,7 +484,7 @@ static void mkghandles(Ghandles * g)
 		 * be used instead (as icon label) */
 		g->icon_data = load_png(g->cmdline_icon, &g->icon_data_len);
 		if (g->icon_data) {
-			fprintf(stderr, "Icon size: %ldx%ld\n", g->icon_data[0], g->icon_data[1]);
+			fprintf(stderr, "Icon size: %lux%lu\n", g->icon_data[0], g->icon_data[1]);
 		}
 	}
 	g->inter_appviewer_lock_fd = open("/var/run/qubes/appviewer.lock",
@@ -696,7 +698,7 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 		perror("malloc");
 		exit(1);
 	}
-	read_data(untrusted_data, untrusted_data_sz);
+	read_data(g->vchan, untrusted_data, untrusted_data_sz);
 	if (!g->clipboard_requested) {
 		free(untrusted_data);
 		fprintf(stderr,
@@ -786,7 +788,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 			hdr.untrusted_len = 0;
 			if (g->log_level > 0)
 				fprintf(stderr, "secure copy\n");
-			write_struct(hdr);
+			write_struct(g->vchan, hdr);
 		}
 		return 1;
 	}
@@ -815,7 +817,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 				   of the blob */
 				hdr.window = len;
 				hdr.untrusted_len = len;
-				real_write_message((char *) &hdr, sizeof(hdr),
+				real_write_message(g->vchan, (char *) &hdr, sizeof(hdr),
 						data, len);
 				free(data);
 			}
@@ -845,7 +847,7 @@ static void process_xevent_keypress(Ghandles * g, const XKeyEvent * ev)
 	k.keycode = ev->keycode;
 	hdr.type = MSG_KEYPRESS;
 	hdr.window = vm_window->remote_winid;
-	write_message(hdr, k);
+	write_message(g->vchan, hdr, k);
 //      fprintf(stderr, "win 0x%x(0x%x) type=%d keycode=%d\n",
 //              (int) ev->window, hdr.window, k.type, k.keycode);
 }
@@ -887,7 +889,7 @@ static void process_xevent_button(Ghandles * g, const XButtonEvent * ev)
 	k.button = ev->button;
 	hdr.type = MSG_BUTTON;
 	hdr.window = vm_window->remote_winid;
-	write_message(hdr, k);
+	write_message(g->vchan, hdr, k);
 	if (g->log_level > 1)
 		fprintf(stderr,
 			"xside: win 0x%x(0x%x) type=%d button=%d x=%d, y=%d\n",
@@ -910,12 +912,12 @@ static void process_xevent_close(Ghandles * g, XID window)
 	hdr.type = MSG_CLOSE;
 	hdr.window = vm_window->remote_winid;
 	hdr.untrusted_len = 0;
-	write_struct(hdr);
+	write_struct(g->vchan, hdr);
 }
 
 /* send configure request for specified VM window */
-static void send_configure(struct windowdata *vm_window, int x, int y, int w,
-		    int h)
+static void send_configure(Ghandles * g, struct windowdata *vm_window, int x, int y,
+		int w, int h)
 {
 	struct msg_hdr hdr;
 	struct msg_configure msg;
@@ -925,7 +927,7 @@ static void send_configure(struct windowdata *vm_window, int x, int y, int w,
 	msg.width = w;
 	msg.x = x;
 	msg.y = y;
-	write_message(hdr, msg);
+	write_message(g->vchan, hdr, msg);
 }
 
 /* fix position of docked tray icon;
@@ -1083,7 +1085,7 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
 		return;
 	if (vm_window->remote_winid != FULLSCREEN_WINDOW_ID)
 		vm_window->have_queued_configure = 1;
-	send_configure(vm_window, vm_window->x, vm_window->y,
+	send_configure(g, vm_window, vm_window->x, vm_window->y,
 		       vm_window->width, vm_window->height);
 }
 
@@ -1096,7 +1098,7 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	unsigned width, height, override_redirect;
 	int conf_changed;
 
-	read_struct(untrusted_conf);
+	read_struct(g->vchan, untrusted_conf);
 	if (g->log_level > 1)
 		fprintf(stderr,
 			"handle_configure_from_vm, local 0x%x remote 0x%x, %d/%d, was"
@@ -1134,7 +1136,7 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 	/* We do not allow a docked window to change its size, period. */
 	if (vm_window->is_docked) {
 		if (conf_changed)
-			send_configure(vm_window, vm_window->x,
+			send_configure(g, vm_window, vm_window->x,
 				       vm_window->y, vm_window->width,
 				       vm_window->height);
 		vm_window->have_queued_configure = 0;
@@ -1144,7 +1146,7 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 
 	if (vm_window->have_queued_configure) {
 		if (conf_changed) {
-			send_configure(vm_window, vm_window->x,
+			send_configure(g, vm_window, vm_window->x,
 				       vm_window->y, vm_window->width,
 				       vm_window->height);
 			return;
@@ -1181,12 +1183,12 @@ static void process_xevent_crossing(Ghandles * g, const XCrossingEvent * ev)
 		XQueryKeymap(g->display, keys);
 		hdr.type = MSG_KEYMAP_NOTIFY;
 		hdr.window = 0;
-		write_message(hdr, keys);
+		write_message(g->vchan, hdr, keys);
 	}
 	/* move tray to correct position in VM */
 	if (vm_window->is_docked &&
-			fix_docked_xy(g, vm_window, "process_xevent_crossing")) {
-		send_configure(vm_window, vm_window->x, vm_window->y,
+		fix_docked_xy(g, vm_window, "process_xevent_crossing")) {
+		send_configure(g, vm_window, vm_window->x, vm_window->y,
 			       vm_window->width, vm_window->height);
 	}
 
@@ -1199,7 +1201,7 @@ static void process_xevent_crossing(Ghandles * g, const XCrossingEvent * ev)
 	k.mode = ev->mode;
 	k.detail = ev->detail;
 	k.focus = ev->focus;
-	write_message(hdr, k);
+	write_message(g->vchan, hdr, k);
 }
 
 /* handle local Xserver event: XMotionEvent
@@ -1216,7 +1218,7 @@ static void process_xevent_motion(Ghandles * g, const XMotionEvent * ev)
 	k.is_hint = ev->is_hint;
 	hdr.type = MSG_MOTION;
 	hdr.window = vm_window->remote_winid;
-	write_message(hdr, k);
+	write_message(g->vchan, hdr, k);
 //      fprintf(stderr, "motion in 0x%x", ev->window);
 }
 
@@ -1232,14 +1234,14 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
 		XQueryKeymap(g->display, keys);
 		hdr.type = MSG_KEYMAP_NOTIFY;
 		hdr.window = 0;
-		write_message(hdr, keys);
+		write_message(g->vchan, hdr, keys);
 	}
 	hdr.type = MSG_FOCUS;
 	hdr.window = vm_window->remote_winid;
 	k.type = ev->type;
 	k.mode = ev->mode;
 	k.detail = ev->detail;
-	write_message(hdr, k);
+	write_message(g->vchan, hdr, k);
 }
 
 /* update given fragment of window image
@@ -1489,11 +1491,11 @@ static void process_xevent_mapnotify(Ghandles * g, const XMapEvent * ev)
 		map_info.override_redirect = attr.override_redirect;
 		hdr.type = MSG_MAP;
 		hdr.window = vm_window->remote_winid;
-		write_message(hdr, map_info);
+		write_message(g->vchan, hdr, map_info);
 		if (vm_window->is_docked
 		    && fix_docked_xy(g, vm_window,
 				     "process_xevent_mapnotify"))
-			send_configure(vm_window, vm_window->x,
+			send_configure(g, vm_window, vm_window->x,
 				       vm_window->y, vm_window->width,
 				       vm_window->height);
 	}
@@ -1560,7 +1562,7 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev
 		hdr.window = vm_window->remote_winid;
 		msg.flags_set = flags & ~vm_window->flags_set;
 		msg.flags_unset = ~flags & vm_window->flags_set;
-		write_message(hdr, msg);
+		write_message(g->vchan, hdr, msg);
 		vm_window->flags_set = flags;
 	}
 }
@@ -1580,7 +1582,7 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 			/* move tray to correct position in VM */
 			if (fix_docked_xy
 			    (g, vm_window, "process_xevent_xembed")) {
-				send_configure(vm_window, vm_window->x,
+				send_configure(g, vm_window, vm_window->x,
 					       vm_window->y,
 					       vm_window->width,
 					       vm_window->height);
@@ -1593,13 +1595,13 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 		XQueryKeymap(g->display, keys);
 		hdr.type = MSG_KEYMAP_NOTIFY;
 		hdr.window = 0;
-		write_message(hdr, keys);
+		write_message(g->vchan, hdr, keys);
 		hdr.type = MSG_FOCUS;
 		hdr.window = vm_window->remote_winid;
 		k.type = FocusIn;
 		k.mode = NotifyNormal;
 		k.detail = NotifyNonlinear;
-		write_message(hdr, k);
+		write_message(g->vchan, hdr, k);
 	}
 
 }
@@ -1671,7 +1673,7 @@ static void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
 {
 	struct msg_shmimage untrusted_mx;
 
-	read_struct(untrusted_mx);
+	read_struct(g->vchan, untrusted_mx);
 	if (!vm_window->is_mapped)
 		return;
 	if (g->log_level >= 2) {
@@ -1708,7 +1710,7 @@ static void handle_create(Ghandles * g, XID window)
 	   vm_window->local_winid = 0;
 	   vm_window->dest = vm_window->src = vm_window->pix = 0;
 	 */
-	read_struct(untrusted_crt);
+	read_struct(g->vchan, untrusted_crt);
 	/* sanitize start */
 	VERIFY((int) untrusted_crt.width >= 0
 	       && (int) untrusted_crt.height >= 0);
@@ -1914,7 +1916,7 @@ static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 	char buf[sizeof(untrusted_msg.data)];
 	char *list[1] = { buf };
 
-	read_struct(untrusted_msg);
+	read_struct(g->vchan, untrusted_msg);
 	/* sanitize start */
 	untrusted_msg.data[sizeof(untrusted_msg.data) - 1] = 0;
 	sanitize_string_from_vm((unsigned char *) (untrusted_msg.data),
@@ -1940,7 +1942,7 @@ static void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 
 	memset(&size_hints, 0, sizeof(size_hints));
 
-	read_struct(untrusted_msg);
+	read_struct(g->vchan, untrusted_msg);
 
 	/* sanitize start */
 	size_hints.flags = 0;
@@ -2013,7 +2015,7 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 	struct msg_window_flags untrusted_msg;
 	struct msg_window_flags msg;
 
-	read_struct(untrusted_msg);
+	read_struct(g->vchan, untrusted_msg);
 
 	/* sanitize start */
 	VERIFY((untrusted_msg.flags_set & untrusted_msg.flags_unset) == 0);
@@ -2115,7 +2117,7 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
 	struct genlist *trans;
 	struct msg_map_info untrusted_txt;
 
-	read_struct(untrusted_txt);
+	read_struct(g->vchan, untrusted_txt);
 	vm_window->is_mapped = 1;
 	if (untrusted_txt.transient_for
 	    && (trans =
@@ -2211,7 +2213,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 
 	if (vm_window->image)
 		release_mapped_mfns(g, vm_window);
-	read_data(untrusted_shmcmd_data_from_remote,
+	read_data(g->vchan, untrusted_shmcmd_data_from_remote,
 		  sizeof(struct shm_cmd));
 
 	if (g->log_level > 1)
@@ -2232,7 +2234,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	/* sanitize end */
 	vm_window->image_width = untrusted_shmcmd->width;
 	vm_window->image_height = untrusted_shmcmd->height;	/* sanitized above */
-	read_data((char *) untrusted_shmcmd->mfns,
+	read_data(g->vchan, (char *) untrusted_shmcmd->mfns,
 		  SIZEOF_SHARED_MFN * num_mfn);
 	vm_window->image =
 	    XShmCreateImage(g->display,
@@ -2296,7 +2298,7 @@ static void handle_message(Ghandles * g)
 	struct genlist *l;
 	struct windowdata *vm_window = NULL;
 
-	read_struct(untrusted_hdr);
+	read_struct(g->vchan, untrusted_hdr);
 	VERIFY(untrusted_hdr.type > MSG_MIN
 	       && untrusted_hdr.type < MSG_MAX);
 	/* sanitized msg type */
@@ -2482,7 +2484,7 @@ static void send_xconf(Ghandles * g)
 	xconf.h = attr.height;
 	xconf.depth = attr.depth;
 	xconf.mem = xconf.w * xconf.h * 4 / 1024 + 1;
-	write_struct(xconf);
+	write_struct(g->vchan, xconf);
 }
 
 /* receive from VM and compare protocol version
@@ -2492,7 +2494,7 @@ static void get_protocol_version(Ghandles * g)
 	uint32_t untrusted_version;
 	char message[1024];
 	uint32_t version_major, version_minor;
-	read_struct(untrusted_version);
+	read_struct(g->vchan, untrusted_version);
 	version_major = untrusted_version >> 16;
 	version_minor = untrusted_version & 0xffff;
 
@@ -2566,7 +2568,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: qubes-guid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f]\n");
+		"usage: qubes-guid -d domain_id [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
@@ -2578,6 +2580,8 @@ static void usage(void)
 	fprintf(stderr, " 0 - only errors\n");
 	fprintf(stderr, " 1 - some basic messages (default)\n");
 	fprintf(stderr, " 2 - debug\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "target_domid should be used in case domain_id is stubdom\n");
 }
 
 static void parse_cmdline(Ghandles * g, int argc, char **argv)
@@ -2588,13 +2592,16 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	g->qrexec_clipboard = 0;
 	g->nofork = 0;
 
-	while ((opt = getopt(argc, argv, "d:c:l:i:vqQnaf")) != -1) {
+	while ((opt = getopt(argc, argv, "d:t:c:l:i:vqQnaf")) != -1) {
 		switch (opt) {
 		case 'a':
 			g->audio_low_latency = 1;
 			break;
 		case 'd':
 			g->domid = atoi(optarg);
+			break;
+		case 't':
+			g->target_domid = atoi(optarg);
 			break;
 		case 'c':
 			g->cmdline_color = optarg;
@@ -2630,6 +2637,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 		fprintf(stderr, "domid<=0?");
 		exit(1);
 	}
+	/* default target_domid to domid */
+	if (!g->target_domid)
+		g->target_domid = g->domid;
 }
 
 static void load_default_config_values(Ghandles * g)
@@ -2822,6 +2832,10 @@ static void wait_for_pacat(int UNUSED(signum)) {
 	}
 }
 
+void vchan_close()
+{
+	libvchan_close(ghandles.vchan);
+}
 
 static void get_boot_lock(int domid)
 {
@@ -2877,7 +2891,7 @@ int main(int argc, char **argv)
 	parse_cmdline(&ghandles, argc, argv);
 	get_boot_lock(ghandles.domid);
 	/* vmname is required to parse config file */
-	vmname = get_vm_name(ghandles.domid, &ghandles.target_domid);
+	vmname = libvchan_get_domain_name(ghandles.domid);
 	strncpy(ghandles.vmname, vmname, sizeof(ghandles.vmname));
 	ghandles.vmname[sizeof(ghandles.vmname) - 1] = 0;
 	free(vmname);
@@ -2971,7 +2985,12 @@ int main(int argc, char **argv)
 	}
 	mkghandles(&ghandles);
 	XSetErrorHandler(x11_error_handler);
-	peer_client_init(ghandles.domid, 6000);
+	double_buffer_init()
+	ghandles.vchan = libvchan_client_init(ghandles.domid, 6000);
+	if (!ghandles.vchan) {
+		fprintf(stderr, "Failed to connect to gui-agent\n");
+		exit(1);
+	}
 	atexit(vchan_close);
 	signal(SIGCHLD, wait_for_pacat);
 	exec_pacat(&ghandles);
@@ -3029,12 +3048,12 @@ int main(int argc, char **argv)
 				process_xevent(&ghandles);
 				busy = 1;
 			}
-			if (read_ready()) {
+			if (libvchan_data_ready(ghandles.vchan)) {
 				handle_message(&ghandles);
 				busy = 1;
 			}
 		} while (busy);
-		wait_for_vchan_or_argfd(1, select_fds, &retset);
+		wait_for_vchan_or_argfd(ghandles.vchan, 1, select_fds, &retset);
 	}
 	return 0;
 }

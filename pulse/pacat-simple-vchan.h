@@ -12,8 +12,8 @@ struct userdata {
 	char *name;
 	int ret;
 
-	struct libvchan *play_ctrl;
-	struct libvchan *rec_ctrl;
+	libvchan_t *play_ctrl;
+	libvchan_t *rec_ctrl;
 
 	pa_proplist *proplist;
 	pa_context *context;
