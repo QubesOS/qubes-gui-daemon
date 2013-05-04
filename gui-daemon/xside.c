@@ -49,6 +49,7 @@
 #include <qubes-xorg-tray-defs.h>
 #include <libvchan.h>
 #include "txrx.h"
+#include "double-buffer.h"
 #include "list.h"
 #include "error.h"
 #include "png.h"
@@ -2985,7 +2986,7 @@ int main(int argc, char **argv)
 	}
 	mkghandles(&ghandles);
 	XSetErrorHandler(x11_error_handler);
-	double_buffer_init()
+	double_buffer_init();
 	ghandles.vchan = libvchan_client_init(ghandles.domid, 6000);
 	if (!ghandles.vchan) {
 		fprintf(stderr, "Failed to connect to gui-agent\n");
