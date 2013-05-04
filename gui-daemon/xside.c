@@ -2569,7 +2569,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: qubes-guid -d domain_id [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f]\n");
+		"usage: qubes-guid -d domain_id -N domain_name [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
@@ -2593,7 +2593,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	g->qrexec_clipboard = 0;
 	g->nofork = 0;
 
-	while ((opt = getopt(argc, argv, "d:t:c:l:i:vqQnaf")) != -1) {
+	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:vqQnaf")) != -1) {
 		switch (opt) {
 		case 'a':
 			g->audio_low_latency = 1;
@@ -2603,6 +2603,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 			break;
 		case 't':
 			g->target_domid = atoi(optarg);
+			break;
+		case 'N':
+			strncpy(g->vmname, optarg, sizeof(g->vmname));
 			break;
 		case 'c':
 			g->cmdline_color = optarg;
@@ -2641,6 +2644,10 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	/* default target_domid to domid */
 	if (!g->target_domid)
 		g->target_domid = g->domid;
+	if (!g->vmname) {
+		fprintf(stderr, "domain name?");
+		exit(1);
+	}
 }
 
 static void load_default_config_values(Ghandles * g)
@@ -2879,7 +2886,6 @@ void restart_guid() {
 int main(int argc, char **argv)
 {
 	int xfd;
-	char *vmname;
 	FILE *f;
 	int childpid;
 	int pipe_notify[2];
@@ -2891,11 +2897,6 @@ int main(int argc, char **argv)
 
 	parse_cmdline(&ghandles, argc, argv);
 	get_boot_lock(ghandles.domid);
-	/* vmname is required to parse config file */
-	vmname = libvchan_get_domain_name(ghandles.domid);
-	strncpy(ghandles.vmname, vmname, sizeof(ghandles.vmname));
-	ghandles.vmname[sizeof(ghandles.vmname) - 1] = 0;
-	free(vmname);
 	/* load config file */
 	load_default_config_values(&ghandles);
 	parse_config(&ghandles);
