@@ -532,11 +532,12 @@ int main(int argc, char *argv[])
 	pa_glib_mainloop* m = NULL;
 	pa_time_event *time_event = NULL;
 	char *server = NULL;
-	int domid = 0;
+	char *domname = NULL;
+	int domid = -1;
 	int i;
 
-	if (argc <= 1) {
-		fprintf(stderr, "usage: %s [-l] domid\n", argv[0]);
+	if (argc <= 2) {
+		fprintf(stderr, "usage: %s [-l] domid domname\n", argv[0]);
 		fprintf(stderr, "  -l - low-latency mode (higher CPU usage)\n");
 		exit(1);
 	}
@@ -551,22 +552,27 @@ int main(int argc, char *argv[])
 					exit(1);
 			}
 		} else {
-			domid = atoi(argv[i]);
+			if (domid < 0)
+				domid = atoi(argv[i]);
+			else 
+				domname = argv[i];
 		}
 	}
 	if (domid <= 0) { /* not-a-number returns 0 */
 		fprintf(stderr, "invalid domid\n");
 		exit(1);
 	}
-
-    domid = atoi(argv[1]);
+	if (!domname) {
+		fprintf(stderr, "missing domname\n");
+		exit(1);
+	}
 
 	memset(&u, 0, sizeof(u));
 	u.ret = 1;
 
 	g_mutex_init(&u.prop_mutex);
 
-    u.name = libvchan_get_domain_name(domid);
+	u.name = domname;
 
 	u.play_ctrl = libvchan_client_init(domid, QUBES_PA_SINK_VCHAN_PORT);
 	if (!u.play_ctrl) {

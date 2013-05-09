@@ -2435,7 +2435,7 @@ static void exec_pacat(Ghandles * g)
 	snprintf(domid_txt, sizeof domid_txt, "%d", g->domid);
 	snprintf(logname, sizeof logname, "/var/log/qubes/pacat.%s.log",
 		 g->vmname);
-	snprintf(old_logname, sizeof logname, "/var/log/qubes/pacat.%s.log.old",
+	snprintf(old_logname, sizeof old_logname, "/var/log/qubes/pacat.%s.log.old",
 		 g->vmname);
 	if (stat(logname, &stat_buf) == 0) {
 	   if (rename(logname, old_logname) < 0) {
@@ -2463,10 +2463,10 @@ static void exec_pacat(Ghandles * g)
 		umask(0077);
 		if (g->audio_low_latency) {
 			execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
-					"-l", domid_txt, NULL);
+					"-l", domid_txt, g->vmname, NULL);
 		} else {
 			execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
-					domid_txt, NULL);
+					domid_txt, g->vmname, NULL);
 		}
 		perror("execl");
 		_exit(1);
