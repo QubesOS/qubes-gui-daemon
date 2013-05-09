@@ -24,6 +24,7 @@
 
 
 %{!?version: %define version %(cat version)}
+%{!?backend_vmm: %define backend_vmm %(echo $BACKEND_VMM)}
 
 Name:		qubes-gui-dom0	
 Version:	%{version}
@@ -42,8 +43,8 @@ Requires:	xorg-x11-server-Xorg pulseaudio-libs
 Requires:	service(graphical-login)
 Requires:	pulseaudio
 Requires:	libconfig
+Requires:	qubes-libvchan-%{backend_vmm}
 BuildRequires:	pulseaudio-libs-devel
-BuildRequires:	xen-devel
 BuildRequires:	libXt-devel
 BuildRequires:	libXext-devel
 BuildRequires:	libconfig-devel
@@ -54,6 +55,7 @@ BuildRequires:	gcc
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
 BuildRequires:	qubes-core-libs
 BuildRequires:	qubes-gui-common-devel
+BuildRequires:	qubes-libvchan-%{backend_vmm}-devel
 
 %define _builddir %(pwd)
 
