@@ -1120,15 +1120,9 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 	}
 
 	int do_border = 0;
-	int hoff = 0, woff = 0, delta, i;
+	int delta, i;
 	if (!vm_window->image)
 		return;
-	/* when image larger than local window - place middle part of image in the
-	 * window */
-	if (vm_window->image_height > vm_window->height)
-		hoff = (vm_window->image_height - vm_window->height) / 2;
-	if (vm_window->image_width > vm_window->width)
-		woff = (vm_window->image_width - vm_window->width) / 2;
 	/* window contains only (forced) frame, so no content to update */
 	if (vm_window->width < border_width * 2
 	    || vm_window->height < border_width * 2)
@@ -1187,8 +1181,8 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		 * with XShmImage data.
 		 *
 		 * Always use 0,0 w+x,h+y coordinates to generate proper mask. */
-		w = w + x + woff;
-		h = h + y + hoff;
+		w = w + x;
+		h = h + y;
 		if (w > vm_window->image_width)
 			w = vm_window->image_width;
 		if (h > vm_window->image_height)
@@ -1247,8 +1241,8 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 	} else
 #endif
 		XShmPutImage(g->display, vm_window->local_winid,
-			     g->context, vm_window->image, x + woff,
-			     y + hoff, x, y, w, h, 0);
+			     g->context, vm_window->image, x,
+			     y, x, y, w, h, 0);
 	if (!do_border)
 		return;
 	for (i = 0; i < border_width; i++)
