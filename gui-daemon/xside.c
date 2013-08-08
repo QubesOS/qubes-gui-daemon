@@ -141,6 +141,7 @@ struct _global_handles {
 	struct windowdata *last_input_window;
 	/* signal was caught */
 	int volatile signal_caught;
+	int volatile reload_requested;
 	pid_t pulseaudio_pid;
 	/* configuration */
 	int log_level;		/* log level */
@@ -424,6 +425,17 @@ void mkghandles(Ghandles * g)
 			fprintf(stderr, "Icon size: %dx%d\n", g->icon_data[0], g->icon_data[1]);
 		}
 	}
+}
+
+/* reload X server parameters, especially after monitor/screen layout change */
+void reload(Ghandles * g) {
+	XWindowAttributes attr;
+
+	g->screen = DefaultScreen(g->display);
+	g->root_win = RootWindow(g->display, g->screen);
+	XGetWindowAttributes(g->display, g->root_win, &attr);
+	g->root_width = _VIRTUALX(attr.width);
+	g->root_height = attr.height;
 }
 
 /* find if window (given by id) is managed by this guid */
@@ -2065,6 +2077,12 @@ void dummy_signal_handler(int x)
 	ghandles.signal_caught = 1;
 }
 
+/* signal handler - connected to SIGHUP */
+void sighup_signal_handler(int x)
+{
+	ghandles.reload_requested = 1;
+}
+
 void print_backtrace(void)
 {
 	void *array[100];
@@ -2569,6 +2587,7 @@ int main(int argc, char **argv)
 	write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully
 
 	signal(SIGTERM, dummy_signal_handler);
+	signal(SIGHUP, sighup_signal_handler);
 	atexit(release_all_mapped_mfns);
 
 	xfd = ConnectionNumber(ghandles.display);
@@ -2593,6 +2612,11 @@ int main(int argc, char **argv)
 		if (ghandles.signal_caught) {
 			fprintf(stderr, "exiting on signal...\n");
 			exit(0);
+		}
+		if (ghandles.reload_requested) {
+			fprintf(stderr, "reloading X server parameters...\n");
+			reload(&ghandles);
+			ghandles.reload_requested = 0;
 		}
 		do {
 			busy = 0;
