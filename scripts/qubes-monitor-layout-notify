@@ -1,0 +1,68 @@
+#!/usr/bin/python2
+
+import re
+from subprocess import Popen, PIPE, check_call
+from qubes.qubes import QubesVmCollection
+
+# "LVDS connected 1024x768+0+0 (normal left inverted right) 304mm x 228mm"
+REGEX_OUTPUT = re.compile(r"""
+        (?x)                           # ignore whitespace
+        ^                              # start of string
+        (?P<output>[A-Za-z0-9\-]*)[ ]  # LVDS VGA etc
+        (?P<connect>(dis)?connected)[ ]# dis/connected
+        ((                             # a group
+           (?P<width>\d+)x             # either 1024x768+0+0
+           (?P<height>\d+)[+]  
+           (?P<x>\d+)[+]
+           (?P<y>\d+)
+         )|[\D])                       # or not a digit
+        .*                             # ignore rest of line
+        """)
+
+def get_monitor_layout():
+    outputs = []
+
+    for line in Popen(['xrandr', '-q'], stdout=PIPE).stdout:
+        if not line.startswith("Screen") and not line.startswith(" "):
+            output_params = REGEX_OUTPUT.match(line).groupdict()
+            if output_params['width']:
+                outputs.append("%s %s %s %s\n" % (
+                            output_params['width'],
+                            output_params['height'],
+                            output_params['x'],
+                            output_params['y']))
+    return outputs
+
+def notify_vm(vm, monitor_layout):
+    pipe = vm.run("QUBESRPC qubes.SetMonitorLayout dom0", passio_popen=True, wait=True)
+
+    pipe.stdin.write(''.join(monitor_layout))
+    pipe.stdin.close()
+    return pipe
+
+def notify_vms():
+
+    monitor_layout = get_monitor_layout()
+
+    qc = QubesVmCollection()
+    qc.lock_db_for_reading()
+    qc.load()
+    qc.unlock_db()
+
+    pipes = []
+    for vm in qc.values():
+        if vm.qid == 0:
+            continue
+        if vm.is_running():
+            pipes.append(notify_vm(vm, monitor_layout))
+
+    for p in pipes:
+        p.wait()
+
+def reload_guid():
+    check_call(["killall", "-HUP", "qubes-guid"])
+                
+
+if __name__ == "__main__":
+    reload_guid()
+    notify_vms()
