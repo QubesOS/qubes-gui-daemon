@@ -37,7 +37,8 @@ help:
 	    echo "make update-repo-installer -- copy dom0 rpms to installer repo"
 	    @exit 0;
 
-dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X-wrapper-qubes pulse/pacat-simple-vchan
+dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X-wrapper-qubes \
+		pulse/pacat-simple-vchan screen-layout-handler/watch-screen-layout-changes
 
 gui-daemon/qubes-guid:
 	(cd gui-daemon; $(MAKE))
@@ -50,6 +51,9 @@ shmoverride/X-wrapper-qubes:
 	
 pulse/pacat-simple-vchan:
 	$(MAKE) -C pulse pacat-simple-vchan
+
+screen-layout-handler/watch-screen-layout-changes:
+	$(MAKE) -C screen-layout-handler watch-screen-layout-changes
 
 rpms: rpms-dom0 rpms-vm
 	rpm --addsign rpm/x86_64/*$(VERSION)*.rpm
