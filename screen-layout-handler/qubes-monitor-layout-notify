@@ -1,6 +1,7 @@
 #!/usr/bin/python2
 
 import re
+import sys
 from subprocess import Popen, PIPE, check_call
 from qubes.qubes import QubesVmCollection
 
@@ -40,6 +41,26 @@ def notify_vm(vm, monitor_layout):
     pipe.stdin.close()
     return pipe
 
+def notify_vm_by_name(vmname):
+    monitor_layout = get_monitor_layout()
+
+    qc = QubesVmCollection()
+    qc.lock_db_for_reading()
+    qc.load()
+    qc.unlock_db()
+
+    vm = qc.get_vm_by_name(vmname)
+    if not vm:
+        print >>sys.stderr, "No such VM!"
+        return 1
+    if not vm.is_running():
+        print >>sys.stderr, "VM not running!"
+        return 1
+    pipe = notify_vm(vm, monitor_layout)
+    pipe.wait()
+
+    return 0
+
 def notify_vms():
 
     monitor_layout = get_monitor_layout()
@@ -64,5 +85,9 @@ def reload_guid():
                 
 
 if __name__ == "__main__":
-    reload_guid()
-    notify_vms()
+    if sys.argv:
+        """send monitor layout only to named VM"""
+        exit(notify_vm_by_name(sys.argv[1]))
+    else:
+        reload_guid()
+        notify_vms()
