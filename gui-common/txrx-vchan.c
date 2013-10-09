@@ -219,6 +219,7 @@ char *get_vm_name(int dom, int *target_dom)
 			perror("strtol");
 			exit(1);
 		}
+		free(target_dom_str);
 	} else
 		*target_dom = dom;
 	snprintf(buf, sizeof(buf), "/local/domain/%d/name", *target_dom);
@@ -257,9 +258,10 @@ void peer_client_init(int dom, int port)
 			free(vec);
 		len = 0;
 		dummy = xs_read(xs, 0, devbuf, &len);
+		if (dummy)
+			free(dummy);
 	}
 	while (!dummy || !len); // wait for the server to create xenstore entries
-	free(dummy);
 	xs_daemon_close(xs);
 
 	if (!(ctrl = libvchan_client_init(dom, port))) {
