@@ -26,7 +26,7 @@
 int write_data(char *buf, int size);
 int real_write_message(char *hdr, int size, char *data, int datasize);
 int read_data(char *buf, int size);
-int read_ready();
+int read_ready(void);
 #define read_struct(x) read_data((char*)&x, sizeof(x))
 #define write_struct(x) write_data((char*)&x, sizeof(x))
 #define write_message(x,y) do {\
@@ -39,17 +39,17 @@ char *get_vm_name(int dom, int *target_domid);
 void peer_client_init(int dom, int port);
 int peer_server_reinitialize(int port);
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void));
-void vchan_close();
-int vchan_fd();
+void vchan_close(void);
+int vchan_fd(void);
 
 /* used only in stubdom */
 #ifdef CONFIG_STUBDOM
-int vchan_handle_connected();
-void vchan_handler_called();
-void vchan_unmask_channel();
+int vchan_handle_connected(void);
+void vchan_handler_called(void);
+void vchan_unmask_channel(void);
 /* only for stubdom, because eof is handled in wait_for_vchan_or_argfd in other
  * cases */
-int vchan_is_eof();
+int vchan_is_eof(void);
 #endif
 
 

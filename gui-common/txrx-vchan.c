@@ -99,7 +99,7 @@ int read_data(char *buf, int size)
 	return size;
 }
 
-int read_ready()
+int read_ready(void)
 {
 	return libvchan_data_ready(ctrl);
 }
@@ -286,38 +286,38 @@ int peer_server_reinitialize(int port)
 	return peer_server_init(port);
 }
 
-void vchan_close()
+void vchan_close(void)
 {
 	if (!vchan_is_closed)
 		libvchan_close(ctrl);
 	vchan_is_closed = 1;
 }
 
-int vchan_fd()
+int vchan_fd(void)
 {
 	return libvchan_fd_for_select(ctrl);
 }
 
 #ifdef CONFIG_STUBDOM
-int vchan_handle_connected()
+int vchan_handle_connected(void)
 {
 	return libvchan_server_handle_connected(ctrl);
 }
 
-void vchan_handler_called()
+void vchan_handler_called(void)
 {
 	// clear the pending flag, will never block if called as name suggest
 	libvchan_wait(ctrl);
 }
 
-void vchan_unmask_channel()
+void vchan_unmask_channel(void)
 {
 	libvchan_prepare_to_select(ctrl);
 }
 
 /* only for stubdom, because eof is handled in wait_for_vchan_or_argfd in other
  * cases */
-int vchan_is_eof()
+int vchan_is_eof(void)
 {
 	return libvchan_is_eof(ctrl);
 }
