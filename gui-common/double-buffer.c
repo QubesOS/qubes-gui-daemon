@@ -55,7 +55,7 @@ void double_buffer_append(char *buf, int size)
 				"double_buffer_append: offset=%d, data_count=%d, req_size=%d\n",
 				data_offset, data_count, size);
 			system
-			    ("xmessage -button OK:2 'Out of buffer space (AppVM refuses to read data?), terminating...'");
+			    ("/usr/bin/xmessage -button OK:2 'Out of buffer space (AppVM refuses to read data?), terminating...'");
 			exit(1);
 		}
 		newbuf = malloc(newsize);
