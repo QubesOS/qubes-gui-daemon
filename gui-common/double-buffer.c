@@ -47,6 +47,12 @@ void double_buffer_init(void)
 
 void double_buffer_append(char *buf, int size)
 {
+	if ((unsigned)size > BUFFER_SIZE_MAX) {
+		fprintf(stderr, "double_buffer_append: req_size=%d\n", size);
+		system
+		    ("/usr/bin/xmessage -button OK:2 'Suspiciously large buffer, terminating...'");
+		exit(1);
+	}
 	if (size + data_offset + data_count > buffer_size) {
 		int newsize = data_count + size + BUFFER_SIZE_MIN;
 		char *newbuf;
