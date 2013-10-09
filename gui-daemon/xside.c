@@ -422,7 +422,7 @@ void mkghandles(Ghandles * g)
 		 * be used instead (as icon label) */
 		g->icon_data = load_png(g->cmdline_icon, &g->icon_data_len);
 		if (g->icon_data) {
-			fprintf(stderr, "Icon size: %dx%d\n", g->icon_data[0], g->icon_data[1]);
+			fprintf(stderr, "Icon size: %ldx%ld\n", g->icon_data[0], g->icon_data[1]);
 		}
 	}
 }
