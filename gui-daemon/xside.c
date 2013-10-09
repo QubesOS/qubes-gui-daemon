@@ -172,7 +172,7 @@ Ghandles ghandles;
  * checks if this window is managed by guid and declares windowdata struct
  * pointer */
 #define CHECK_NONMANAGED_WINDOW(g, id) struct windowdata *vm_window; \
-	if (!(vm_window=check_nonmanged_window(g, id))) return
+	if (!(vm_window=check_nonmanaged_window(g, id))) return
 
 #ifndef min
 #define min(x,y) ((x)>(y)?(y):(x))
@@ -439,7 +439,7 @@ void reload(Ghandles * g) {
 }
 
 /* find if window (given by id) is managed by this guid */
-struct windowdata *check_nonmanged_window(Ghandles * g, XID id)
+struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
 {
 	struct genlist *item = list_lookup(g->wid2windowdata, id);
 	if (!item) {
