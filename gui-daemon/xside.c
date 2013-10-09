@@ -1934,8 +1934,8 @@ void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	num_mfn = untrusted_shmcmd->num_mfn;
 	VERIFY((int) untrusted_shmcmd->width >= 0
 	       && (int) untrusted_shmcmd->height >= 0);
-	VERIFY((int) untrusted_shmcmd->width < MAX_WINDOW_WIDTH
-	       && (int) untrusted_shmcmd->height < MAX_WINDOW_HEIGHT);
+	VERIFY((int) untrusted_shmcmd->width <= MAX_WINDOW_WIDTH
+	       && (int) untrusted_shmcmd->height <= MAX_WINDOW_HEIGHT);
 	VERIFY(untrusted_shmcmd->off < 4096);
 	off = untrusted_shmcmd->off;
 	/* unused for now: VERIFY(untrusted_shmcmd->bpp == 24); */
