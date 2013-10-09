@@ -115,6 +115,10 @@ int __attribute__ ((constructor)) initfunc()
 	real_shmat = dlsym(RTLD_NEXT, "shmat");
 	real_shmctl = dlsym(RTLD_NEXT, "shmctl");
 	real_shmdt = dlsym(RTLD_NEXT, "shmdt");
+	if (!real_shmat || !real_shmctl || !real_shmdt) {
+		perror("shmoverride: missing shm API");
+		exit(1);
+	}
 #ifdef XENCTRL_HAS_XC_INTERFACE
 	xc_hnd = xc_interface_open(NULL, NULL, 0);
 	if (!xc_hnd) {
@@ -146,8 +150,17 @@ int __attribute__ ((constructor)) initfunc()
 		perror("shmoverride writing " SHMID_FILENAME);
 		exit(1);
 	}
-	close(idfd);
+	if (close(idfd) < 0) {
+		unlink(SHMID_FILENAME);
+		perror("shmoverride closing " SHMID_FILENAME);
+		exit(1);
+	}
 	cmd_pages = real_shmat(local_shmid, 0, 0);
+	if (!cmd_pages) {
+		unlink(SHMID_FILENAME);
+		perror("real_shmat");
+		exit(1);
+	}
 	cmd_pages->shmid = local_shmid;
 	addr_list = list_new();
 	return 0;
