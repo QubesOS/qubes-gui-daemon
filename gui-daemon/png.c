@@ -118,11 +118,8 @@ error:
 	if (data)
 		free(data);
 
-	if (info_ptr)
-		png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-
 	if (png_ptr)
-		png_destroy_read_struct(&png_ptr, NULL, NULL);
+		png_destroy_read_struct(&png_ptr, info_ptr ? &info_ptr : NULL, NULL);
 	fclose(fp);
 	return NULL;
 
