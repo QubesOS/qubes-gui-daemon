@@ -125,10 +125,11 @@ int __attribute__ ((constructor)) initfunc()
 		perror("shmoverride xc_interface_open");
 		return 0;	//allow it to run when not under Xen
 	}
-	idfd = open(SHMID_FILENAME, O_WRONLY | O_CREAT, 0600);
+	idfd = open(SHMID_FILENAME, O_WRONLY | O_CREAT | O_EXCL, 0600);
 	if (idfd < 0) {
 		perror("shmoverride creating " SHMID_FILENAME);
-		exit(1);
+		xc_interface_close(xc_hnd);
+		return 0;
 	}
 	local_shmid =
 	    shmget(IPC_PRIVATE, SHM_CMD_NUM_PAGES * 4096,
