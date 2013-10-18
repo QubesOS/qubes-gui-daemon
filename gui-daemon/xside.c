@@ -1460,6 +1460,11 @@ void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
 	read_struct(untrusted_mx);
 	if (!vm_window->is_mapped)
 		return;
+	if (g->log_level >= 2) {
+		fprintf(stderr, "shmimage for 0x%x, x: %d, y: %d, w: %d, h: %d\n",
+				vm_window, untrusted_mx.x, untrusted_mx.y,
+				              untrusted_mx.width, untrusted_mx.height);
+	}
 	/* WARNING: passing raw values, input validation is done inside of
 	 * do_shm_update */
 	do_shm_update(g, vm_window, untrusted_mx.x, untrusted_mx.y,
@@ -2129,8 +2134,8 @@ void exec_pacat(Ghandles * g)
 	char domid_txt[20];
 	char logname[80];
 	snprintf(domid_txt, sizeof domid_txt, "%d", g->domid);
-	snprintf(logname, sizeof logname, "/var/log/qubes/pacat.%d.log",
-		 g->domid);
+	snprintf(logname, sizeof logname, "/var/log/qubes/pacat.%s.log",
+		 g->vmname);
 	switch (pid=fork()) {
 	case -1:
 		perror("fork pacat");
