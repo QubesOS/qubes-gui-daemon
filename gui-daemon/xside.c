@@ -231,6 +231,8 @@ int ask_whether_verify_failed(Ghandles * g, const char *cond)
 			} else {
 				execlp("zenity", "zenity", "--question", "--ok-label", "Terminate", "--cancel-label", "Ignore", "--text", text, (char*)NULL);
 			}
+			perror("execlp");
+			exit(1);
 		case -1:
 			perror("fork");
 			exit(1);
