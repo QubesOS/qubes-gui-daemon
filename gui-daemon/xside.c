@@ -2330,16 +2330,16 @@ void parse_key_sequence(const char *seq, int *mask, KeySym * key)
 			seqp += 5;
 		} else if (strncasecmp(seqp, "Mod1-", 5) == 0) {
 			*mask |= Mod1Mask;
-			seqp += 4;
+			seqp += 5;
 		} else if (strncasecmp(seqp, "Mod2-", 5) == 0) {
 			*mask |= Mod2Mask;
-			seqp += 4;
+			seqp += 5;
 		} else if (strncasecmp(seqp, "Mod3-", 5) == 0) {
 			*mask |= Mod3Mask;
-			seqp += 4;
+			seqp += 5;
 		} else if (strncasecmp(seqp, "Mod4-", 5) == 0) {
 			*mask |= Mod4Mask;
-			seqp += 4;
+			seqp += 5;
 			/* second name just for convenience */
 		} else if (strncasecmp(seqp, "Alt-", 4) == 0) {
 			*mask |= Mod1Mask;
