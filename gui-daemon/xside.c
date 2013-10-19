@@ -530,6 +530,10 @@ int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 			dup2(fd, 1);
 			close(fd);
 			fd = open(path_stdin, O_RDONLY);
+			if (fd < 0) {
+				perror("open");
+				_exit(1);
+			}
 			dup2(fd, 0);
 			close(fd);
 			snprintf(domid_str, sizeof(domid_str), "%d", g->target_domid);
