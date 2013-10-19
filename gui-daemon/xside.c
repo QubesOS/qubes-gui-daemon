@@ -64,7 +64,7 @@
 // #define FILL_TRAY_BG
 
 // Mod2 excluded as it is Num_Lock
-#define SPECAL_KEYS_MASK (Mod1Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
+#define SPECIAL_KEYS_MASK (Mod1Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
 
 enum clipboard_op {
 	CLIPBOARD_COPY,
@@ -661,7 +661,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 	struct msg_hdr hdr;
 	char *data;
 	int len;
-	if ((ev->state & SPECAL_KEYS_MASK) ==
+	if ((ev->state & SPECIAL_KEYS_MASK) ==
 	    g->copy_seq_mask
 	    && ev->keycode == XKeysymToKeycode(g->display,
 					       g->copy_seq_key)) {
@@ -682,7 +682,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 		}
 		return 1;
 	}
-	if ((ev->state & SPECAL_KEYS_MASK) ==
+	if ((ev->state & SPECIAL_KEYS_MASK) ==
 	    g->paste_seq_mask
 	    && ev->keycode == XKeysymToKeycode(g->display,
 					       g->paste_seq_key)) {
