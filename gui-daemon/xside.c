@@ -503,22 +503,49 @@ void save_clipboard_source_vmname(const char *vmname) {
 
 /* fetch clippboard content from file */
 /* lock already taken in is_special_keypress() */
-void get_qubes_clipboard(char **data, int *len)
+void get_qubes_clipboard(Ghandles *g, char **data, int *len)
 {
 	FILE *file;
 	*len = 0;
 	file = fopen(QUBES_CLIPBOARD_FILENAME, "r");
 	if (!file)
 		return;
-	fseek(file, 0, SEEK_END);
+	if (fseek(file, 0, SEEK_END) < 0) {
+		show_error_message(g, "secure paste: failed to seek in " QUBES_CLIPBOARD_FILENAME);
+		goto close_done;
+	}
 	*len = ftell(file);
+	if (*len < 0) {
+		*len = 0;
+		show_error_message(g, "secure paste: failed to determine size of "
+			QUBES_CLIPBOARD_FILENAME);
+		goto close_done;
+	}
+	if (*len == 0)
+		goto close_done;
 	*data = malloc(*len);
 	if (!*data) {
 		perror("malloc");
 		exit(1);
 	}
-	fseek(file, 0, SEEK_SET);
-	fread(*data, *len, 1, file);
+	if (fseek(file, 0, SEEK_SET) < 0) {
+		free(*data);
+		*data = NULL;
+		*len = 0;
+		show_error_message(g, "secure paste: failed to seek in "
+			QUBES_CLIPBOARD_FILENAME);
+		goto close_done;
+	}
+	*len=fread(*data, 1, *len, file);
+	if (*len < 0) {
+		*len = 0;
+		free(*data);
+		*data=NULL;
+		show_error_message(g, "secure paste: failed to read from "
+			QUBES_CLIPBOARD_FILENAME);
+		goto close_done;
+	}
+close_done:
 	fclose(file);
 	truncate(QUBES_CLIPBOARD_FILENAME, 0);
 	save_clipboard_source_vmname("");
@@ -741,7 +768,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 			hdr.type = MSG_CLIPBOARD_DATA;
 			if (g->log_level > 0)
 				fprintf(stderr, "secure paste\n");
-			get_qubes_clipboard(&data, &len);
+			get_qubes_clipboard(g, &data, &len);
 			if (len > 0) {
 				hdr.window = len;
 				hdr.untrusted_len = len;
