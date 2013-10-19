@@ -673,12 +673,20 @@ void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	inter_appviewer_lock(1);
 	file = fopen(QUBES_CLIPBOARD_FILENAME, "w");
 	if (!file) {
-		perror("open " QUBES_CLIPBOARD_FILENAME);
-		exit(1);
+		show_error_message(g, "secure copy: failed to open file " QUBES_CLIPBOARD_FILENAME);
+		goto error;
 	}
-	fwrite(untrusted_data, untrusted_data_sz, 1, file);
-	fclose(file);
+	if (fwrite(untrusted_data, 1, untrusted_data_sz, file) != untrusted_data_sz) {
+		fclose(file);
+		show_error_message(g, "secure copy: failed to write to file " QUBES_CLIPBOARD_FILENAME);
+		goto error;
+	}
+	if (fclose(file) < 0) {
+		show_error_message(g, "secure copy: failed to close file " QUBES_CLIPBOARD_FILENAME);
+		goto error;
+	}
 	save_clipboard_source_vmname(g->vmname);
+error:
 	inter_appviewer_lock(0);
 	g->clipboard_requested = 0;
 	free(untrusted_data);
