@@ -309,8 +309,8 @@ Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 	Atom atom_label;
 
 	my_size_hints.flags = PSize;
-	my_size_hints.height = vm_window->width;
-	my_size_hints.width = vm_window->height;
+	my_size_hints.width = vm_window->width;
+	my_size_hints.height = vm_window->height;
 
 	if (vm_window->parent)
 		parent = vm_window->parent->local_winid;
