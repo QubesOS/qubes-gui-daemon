@@ -778,6 +778,8 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 				fprintf(stderr, "secure paste\n");
 			get_qubes_clipboard(g, &data, &len);
 			if (len > 0) {
+				/* MSG_CLIPBOARD_DATA uses the window field to pass the length
+				   of the blob */
 				hdr.window = len;
 				hdr.untrusted_len = len;
 				real_write_message((char *) &hdr, sizeof(hdr),
