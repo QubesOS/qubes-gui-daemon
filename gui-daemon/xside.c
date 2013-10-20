@@ -1185,7 +1185,8 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		     1) * vm_window->image_height;
 		data = datap = calloc(1, data_sz);
 		if (!data) {
-			perror("malloc");
+			perror("malloc(%dx%x -> %zu\n",
+				vm_window->image_width, vm_window->image_height, data_sz);
 			exit(1);
 		}
 
