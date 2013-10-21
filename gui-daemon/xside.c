@@ -627,7 +627,7 @@ int evaluate_clipboard_policy(Ghandles * g) {
 	if (fd < 0)
 		return 0;
 
-	len = read(fd, source_vm, sizeof(source_vm));
+	len = read(fd, source_vm, sizeof(source_vm)-1);
 	if (len < 0) {
 		perror("read");
 		close(fd);
