@@ -85,7 +85,7 @@ def reload_guid():
                 
 
 if __name__ == "__main__":
-    if sys.argv:
+    if len(sys.argv) > 1:
         """send monitor layout only to named VM"""
         exit(notify_vm_by_name(sys.argv[1]))
     else:
