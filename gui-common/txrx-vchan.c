@@ -235,9 +235,10 @@ char *get_vm_name(int dom, int *target_dom)
 void peer_client_init(int dom, int port)
 {
 	struct xs_handle *xs;
-	char *dummy;
+	char *dummy, *dummy2;
 	unsigned int len = 0;
 	char devbuf[128];
+	char dombuf[128];
 	unsigned int count;
 	char **vec;
 
@@ -251,6 +252,7 @@ void peer_client_init(int dom, int port)
 	snprintf(devbuf, sizeof(devbuf),
 		 "/local/domain/%d/device/vchan/%d/event-channel", dom,
 		 port);
+	snprintf(dombuf, sizeof(dombuf), "/local/domain/%d", dom);
 	xs_watch(xs, devbuf, devbuf);
 	do {
 		vec = xs_read_watch(xs, &count);
@@ -260,6 +262,15 @@ void peer_client_init(int dom, int port)
 		dummy = xs_read(xs, 0, devbuf, &len);
 		if (dummy)
 			free(dummy);
+		else {
+			/* check if domain still alive */
+			dummy2 = xs_read(xs, 0, dombuf, &len);
+			if (!dummy2) {
+				fprintf(stderr, "domain dead\n");
+				exit(1);
+			}
+			free(dummy2);
+		}
 	}
 	while (!dummy || !len); // wait for the server to create xenstore entries
 	xs_daemon_close(xs);

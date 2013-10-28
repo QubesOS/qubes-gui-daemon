@@ -90,9 +90,10 @@ struct libvchan *peer_client_init(int dom, int port, char **name)
 	struct xs_handle *xs;
 	char buf[64];
 	unsigned int len = 0;
+	char *tmp;
 
+	xs = xs_daemon_open();
 	if (name) {
-		xs = xs_daemon_open();
 		if (!xs) {
 			perror("xs_daemon_open");
 			exit(1);
@@ -103,14 +104,23 @@ struct libvchan *peer_client_init(int dom, int port, char **name)
 			perror("xs_read domainname");
 			exit(1);
 		}
-		xs_daemon_close(xs);
 	}
 
+	snprintf(buf, sizeof(buf), "/local/domain/%d", dom);
 	do {
 		ctrl = libvchan_client_init(dom, port);
-		if (ctrl == NULL)
+		if (ctrl == NULL) {
+			/* check if domain still alive */
+			tmp = xs_read(xs, 0, buf, &len);
+			if (!tmp) {
+				fprintf(stderr, "domain dead\n");
+				exit(1);
+			}
+			free(tmp);
 			sleep(1);
+		}
 	} while (ctrl == NULL);
+	xs_daemon_close(xs);
 #ifdef XENCTRL_HAS_XC_INTERFACE
 	xc_handle = xc_interface_open(NULL, 0, 0);
 	if (xc_handle == NULL) {
