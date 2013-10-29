@@ -1043,7 +1043,8 @@ void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
 		write_message(hdr, keys);
 	}
 	/* move tray to correct position in VM */
-	if (fix_docked_xy(g, vm_window, "process_xevent_crossing")) {
+	if (vm_window->is_docked &&
+			fix_docked_xy(g, vm_window, "process_xevent_crossing")) {
 		send_configure(vm_window, vm_window->x, vm_window->y,
 			       vm_window->width, vm_window->height);
 	}
