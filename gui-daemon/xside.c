@@ -116,6 +116,7 @@ struct _global_handles {
 	Atom wm_state;         /* Atom: _NET_WM_STATE */
 	Atom wm_state_fullscreen; /* Atom: _NET_WM_STATE_FULLSCREEN */
 	Atom wm_state_demands_attention; /* Atom: _NET_WM_STATE_DEMANDS_ATTENTION */
+	Atom frame_extents; /* Atom: _NET_FRAME_EXTENTS */
 	/* shared memory handling */
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
 	int cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
@@ -397,6 +398,7 @@ void mkghandles(Ghandles * g)
 	g->wm_state = XInternAtom(g->display, "_NET_WM_STATE", False);
 	g->wm_state_fullscreen = XInternAtom(g->display, "_NET_WM_STATE_FULLSCREEN", False);
 	g->wm_state_demands_attention = XInternAtom(g->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
+	g->frame_extents = XInternAtom(g->display, "_NET_FRAME_EXTENTS", False);
 	/* create graphical contexts */
 	get_frame_gc(g, g->cmdline_color ? : "red");
 #ifdef FILL_TRAY_BG
@@ -847,9 +849,25 @@ void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
 {
 	int x = 0, y = 0;
 	Window win;
+	Atom act_type;
+	long *frame_extents; // left, right, top, bottom
+	unsigned long nitems, bytesleft;
+	int ret, act_fmt;
+
 	if (!vm_window->is_docked) {
-		x = vm_window->x;
-		y = vm_window->y;
+		/* we have window content coordinates, but XMoveResizeWindow requires
+		 * left top *border* pixel coordinates (if any border is present). */
+		ret = XGetWindowProperty(g->display, vm_window->local_winid, g->frame_extents, 0, 4,
+				False, XA_CARDINAL, &act_type, &act_fmt, &nitems, &bytesleft, (unsigned char**)&frame_extents);
+		if (ret == Success && nitems == 4) {
+			x = vm_window->x - frame_extents[0];
+			y = vm_window->y - frame_extents[2];
+			XFree(frame_extents);
+		} else {
+			/* assume no border */
+			x = vm_window->x;
+			y = vm_window->y;
+		}
 	} else
 		XTranslateCoordinates(g->display, g->root_win,
 				      vm_window->local_winid, vm_window->x,
