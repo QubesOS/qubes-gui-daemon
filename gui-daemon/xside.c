@@ -185,6 +185,40 @@ Ghandles ghandles;
 void inter_appviewer_lock(int mode);
 void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 
+static void show_error_message (Ghandles * g, const char *msg)
+{
+	char message[1024];
+	pid_t pid;
+	int ret;
+
+	snprintf(message, sizeof message, "Error: VM \"%s\": %s", g->vmname, msg);
+	pid = fork();
+	switch (pid) {
+		case 0:
+			if (g->use_kdialog) {
+				execlp("/usr/bin/kdialog", "kdialog", "--sorry", message, (char*)NULL);
+			} else {
+				execlp("/usr/bin/zenity", "zenity", "--error", "--text", message, (char*)NULL);
+			}
+			perror("execlp");
+			exit(1);
+		case -1:
+			perror("fork");
+			exit(1);
+		default:
+			waitpid(pid, &ret, 0);
+			ret = WEXITSTATUS(ret);
+	}
+	switch (ret) {
+	case 0:
+	case 1:
+		return;
+	default:
+		fprintf(stderr, "Problems executing kdialog ?\n");
+		exit(1);
+	}
+}
+
 /* ask user when VM sent invalid message */
 int ask_whether_verify_failed(Ghandles * g, const char *cond)
 {
