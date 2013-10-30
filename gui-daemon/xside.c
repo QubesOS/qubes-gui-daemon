@@ -2380,7 +2380,8 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 			g->cmdline_icon = optarg;
 			break;
 		case 'q':
-			g->log_level--;
+			if (g->log_level>0)
+				g->log_level--;
 			break;
 		case 'v':
 			g->log_level++;
