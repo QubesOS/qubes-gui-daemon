@@ -940,9 +940,10 @@ void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
 			y = vm_window->y;
 		}
 	} else
-		XTranslateCoordinates(g->display, g->root_win,
+		if (!XTranslateCoordinates(g->display, g->root_win,
 				      vm_window->local_winid, vm_window->x,
-				      vm_window->y, &x, &y, &win);
+				      vm_window->y, &x, &y, &win))
+			return;
 	if (g->log_level > 1)
 		fprintf(stderr,
 			"XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d\n",
