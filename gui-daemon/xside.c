@@ -2391,8 +2391,8 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 			exit(1);
 		}
 	}
-	if (!g->domid) {
-		fprintf(stderr, "domid=0?");
+	if (g->domid<=0) {
+		fprintf(stderr, "domid<=0?");
 		exit(1);
 	}
 }
