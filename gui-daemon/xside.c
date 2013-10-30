@@ -2426,9 +2426,6 @@ void parse_key_sequence(const char *seq, int *mask, KeySym * key)
 		} else if (strncasecmp(seqp, "Mod1-", 5) == 0) {
 			*mask |= Mod1Mask;
 			seqp += 5;
-		} else if (strncasecmp(seqp, "Mod2-", 5) == 0) {
-			*mask |= Mod2Mask;
-			seqp += 5;
 		} else if (strncasecmp(seqp, "Mod3-", 5) == 0) {
 			*mask |= Mod3Mask;
 			seqp += 5;
