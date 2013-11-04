@@ -1161,8 +1161,8 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 	if (!vm_window->image)
 		return;
 	/* window contains only (forced) frame, so no content to update */
-	if (vm_window->width < border_width * 2
-	    || vm_window->height < border_width * 2)
+	if (vm_window->width <= border_width * 2
+	    || vm_window->height <= border_width * 2)
 		return;
 	/* force frame to be visible: */
 	/*   * left */
