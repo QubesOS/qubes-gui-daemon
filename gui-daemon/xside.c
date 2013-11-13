@@ -1063,7 +1063,7 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 		untrusted_conf.height = MAX_WINDOW_HEIGHT;
 	width = untrusted_conf.width;
 	height = untrusted_conf.height;
-	VERIFY(width >= 0 && height >= 0);
+	VERIFY(width > 0 && height > 0);
 	if (untrusted_conf.override_redirect > 0)
 		override_redirect = 1;
 	else
