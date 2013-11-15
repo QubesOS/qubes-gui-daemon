@@ -1011,12 +1011,20 @@ void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	if (g->log_level > 1)
 		fprintf(stderr,
-			"process_xevent_configure local 0x%x remote 0x%x, %d/%d, was "
+			"process_xevent_configure(synth %d) local 0x%x remote 0x%x, %d/%d, was "
 			"%d/%d, xy %d/%d was %d/%d\n",
+			ev->send_event,
 			(int) vm_window->local_winid,
 			(int) vm_window->remote_winid, ev->width,
 			ev->height, vm_window->width, vm_window->height,
 			ev->x, ev->y, vm_window->x, vm_window->y);
+	/* non-synthetic events are about window position/size relative to the embeding
+	 * frame window, wait for the synthetic one (produced by window manager), which
+	 * is about window position relative to original window parent.
+	 * See http://tronche.com/gui/x/icccm/sec-4.html#s-4.1.5 for details
+	 */
+	if (!ev->send_event)
+		return;
 	if (vm_window->width == ev->width
 	    && vm_window->height == ev->height && vm_window->x == ev->x
 	    && vm_window->y == ev->y)
