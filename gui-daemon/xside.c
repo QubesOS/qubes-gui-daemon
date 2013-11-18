@@ -1023,7 +1023,7 @@ void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 	 * is about window position relative to original window parent.
 	 * See http://tronche.com/gui/x/icccm/sec-4.html#s-4.1.5 for details
 	 */
-	if (!ev->send_event)
+	if (!ev->send_event && !vm_window->is_docked)
 		return;
 	if (vm_window->width == ev->width
 	    && vm_window->height == ev->height && vm_window->x == ev->x
