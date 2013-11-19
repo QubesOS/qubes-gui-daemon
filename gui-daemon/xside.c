@@ -1664,11 +1664,13 @@ void handle_create(Ghandles * g, XID window)
 	vm_window->local_winid = mkwindow(&ghandles, vm_window);
 	if (g->log_level > 0)
 		fprintf(stderr,
-			"Created 0x%x(0x%x) parent 0x%x(0x%x) ovr=%d\n",
+			"Created 0x%x(0x%x) parent 0x%x(0x%x) ovr=%d x/y %d/%d w/h %d/%d\n",
 			(int) vm_window->local_winid, (int) window,
 			(int) (vm_window->parent ? vm_window->parent->
 			       local_winid : 0), (unsigned) parent,
-			vm_window->override_redirect);
+			vm_window->override_redirect,
+			vm_window->x, vm_window->y,
+			vm_window->width, vm_window->height);
 	if (!list_insert
 	    (g->wid2windowdata, vm_window->local_winid, vm_window)) {
 		fprintf(stderr, "list_insert(g->wid2windowdata failed\n");
