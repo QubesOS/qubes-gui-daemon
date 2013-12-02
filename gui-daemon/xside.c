@@ -446,8 +446,6 @@ void mkghandles(Ghandles * g)
 	/* use qrexec for clipboard operations when stubdom GUI is used */
 	if (g->domid != g->target_domid)
 		g->qrexec_clipboard = 1;
-	else
-		g->qrexec_clipboard = 0;
 	if (getenv("KDE_SESSION_UID"))
 		g->use_kdialog = 1;
 	else
@@ -2363,6 +2361,7 @@ void usage()
 		"usage: qubes_guid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
+	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Log levels:\n");
 	fprintf(stderr, " 0 - only errors\n");
@@ -2375,8 +2374,9 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 	int opt;
 	/* defaults */
 	g->log_level = 1;
+	g->qrexec_clipboard = 0;
 
-	while ((opt = getopt(argc, argv, "d:c:l:i:vq")) != -1) {
+	while ((opt = getopt(argc, argv, "d:c:l:i:vqQ")) != -1) {
 		switch (opt) {
 		case 'd':
 			g->domid = atoi(optarg);
@@ -2396,6 +2396,9 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 			break;
 		case 'v':
 			g->log_level++;
+			break;
+		case 'Q':
+			g->qrexec_clipboard = 1;
 			break;
 		default:
 			usage();
