@@ -956,9 +956,9 @@ void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
 }
 
 
-/* force window to not hide it's frame
- * checks if at least border_width is from every screen edge (and fix if no)
- * Exception: allow window to be entriely off the screen */
+/* force window to not hide its frame
+ * checks if at least border_width is from every screen edge (and fix if not)
+ * Exception: allow window to be entirely off the screen */
 int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		    int border_width, char *caller)
 {
@@ -1497,7 +1497,7 @@ void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
 	}
 }
 
-/* dispath local Xserver event */
+/* dispatch local Xserver event */
 void process_xevent(Ghandles * g)
 {
 	XEvent event_buffer;
@@ -1578,7 +1578,7 @@ void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
 		      untrusted_mx.width, untrusted_mx.height);
 }
 
-/* ask user when VM creates to many windows */
+/* ask user when VM creates too many windows */
 void ask_whether_flooding(Ghandles * g)
 {
 	char text[1024];
@@ -1791,13 +1791,13 @@ static int validate_utf8_char(unsigned char *untrusted_c) {
 	return total_size;
 }
 
-/* replace non-printable charactes with '_'
+/* replace non-printable characters with '_'
  * given string must be NULL terminated already */
 void sanitize_string_from_vm(unsigned char *untrusted_s, int allow_utf8)
 {
 	int utf8_ret;
 	for (; *untrusted_s; untrusted_s++) {
-		// allow only non-controll ASCII chars
+		// allow only non-control ASCII chars
 		if (*untrusted_s >= 0x20 && *untrusted_s <= 0x7E)
 			continue;
 		if (allow_utf8 && *untrusted_s >= 0x80) {
