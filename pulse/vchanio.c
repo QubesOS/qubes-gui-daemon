@@ -93,11 +93,11 @@ struct libvchan *peer_client_init(int dom, int port, char **name)
 	char *tmp;
 
 	xs = xs_daemon_open();
+	if (!xs) {
+		perror("xs_daemon_open");
+		exit(1);
+	}
 	if (name) {
-		if (!xs) {
-			perror("xs_daemon_open");
-			exit(1);
-		}
 		snprintf(buf, sizeof(buf), "/local/domain/%d/name", dom);
 		*name = xs_read(xs, 0, buf, &len);
 		if (!*name) {
