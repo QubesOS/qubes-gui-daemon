@@ -152,7 +152,7 @@ int wait_for_vchan_or_argfd_once(int nfd, int *fd, fd_set * retset)
 	max++;
 	ret = select(max, &rfds, NULL, NULL, &tv);
 	if (ret < 0 && errno == EINTR)
-		return 0;
+		return -1;
 	if (ret < 0) {
 		perror("select");
 		exit(1);
