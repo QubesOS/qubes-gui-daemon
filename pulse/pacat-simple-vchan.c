@@ -535,22 +535,28 @@ int main(int argc, char *argv[])
 	pa_glib_mainloop* m = NULL;
 	pa_time_event *time_event = NULL;
 	char *server = NULL;
+	int domid;
 
 
 	if (argc <= 1) {
 		fprintf(stderr, "usage: %s domid\n", argv[0]);
 		exit(1);
 	}
+	domid = atoi(argv[1]);
+	if (domid <= 0) { /* not-a-number returns 0 */
+		fprintf(stderr, "invalid domid: %s\n", argv[1]);
+		exit(1);
+	}
 
 	memset(&u, 0, sizeof(u));
 	u.ret = 1;
 
-	u.play_ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SINK_VCHAN_PORT, &u.name);
+	u.play_ctrl = peer_client_init(domid, QUBES_PA_SINK_VCHAN_PORT, &u.name);
 	if (!u.play_ctrl) {
 		perror("libvchan_client_init");
 		exit(1);
 	}
-	u.rec_ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SOURCE_VCHAN_PORT, NULL);
+	u.rec_ctrl = peer_client_init(domid, QUBES_PA_SOURCE_VCHAN_PORT, NULL);
 	if (!u.rec_ctrl) {
 		perror("libvchan_client_init");
 		exit(1);
