@@ -2798,6 +2798,11 @@ int main(int argc, char **argv)
 	umask(0007);
 	logfd = open(dbg_log, O_WRONLY | O_CREAT | O_TRUNC, 0640);
 	umask(0077);
+	if (logfd < 0) {
+		fprintf(stderr,
+			"Failed to open log file: %s\n", strerror (errno));
+		exit(1);
+	}
 	dup2(logfd, 1);
 	dup2(logfd, 2);
 
