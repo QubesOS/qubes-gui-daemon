@@ -53,7 +53,7 @@ void slow_check_for_libvchan_is_eof(struct libvchan *ctrl)
 }
 
 
-int wait_for_vchan_once(struct libvchan *ctrl)
+static int wait_for_vchan_once(struct libvchan *ctrl)
 {
 	fd_set rfds;
 	int vfd, ret;
