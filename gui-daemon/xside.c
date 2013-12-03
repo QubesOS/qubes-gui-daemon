@@ -2810,6 +2810,7 @@ int main(int argc, char **argv)
 	atexit(unset_alive_flag);
 
 	write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully
+	close (pipe_notify[1]);
 
 	signal(SIGTERM, dummy_signal_handler);
 	signal(SIGHUP, sighup_signal_handler);
