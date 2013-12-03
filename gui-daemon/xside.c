@@ -1446,6 +1446,13 @@ void process_xevent_propertynotify(Ghandles *g, XPropertyEvent * ev)
 		if (ev->state == PropertyNewValue) {
 			ret = XGetWindowProperty(g->display, vm_window->local_winid, g->wm_state, 0, 10,
 					False, XA_ATOM, &act_type, &act_fmt, &nitems, &bytesleft, (unsigned char**)&state_list);
+			if (ret == Success && bytesleft > 0) {
+			  /* Ensure we read all of the atoms */
+			  XFree(state_list);
+			  ret = XGetWindowProperty(g->display, vm_window->local_winid, g->wm_state,
+			        0, (10 * 4 + bytesleft + 3) / 4, False, XA_ATOM, &act_type, &act_fmt,
+			        &nitems, &bytesleft, (unsigned char**)&state_list);
+			}
 			if (ret != Success) {
 				if (g->log_level > 0) {
 					fprintf(stderr, "Failed to get 0x%x window state details\n", (int)ev->window);
