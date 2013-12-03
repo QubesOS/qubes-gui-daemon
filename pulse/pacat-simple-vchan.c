@@ -622,6 +622,7 @@ int main(int argc, char *argv[])
 
 	if (dbus_init(&u) < 0) {
 		pacat_log("dbus initialization failed");
+		goto quit;
 	}
 
 	u.ret = 0;
