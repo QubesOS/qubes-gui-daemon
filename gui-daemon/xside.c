@@ -2064,7 +2064,7 @@ void handle_dock(Ghandles * g, struct windowdata *vm_window)
 		long data[2];
 		XClientMessageEvent msg;
 
-		data[0] = 1;
+		data[0] = 0;
 		data[1] = 1;
 		XChangeProperty(g->display, vm_window->local_winid,
 				g->xembed_info, g->xembed_info, 32,
