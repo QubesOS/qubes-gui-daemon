@@ -2792,6 +2792,7 @@ int main(int argc, char **argv)
 	}
 
 	close(0);
+	open("/dev/null", O_RDONLY);
 	snprintf(dbg_log, sizeof(dbg_log),
 		 "/var/log/qubes/guid.%s.log", ghandles.vmname);
 	umask(0007);
