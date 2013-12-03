@@ -2338,10 +2338,11 @@ void release_all_mapped_mfns()
 /* start pulseaudio Dom0 proxy */
 void exec_pacat(Ghandles * g)
 {
-	int i, fd;
+	int i, fd, maxfiles;
 	pid_t pid;
 	char domid_txt[20];
 	char logname[80];
+	struct rlimit rl;
 	snprintf(domid_txt, sizeof domid_txt, "%d", g->domid);
 	snprintf(logname, sizeof logname, "/var/log/qubes/pacat.%s.log",
 		 g->vmname);
@@ -2350,7 +2351,14 @@ void exec_pacat(Ghandles * g)
 		perror("fork pacat");
 		exit(1);
 	case 0:
-		for (i = 0; i < 256; i++)
+		maxfiles = getdtablesize();
+		if (maxfiles < 0) {
+			if (getrlimit(RLIMIT_NOFILE, &rl) == 0)
+				maxfiles = rl.rlim_cur;
+			else
+				maxfiles = 256;
+		}
+		for (i = 0; i < maxfiles; i++)
 			close(i);
 		fd = open("/dev/null", O_RDWR);
 		for (i = 0; i <= 1; i++)
