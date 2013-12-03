@@ -1842,7 +1842,7 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 {
 	XTextProperty text_prop;
 	struct msg_wmname untrusted_msg;
-	char buf[sizeof(untrusted_msg.data) + 1];
+	char buf[sizeof(untrusted_msg.data)];
 	char *list[1] = { buf };
 
 	read_struct(untrusted_msg);
