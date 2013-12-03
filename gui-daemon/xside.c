@@ -2717,6 +2717,7 @@ void get_boot_lock(int domid)
 		exit(1);
 	}
 	if (flock(fd, LOCK_EX) < 0) {
+		unlink(guid_fs_flag("booting", domid));
 		perror("lock");
 		exit(1);
 	}
