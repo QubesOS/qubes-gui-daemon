@@ -230,7 +230,7 @@ static void send_rec_data(pa_stream *s, struct userdata *u) {
 	}
 	rec_buffer_index = 0;
 
-	while (rec_buffer_length > 0) {
+	while (rec_buffer_length > 0 && u->rec_allowed) {
 		/* can block */
 		if ((l=libvchan_write(u->rec_ctrl, rec_buffer + rec_buffer_index, rec_buffer_length)) < 0) {
 			pacat_log("libvchan_write failed");
