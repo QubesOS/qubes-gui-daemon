@@ -2818,7 +2818,14 @@ int main(int argc, char **argv)
 	exec_pacat(&ghandles);
 	atexit(kill_pacat);
 	/* drop root privileges */
-	setuid(getuid());
+	if (setgid(getgid()) < 0) {
+		perror("setgid()");
+		exit(1);
+	}
+	if (setuid(getuid()) < 0) {
+		perror("setuid()");
+		exit(1);
+	}
 	set_alive_flag(ghandles.domid);
 	atexit(unset_alive_flag);
 
