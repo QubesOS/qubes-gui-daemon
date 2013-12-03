@@ -182,6 +182,9 @@ Ghandles ghandles;
 #define max(x,y) ((x)<(y)?(y):(x))
 #endif
 
+#define KDIALOG_PATH "/usr/bin/kdialog"
+#define ZENITY_PATH "/usr/bin/zenity"
+
 void inter_appviewer_lock(int mode);
 void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 
@@ -196,9 +199,9 @@ static void show_error_message (Ghandles * g, const char *msg)
 	switch (pid) {
 		case 0:
 			if (g->use_kdialog) {
-				execlp("/usr/bin/kdialog", "kdialog", "--sorry", message, (char*)NULL);
+				execlp(KDIALOG_PATH, "kdialog", "--sorry", message, (char*)NULL);
 			} else {
-				execlp("/usr/bin/zenity", "zenity", "--error", "--text", message, (char*)NULL);
+				execlp(ZENITY_PATH, "zenity", "--error", "--text", message, (char*)NULL);
 			}
 			perror("execlp");
 			exit(1);
@@ -214,7 +217,7 @@ static void show_error_message (Ghandles * g, const char *msg)
 	case 1:
 		return;
 	default:
-		fprintf(stderr, "Problems executing kdialog ?\n");
+		fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
 		exit(1);
 	}
 }
@@ -259,12 +262,12 @@ int ask_whether_verify_failed(Ghandles * g, const char *cond)
 		case 0:
 			if (g->use_kdialog) {
 #ifdef NEW_KDIALOG
-				execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
+				execlp(KDIALOG_PATH, "kdialog", "--dontagain", dontagain_param, "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
 #else
-				execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--warningyesno", text, (char*)NULL);
+				execlp(KDIALOG_PATH, "kdialog", "--dontagain", dontagain_param, "--warningyesno", text, (char*)NULL);
 #endif
 			} else {
-				execlp("zenity", "zenity", "--question", "--ok-label", "Terminate", "--cancel-label", "Ignore", "--text", text, (char*)NULL);
+				execlp(ZENITY_PATH, "zenity", "--question", "--ok-label", "Terminate", "--cancel-label", "Ignore", "--text", text, (char*)NULL);
 			}
 			perror("execlp");
 			exit(1);
@@ -290,7 +293,7 @@ int ask_whether_verify_failed(Ghandles * g, const char *cond)
 		perror("Problems executing xl");
 		exit(1);
 	default:
-		fprintf(stderr, "Problems executing kdialog ?\n");
+		fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
 		exit(1);
 	}
 	/* should never happend */
@@ -1581,11 +1584,12 @@ void ask_whether_flooding(Ghandles * g)
 	char text[1024];
 	int ret;
 	snprintf(text, sizeof(text),
-		 "%s "
+		 "%s %s "
 		 "'VMapp \"%s\" has created %d windows; it looks numerous, "
 		 "so it may be "
 		 "a beginning of a DoS attack. Do you want to continue:'",
-		 g->use_kdialog ? "kdialog --yesnocancel" : "zenity --question --text",
+		 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
+		 g->use_kdialog ? "--yesnocancel" : "--question --text",
 		 g->vmname, g->windows_count);
 	do {
 		ret = system(text);
@@ -1600,7 +1604,7 @@ void ask_whether_flooding(Ghandles * g)
 			g->windows_count_limit += g->windows_count_limit_param;
 			break;
 		default:
-			fprintf(stderr, "Problems executing kdialog ?\n");
+			fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
 			exit(1);
 		}
 	} while (ret == 2);
@@ -2384,18 +2388,20 @@ void get_protocol_version(Ghandles * g)
 			version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
 		return;
 	if (version_major < QUBES_GUID_PROTOCOL_VERSION_MAJOR)
-		snprintf(message, sizeof message, "%s \""
+		snprintf(message, sizeof message, "%s %s \""
 				"The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
 				"To start and access the VM or template without GUI virtualization, use the following commands:\n"
 				"qvm-start --no-guid vmname\n"
 				"sudo xl console vmname\"",
-				g->use_kdialog ? "kdialog --sorry" : "zenity --error --text ",
+				g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
+				g->use_kdialog ? "--sorry" : "--error --text ",
 				g->vmname, version_major, version_minor);
 	else
-		snprintf(message, sizeof message, "%s \""
+		snprintf(message, sizeof message, "%s %s \""
 				"The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
 				"To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
-				g->use_kdialog ? "kdialog --sorry" : "zenity --error --text ",
+				g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
+				g->use_kdialog ? "--sorry" : "--error --text ",
 				version_major, version_minor, g->vmname);
 	system(message);
 	exit(1);
