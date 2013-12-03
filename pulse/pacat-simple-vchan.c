@@ -99,6 +99,7 @@ void pacat_log(const char *fmt, ...) {
 /* A shortcut for terminating the application */
 static void quit(struct userdata *u, int ret) {
 	assert(u->loop);
+	u->ret = ret;
 	g_main_loop_quit(u->loop);
 }
 
@@ -531,7 +532,6 @@ int main(int argc, char *argv[])
 {
 	struct timeval tv;
 	struct userdata u;
-	int ret = 1;
 	pa_glib_mainloop* m = NULL;
 	pa_time_event *time_event = NULL;
 	char *server = NULL;
@@ -543,6 +543,7 @@ int main(int argc, char *argv[])
 	}
 
 	memset(&u, 0, sizeof(u));
+	u.ret = 1;
 
 	u.play_ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SINK_VCHAN_PORT, &u.name);
 	if (!u.play_ctrl) {
@@ -617,7 +618,7 @@ int main(int argc, char *argv[])
 		pacat_log("dbus initialization failed");
 	}
 
-	ret = 0;
+	u.ret = 0;
 
 	/* Run the main loop */
 	g_main_loop_run (u.loop);
@@ -681,5 +682,5 @@ quit:
 	if (u.proplist)
 		pa_proplist_free(u.proplist);
 
-	return ret;
+	return u.ret;
 }
