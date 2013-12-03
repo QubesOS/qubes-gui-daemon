@@ -2091,8 +2091,8 @@ void handle_dock(Ghandles * g, struct windowdata *vm_window)
 void inter_appviewer_lock(int mode)
 {
 	int cmd;
-	static int fd = 0;
-	if (!fd) {
+	static int fd = -1;
+	if (fd < 0) {
 		fd = open("/var/run/qubes/appviewer.lock",
 			  O_RDWR | O_CREAT, 0600);
 		if (fd < 0) {
