@@ -2761,8 +2761,10 @@ int main(int argc, char **argv)
 	if (childpid < 0) {
 		fprintf(stderr, "Cannot fork :(\n");
 		exit(1);
-	} else if (childpid > 0)
+	} else if (childpid > 0) {
 		wait_for_connection_in_parent(pipe_notify);
+	    exit(0);
+	}
 
 	// inside the daemonized process...
 	f = fopen("/var/run/shm.id", "r");
