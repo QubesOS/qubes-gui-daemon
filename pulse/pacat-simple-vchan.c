@@ -554,7 +554,14 @@ int main(int argc, char *argv[])
 		perror("libvchan_client_init");
 		exit(1);
 	}
-	setuid(getuid());
+	if (setgid(getgid()) < 0) {
+		perror("setgid");
+		exit(1);
+	}
+	if (setuid(getuid()) < 0) {
+		perror("setuid");
+		exit(1);
+	}
 
 	u.proplist = pa_proplist_new();
 	pa_proplist_sets(u.proplist, PA_PROP_APPLICATION_NAME, u.name);
