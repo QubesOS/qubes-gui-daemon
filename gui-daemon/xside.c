@@ -2564,8 +2564,11 @@ int guid_boot_lock = -1;
 /* create guid_running file when connected to VM */
 void set_alive_flag(int domid)
 {
+	char pid_buf[10];
 	int fd = open(guid_fs_flag("running", domid),
 		      O_WRONLY | O_CREAT | O_NOFOLLOW, 0600);
+	snprintf(pid_buf, sizeof(pid_buf), "%d\n", getpid());
+	write(fd, pid_buf, strlen(pid_buf));
 	close(fd);
 	unlink(guid_fs_flag("booting", domid));
 	close(guid_boot_lock);
