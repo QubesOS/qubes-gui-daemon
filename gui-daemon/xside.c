@@ -2444,7 +2444,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 			exit(1);
 		}
 		if (ret > 0) {
-			if (pipe_pollfd.revents == POLLIN)
+			if (pipe_pollfd.revents & POLLIN)
 				break;
 			if (ghandles.log_level > 0)
 				fprintf(stderr, "exiting\n");
