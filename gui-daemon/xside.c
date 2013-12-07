@@ -2360,11 +2360,10 @@ void exec_pacat(Ghandles * g)
 		}
 		for (i = 0; i < maxfiles; i++)
 			close(i);
-		fd = open("/dev/null", O_RDWR);
-		for (i = 0; i <= 1; i++)
-			dup2(fd, i);
+		fd = open("/dev/null", O_RDWR); /* stdin */
+		dup2(fd, 1); /* stdout */
 		umask(0007);
-		fd = open(logname, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+		fd = open(logname, O_WRONLY | O_CREAT | O_TRUNC, 0640); /* stderr */
 		umask(0077);
 		execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
 		      domid_txt, NULL);
