@@ -11,6 +11,7 @@ REGEX_OUTPUT = re.compile(r"""
         ^                              # start of string
         (?P<output>[A-Za-z0-9\-]*)[ ]  # LVDS VGA etc
         (?P<connect>(dis)?connected)[ ]# dis/connected
+        (?P<primary>(primary)?)[ ]?
         ((                             # a group
            (?P<width>\d+)x             # either 1024x768+0+0
            (?P<height>\d+)[+]  
