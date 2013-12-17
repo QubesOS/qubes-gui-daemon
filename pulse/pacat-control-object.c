@@ -163,7 +163,7 @@ int dbus_init(struct userdata *u) {
 				G_TYPE_INVALID, /* end of input args */
 				G_TYPE_UINT, &result, /* result */
 				G_TYPE_INVALID)) {
-		pacat_log("D-Bus.RequestName RPC failed", error->message);
+		pacat_log("D-Bus.RequestName RPC failed: %s", error->message);
 		g_error_free (error);
 		goto fail;
 	}
