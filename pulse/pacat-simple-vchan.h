@@ -10,6 +10,7 @@ struct userdata {
 	pa_mainloop_api *mainloop_api;
 	GMainLoop *loop;
 	char *name;
+	int ret;
 
 	struct libvchan *play_ctrl;
 	struct libvchan *rec_ctrl;

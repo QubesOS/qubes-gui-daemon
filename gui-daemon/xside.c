@@ -157,7 +157,7 @@ struct _global_handles {
 };
 
 typedef struct _global_handles Ghandles;
-Ghandles ghandles;
+static Ghandles ghandles;
 
 /* macro used to verify data from VM */
 #define VERIFY(x) if (!(x)) { \
@@ -182,8 +182,11 @@ Ghandles ghandles;
 #define max(x,y) ((x)<(y)?(y):(x))
 #endif
 
-void inter_appviewer_lock(int mode);
-void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
+#define KDIALOG_PATH "/usr/bin/kdialog"
+#define ZENITY_PATH "/usr/bin/zenity"
+
+static void inter_appviewer_lock(int mode);
+static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 
 static void show_error_message (Ghandles * g, const char *msg)
 {
@@ -196,9 +199,9 @@ static void show_error_message (Ghandles * g, const char *msg)
 	switch (pid) {
 		case 0:
 			if (g->use_kdialog) {
-				execlp("/usr/bin/kdialog", "kdialog", "--sorry", message, (char*)NULL);
+				execlp(KDIALOG_PATH, "kdialog", "--sorry", message, (char*)NULL);
 			} else {
-				execlp("/usr/bin/zenity", "zenity", "--error", "--text", message, (char*)NULL);
+				execlp(ZENITY_PATH, "zenity", "--error", "--text", message, (char*)NULL);
 			}
 			perror("execlp");
 			exit(1);
@@ -214,13 +217,13 @@ static void show_error_message (Ghandles * g, const char *msg)
 	case 1:
 		return;
 	default:
-		fprintf(stderr, "Problems executing kdialog ?\n");
+		fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
 		exit(1);
 	}
 }
 
 /* ask user when VM sent invalid message */
-int ask_whether_verify_failed(Ghandles * g, const char *cond)
+static int ask_whether_verify_failed(Ghandles * g, const char *cond)
 {
 	char text[1024];
 	char dontagain_param[128];
@@ -259,12 +262,12 @@ int ask_whether_verify_failed(Ghandles * g, const char *cond)
 		case 0:
 			if (g->use_kdialog) {
 #ifdef NEW_KDIALOG
-				execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
+				execlp(KDIALOG_PATH, "kdialog", "--dontagain", dontagain_param, "--no-label", "Terminate", "--yes-label", "Ignore", "--warningyesno", text, (char*)NULL);
 #else
-				execlp("kdialog", "kdialog", "--dontagain", dontagain_param, "--warningyesno", text, (char*)NULL);
+				execlp(KDIALOG_PATH, "kdialog", "--dontagain", dontagain_param, "--warningyesno", text, (char*)NULL);
 #endif
 			} else {
-				execlp("zenity", "zenity", "--question", "--ok-label", "Terminate", "--cancel-label", "Ignore", "--text", text, (char*)NULL);
+				execlp(ZENITY_PATH, "zenity", "--question", "--ok-label", "Terminate", "--cancel-label", "Ignore", "--text", text, (char*)NULL);
 			}
 			perror("execlp");
 			exit(1);
@@ -290,7 +293,7 @@ int ask_whether_verify_failed(Ghandles * g, const char *cond)
 		perror("Problems executing xl");
 		exit(1);
 	default:
-		fprintf(stderr, "Problems executing kdialog ?\n");
+		fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
 		exit(1);
 	}
 	/* should never happend */
@@ -298,7 +301,7 @@ int ask_whether_verify_failed(Ghandles * g, const char *cond)
 }
 
 /* prepare graphic context for painting colorful frame */
-void get_frame_gc(Ghandles * g, char *name)
+static void get_frame_gc(Ghandles * g, const char *name)
 {
 	XGCValues values;
 	XColor fcolor, dummy;
@@ -323,7 +326,7 @@ void get_frame_gc(Ghandles * g, char *name)
 
 #ifdef FILL_TRAY_BG
 /* prepare graphic context for tray background */
-void get_tray_gc(Ghandles * g)
+static void get_tray_gc(Ghandles * g)
 {
 	XGCValues values;
 	values.foreground = WhitePixel(g->display, g->screen);
@@ -335,7 +338,7 @@ void get_tray_gc(Ghandles * g)
 /* create local window - on VM request.
  * parameters are sanitized already
  */
-Window mkwindow(Ghandles * g, struct windowdata *vm_window)
+static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 {
 	char *gargv[1] = { NULL };
 	Window child_win;
@@ -403,7 +406,7 @@ Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 
 /* prepare global variables content:
  * most of them are handles to local Xserver structures */
-void mkghandles(Ghandles * g)
+static void mkghandles(Ghandles * g)
 {
 	char tray_sel_atom_name[64];
 	XWindowAttributes attr;
@@ -475,7 +478,7 @@ void reload(Ghandles * g) {
 }
 
 /* find if window (given by id) is managed by this guid */
-struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
+static struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
 {
 	struct genlist *item = list_lookup(g->wid2windowdata, id);
 	if (!item) {
@@ -487,7 +490,7 @@ struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
 	return item->data;
 }
 
-void save_clipboard_source_vmname(const char *vmname) {
+static void save_clipboard_source_vmname(const char *vmname) {
 	FILE *file;
 
 	file = fopen(QUBES_CLIPBOARD_FILENAME ".source", "w");
@@ -501,7 +504,7 @@ void save_clipboard_source_vmname(const char *vmname) {
 
 /* fetch clippboard content from file */
 /* lock already taken in is_special_keypress() */
-void get_qubes_clipboard(Ghandles *g, char **data, int *len)
+static void get_qubes_clipboard(Ghandles *g, char **data, int *len)
 {
 	FILE *file;
 	*len = 0;
@@ -549,7 +552,7 @@ close_done:
 	save_clipboard_source_vmname("");
 }
 
-int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
+static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 	char *path_stdin, *path_stdout, *service_call;
 	pid_t pid;
 	struct rlimit rl;
@@ -607,7 +610,7 @@ int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 	return WEXITSTATUS(status) == 0;
 }
 
-int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
+static int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
 	int ret;
 
 	inter_appviewer_lock(1);
@@ -624,7 +627,7 @@ int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
 }
 
 /* lock already taken in is_special_keypress() */
-int paste_qubes_clipboard_using_qrexec(Ghandles * g) {
+static int paste_qubes_clipboard_using_qrexec(Ghandles * g) {
 	int ret;
 
 	ret = run_clipboard_rpc(g, CLIPBOARD_PASTE);
@@ -641,7 +644,7 @@ int paste_qubes_clipboard_using_qrexec(Ghandles * g) {
  *  - checks if clipboard data was requested
  *  - store it in file
  */
-void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
+static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 {
 	FILE *file;
 	char *untrusted_data;
@@ -690,7 +693,7 @@ error:
 	free(untrusted_data);
 }
 
-int evaluate_clipboard_policy(Ghandles * g) {
+static int evaluate_clipboard_policy(Ghandles * g) {
 	int fd, len;
 	char source_vm[255];
 	int status;
@@ -729,7 +732,7 @@ int evaluate_clipboard_policy(Ghandles * g) {
 /* check and handle guid-special keys
  * currently only for inter-vm clipboard copy
  */
-int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
+static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
 {
 	struct msg_hdr hdr;
 	char *data;
@@ -795,7 +798,7 @@ int is_special_keypress(Ghandles * g, XKeyEvent * ev, XID remote_winid)
 /* handle local Xserver event: XKeyEvent
  * send it to relevant window in VM
  */
-void process_xevent_keypress(Ghandles * g, XKeyEvent * ev)
+static void process_xevent_keypress(Ghandles * g, const XKeyEvent * ev)
 {
 	struct msg_hdr hdr;
 	struct msg_keypress k;
@@ -816,7 +819,7 @@ void process_xevent_keypress(Ghandles * g, XKeyEvent * ev)
 }
 
 // debug routine
-void dump_mapped(Ghandles * g)
+static void dump_mapped(Ghandles * g)
 {
 	struct genlist *item = g->wid2windowdata->next;
 	for (; item != g->wid2windowdata; item = item->next) {
@@ -835,7 +838,7 @@ void dump_mapped(Ghandles * g)
 
 /* handle local Xserver event: XButtonEvent
  * same as XKeyEvent - send to relevant window in VM */
-void process_xevent_button(Ghandles * g, XButtonEvent * ev)
+static void process_xevent_button(Ghandles * g, const XButtonEvent * ev)
 {
 	struct msg_hdr hdr;
 	struct msg_button k;
@@ -860,7 +863,7 @@ void process_xevent_button(Ghandles * g, XButtonEvent * ev)
 
 /* handle local Xserver event: XCloseEvent
  * send to relevant window in VM */
-void process_xevent_close(Ghandles * g, XID window)
+static void process_xevent_close(Ghandles * g, XID window)
 {
 	struct msg_hdr hdr;
 	CHECK_NONMANAGED_WINDOW(g, window);
@@ -871,7 +874,7 @@ void process_xevent_close(Ghandles * g, XID window)
 }
 
 /* send configure request for specified VM window */
-void send_configure(struct windowdata *vm_window, int x, int y, int w,
+static void send_configure(struct windowdata *vm_window, int x, int y, int w,
 		    int h)
 {
 	struct msg_hdr hdr;
@@ -888,7 +891,7 @@ void send_configure(struct windowdata *vm_window, int x, int y, int w,
 /* fix position of docked tray icon;
  * icon position is relative to embedder 0,0 so we must translate it to
  * absolute position */
-int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char *caller)
+static int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, const char *caller)
 {
 
 	/* docked window is reparented to root_win on vmside */
@@ -914,7 +917,7 @@ int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, char *caller)
 }
 
 /* undo the calculations that fix_docked_xy did, then perform move&resize */
-void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
+static void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
 {
 	int x = 0, y = 0;
 	Window win;
@@ -953,11 +956,11 @@ void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
 }
 
 
-/* force window to not hide it's frame
- * checks if at least border_width is from every screen edge (and fix if no)
- * Exception: allow window to be entriely off the screen */
-int force_on_screen(Ghandles * g, struct windowdata *vm_window,
-		    int border_width, char *caller)
+/* force window to not hide its frame
+ * checks if at least border_width is from every screen edge (and fix if not)
+ * Exception: allow window to be entirely off the screen */
+static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
+		    int border_width, const char *caller)
 {
 	int do_move = 0, reason = -1;
 	int x = vm_window->x, y = vm_window->y, w = vm_window->width, h =
@@ -1004,7 +1007,7 @@ int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 
 /* handle local Xserver event: XConfigureEvent
  * after some checks/fixes send to relevant window in VM */
-void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
+static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	if (g->log_level > 1)
@@ -1045,7 +1048,7 @@ void process_xevent_configure(Ghandles * g, XConfigureEvent * ev)
 
 /* handle VM message: MSG_CONFIGURE
  * check if we like new dimensions/position and move relevant window */
-void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
+static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 {
 	struct msg_configure untrusted_conf;
 	unsigned int x, y, width, height, override_redirect;
@@ -1125,7 +1128,7 @@ void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 /* handle local Xserver event: EnterNotify, LeaveNotify
  * send it to VM, but alwo we use it to fix docked
  * window position */
-void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
+static void process_xevent_crossing(Ghandles * g, const XCrossingEvent * ev)
 {
 	struct msg_hdr hdr;
 	struct msg_crossing k;
@@ -1159,7 +1162,7 @@ void process_xevent_crossing(Ghandles * g, XCrossingEvent * ev)
 
 /* handle local Xserver event: XMotionEvent
  * send to relevant window in VM */
-void process_xevent_motion(Ghandles * g, XMotionEvent * ev)
+static void process_xevent_motion(Ghandles * g, const XMotionEvent * ev)
 {
 	struct msg_hdr hdr;
 	struct msg_motion k;
@@ -1177,7 +1180,7 @@ void process_xevent_motion(Ghandles * g, XMotionEvent * ev)
 
 /* handle local Xserver event: FocusIn, FocusOut
  * send to relevant window in VM */
-void process_xevent_focus(Ghandles * g, XFocusChangeEvent * ev)
+static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
 {
 	struct msg_hdr hdr;
 	struct msg_focus k;
@@ -1202,7 +1205,7 @@ void process_xevent_focus(Ghandles * g, XFocusChangeEvent * ev)
  * parameters are not sanitized earlier - we must check it carefully
  * also do not let to cover forced colorful frame (for undecoraded windows)
  */
-void do_shm_update(Ghandles * g, struct windowdata *vm_window,
+static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		   int untrusted_x, int untrusted_y, int untrusted_w,
 		   int untrusted_h)
 {
@@ -1372,7 +1375,7 @@ void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 /* handle local Xserver event: XExposeEvent
  * update relevant part of window using stored image
  */
-void process_xevent_expose(Ghandles * g, XExposeEvent * ev)
+static void process_xevent_expose(Ghandles * g, const XExposeEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	do_shm_update(g, vm_window, ev->x, ev->y, ev->width, ev->height);
@@ -1380,7 +1383,7 @@ void process_xevent_expose(Ghandles * g, XExposeEvent * ev)
 
 /* handle local Xserver event: XMapEvent
  * after some checks, send to relevant window in VM */
-void process_xevent_mapnotify(Ghandles * g, XMapEvent * ev)
+static void process_xevent_mapnotify(Ghandles * g, const XMapEvent * ev)
 {
 	XWindowAttributes attr;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
@@ -1426,7 +1429,7 @@ static inline uint32_t flags_from_atom(Ghandles * g, Atom a) {
 
 /* handle local Xserver event: XPropertyEvent
  * currently only _NET_WM_STATE is examined */
-void process_xevent_propertynotify(Ghandles *g, XPropertyEvent * ev)
+static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev)
 {
 	Atom act_type;
 	Atom *state_list;
@@ -1443,6 +1446,13 @@ void process_xevent_propertynotify(Ghandles *g, XPropertyEvent * ev)
 		if (ev->state == PropertyNewValue) {
 			ret = XGetWindowProperty(g->display, vm_window->local_winid, g->wm_state, 0, 10,
 					False, XA_ATOM, &act_type, &act_fmt, &nitems, &bytesleft, (unsigned char**)&state_list);
+			if (ret == Success && bytesleft > 0) {
+			  /* Ensure we read all of the atoms */
+			  XFree(state_list);
+			  ret = XGetWindowProperty(g->display, vm_window->local_winid, g->wm_state,
+			        0, (10 * 4 + bytesleft + 3) / 4, False, XA_ATOM, &act_type, &act_fmt,
+			        &nitems, &bytesleft, (unsigned char**)&state_list);
+			}
 			if (ret != Success) {
 				if (g->log_level > 0) {
 					fprintf(stderr, "Failed to get 0x%x window state details\n", (int)ev->window);
@@ -1472,7 +1482,7 @@ void process_xevent_propertynotify(Ghandles *g, XPropertyEvent * ev)
 
 /* handle local Xserver event: _XEMBED
  * if window isn't mapped already - map it now */
-void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
+static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 {
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	if (g->log_level > 1)
@@ -1494,8 +1504,8 @@ void process_xevent_xembed(Ghandles * g, XClientMessageEvent * ev)
 	}
 }
 
-/* dispath local Xserver event */
-void process_xevent(Ghandles * g)
+/* dispatch local Xserver event */
+static void process_xevent(Ghandles * g)
 {
 	XEvent event_buffer;
 	XNextEvent(g->display, &event_buffer);
@@ -1557,7 +1567,7 @@ void process_xevent(Ghandles * g)
 
 /* handle VM message: MSG_SHMIMAGE
  * pass message data to do_shm_update - there input validation will be done */
-void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
+static void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
 {
 	struct msg_shmimage untrusted_mx;
 
@@ -1575,17 +1585,18 @@ void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
 		      untrusted_mx.width, untrusted_mx.height);
 }
 
-/* ask user when VM creates to many windows */
-void ask_whether_flooding(Ghandles * g)
+/* ask user when VM creates too many windows */
+static void ask_whether_flooding(Ghandles * g)
 {
 	char text[1024];
 	int ret;
 	snprintf(text, sizeof(text),
-		 "%s "
+		 "%s %s "
 		 "'VMapp \"%s\" has created %d windows; it looks numerous, "
 		 "so it may be "
 		 "a beginning of a DoS attack. Do you want to continue:'",
-		 g->use_kdialog ? "kdialog --yesnocancel" : "zenity --question --text",
+		 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
+		 g->use_kdialog ? "--yesnocancel" : "--question --text",
 		 g->vmname, g->windows_count);
 	do {
 		ret = system(text);
@@ -1600,7 +1611,7 @@ void ask_whether_flooding(Ghandles * g)
 			g->windows_count_limit += g->windows_count_limit_param;
 			break;
 		default:
-			fprintf(stderr, "Problems executing kdialog ?\n");
+			fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
 			exit(1);
 		}
 	} while (ret == 2);
@@ -1609,7 +1620,7 @@ void ask_whether_flooding(Ghandles * g)
 /* handle VM message: MSG_CREATE
  * checks given attributes and create appropriate window in local Xserver
  * (using mkwindow) */
-void handle_create(Ghandles * g, XID window)
+static void handle_create(Ghandles * g, XID window)
 {
 	struct windowdata *vm_window;
 	struct genlist *l;
@@ -1683,7 +1694,7 @@ void handle_create(Ghandles * g, XID window)
 
 /* handle VM message: MSG_DESTROY
  * destroy window locally, as requested */
-void handle_destroy(Ghandles * g, struct genlist *l)
+static void handle_destroy(Ghandles * g, struct genlist *l)
 {
 	struct genlist *l2;
 	struct windowdata *vm_window = l->data;
@@ -1787,13 +1798,13 @@ static int validate_utf8_char(unsigned char *untrusted_c) {
 	return total_size;
 }
 
-/* replace non-printable charactes with '_'
+/* replace non-printable characters with '_'
  * given string must be NULL terminated already */
-void sanitize_string_from_vm(unsigned char *untrusted_s, int allow_utf8)
+static void sanitize_string_from_vm(unsigned char *untrusted_s, int allow_utf8)
 {
 	int utf8_ret;
 	for (; *untrusted_s; untrusted_s++) {
-		// allow only non-controll ASCII chars
+		// allow only non-control ASCII chars
 		if (*untrusted_s >= 0x20 && *untrusted_s <= 0x7E)
 			continue;
 		if (allow_utf8 && *untrusted_s >= 0x80) {
@@ -1810,7 +1821,7 @@ void sanitize_string_from_vm(unsigned char *untrusted_s, int allow_utf8)
 
 /* fix menu window parameters: override_redirect and force to not hide its
  * frame */
-void fix_menu(Ghandles * g, struct windowdata *vm_window)
+static void fix_menu(Ghandles * g, struct windowdata *vm_window)
 {
 	XSetWindowAttributes attr;
 
@@ -1827,11 +1838,11 @@ void fix_menu(Ghandles * g, struct windowdata *vm_window)
 
 /* handle VM message: MSG_VMNAME
  * remove non-printable characters and pass to X server */
-void handle_wmname(Ghandles * g, struct windowdata *vm_window)
+static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 {
 	XTextProperty text_prop;
 	struct msg_wmname untrusted_msg;
-	char buf[sizeof(untrusted_msg.data) + 1];
+	char buf[sizeof(untrusted_msg.data)];
 	char *list[1] = { buf };
 
 	read_struct(untrusted_msg);
@@ -1853,7 +1864,7 @@ void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 
 /* handle VM message: MSG_WMHINTS
  * Pass hints for window manager to local X server */
-void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
+static void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 {
 	struct msg_window_hints untrusted_msg;
 	XSizeHints size_hints;
@@ -1930,7 +1941,7 @@ void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 
 /* handle VM message: MSG_WINDOW_FLAGS
  * Pass window state flags for window manager to local X server */
-void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
+static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 {
 	struct msg_window_flags untrusted_msg;
 	struct msg_window_flags msg;
@@ -2016,7 +2027,7 @@ void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 
 /* handle VM message: MSG_MAP
  * Map a window with given parameters */
-void handle_map(Ghandles * g, struct windowdata *vm_window)
+static void handle_map(Ghandles * g, struct windowdata *vm_window)
 {
 	struct genlist *trans;
 	struct msg_map_info untrusted_txt;
@@ -2042,7 +2053,7 @@ void handle_map(Ghandles * g, struct windowdata *vm_window)
 /* handle VM message: MSG_DOCK
  * Try to dock window in the tray
  * Rest of XEMBED protocol is catched in VM */
-void handle_dock(Ghandles * g, struct windowdata *vm_window)
+static void handle_dock(Ghandles * g, struct windowdata *vm_window)
 {
 	Window tray;
 	if (g->log_level > 0)
@@ -2053,7 +2064,7 @@ void handle_dock(Ghandles * g, struct windowdata *vm_window)
 		long data[2];
 		XClientMessageEvent msg;
 
-		data[0] = 1;
+		data[0] = 0;
 		data[1] = 1;
 		XChangeProperty(g->display, vm_window->local_winid,
 				g->xembed_info, g->xembed_info, 32,
@@ -2077,11 +2088,11 @@ void handle_dock(Ghandles * g, struct windowdata *vm_window)
 
 /* Obtain/release inter-vm lock
  * Used for handling shared Xserver memory and clipboard file */
-void inter_appviewer_lock(int mode)
+static void inter_appviewer_lock(int mode)
 {
 	int cmd;
-	static int fd = 0;
-	if (!fd) {
+	static int fd = -1;
+	if (fd < 0) {
 		fd = open("/var/run/qubes/appviewer.lock",
 			  O_RDWR | O_CREAT, 0600);
 		if (fd < 0) {
@@ -2100,7 +2111,7 @@ void inter_appviewer_lock(int mode)
 }
 
 /* release shared memory connected with given window */
-void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
+static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 {
 	inter_appviewer_lock(1);
 	g->shmcmd->shmid = vm_window->shminfo.shmid;
@@ -2114,7 +2125,7 @@ void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 /* handle VM message: MSG_MFNDUMP
  * Retrieve memory addresses connected with composition buffer of remote window
  */
-void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
+static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 {
 	char untrusted_shmcmd_data_from_remote[4096 * SHM_CMD_NUM_PAGES];
 	struct shm_cmd *untrusted_shmcmd =
@@ -2193,7 +2204,7 @@ void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 }
 
 /* VM message dispatcher */
-void handle_message(Ghandles * g)
+static void handle_message(Ghandles * g)
 {
 	struct msg_hdr untrusted_hdr;
 	uint32_t type;
@@ -2275,18 +2286,18 @@ void handle_message(Ghandles * g)
 }
 
 /* signal handler - connected to SIGTERM */
-void dummy_signal_handler(int x)
+static void dummy_signal_handler(int x)
 {
 	ghandles.signal_caught = 1;
 }
 
 /* signal handler - connected to SIGHUP */
-void sighup_signal_handler(int x)
+static void sighup_signal_handler(int x)
 {
 	ghandles.reload_requested = 1;
 }
 
-void print_backtrace(void)
+static void print_backtrace(void)
 {
 	void *array[100];
 	size_t size;
@@ -2308,7 +2319,7 @@ void print_backtrace(void)
 }
 
 /* release all windows mapped memory */
-void release_all_mapped_mfns()
+static void release_all_mapped_mfns(void)
 {
 	struct genlist *curr;
 	if (ghandles.log_level > 1)
@@ -2325,12 +2336,13 @@ void release_all_mapped_mfns()
 }
 
 /* start pulseaudio Dom0 proxy */
-void exec_pacat(Ghandles * g)
+static void exec_pacat(Ghandles * g)
 {
-	int i, fd;
+	int i, fd, maxfiles;
 	pid_t pid;
 	char domid_txt[20];
 	char logname[80];
+	struct rlimit rl;
 	snprintf(domid_txt, sizeof domid_txt, "%d", g->domid);
 	snprintf(logname, sizeof logname, "/var/log/qubes/pacat.%s.log",
 		 g->vmname);
@@ -2339,13 +2351,19 @@ void exec_pacat(Ghandles * g)
 		perror("fork pacat");
 		exit(1);
 	case 0:
-		for (i = 0; i < 256; i++)
+		maxfiles = getdtablesize();
+		if (maxfiles < 0) {
+			if (getrlimit(RLIMIT_NOFILE, &rl) == 0)
+				maxfiles = rl.rlim_cur;
+			else
+				maxfiles = 256;
+		}
+		for (i = 0; i < maxfiles; i++)
 			close(i);
-		fd = open("/dev/null", O_RDWR);
-		for (i = 0; i <= 1; i++)
-			dup2(fd, i);
+		fd = open("/dev/null", O_RDWR); /* stdin */
+		dup2(fd, 1); /* stdout */
 		umask(0007);
-		fd = open(logname, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+		fd = open(logname, O_WRONLY | O_CREAT | O_TRUNC, 0640); /* stderr */
 		umask(0077);
 		execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
 		      domid_txt, NULL);
@@ -2357,7 +2375,7 @@ void exec_pacat(Ghandles * g)
 }
 
 /* send configuration parameters of X server to VM */
-void send_xconf(Ghandles * g)
+static void send_xconf(Ghandles * g)
 {
 	struct msg_xconf xconf;
 	XWindowAttributes attr;
@@ -2371,7 +2389,7 @@ void send_xconf(Ghandles * g)
 
 /* receive from VM and compare protocol version
  * abort if mismatch */
-void get_protocol_version(Ghandles * g)
+static void get_protocol_version(Ghandles * g)
 {
 	uint32_t untrusted_version;
 	char message[1024];
@@ -2384,25 +2402,27 @@ void get_protocol_version(Ghandles * g)
 			version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
 		return;
 	if (version_major < QUBES_GUID_PROTOCOL_VERSION_MAJOR)
-		snprintf(message, sizeof message, "%s \""
+		snprintf(message, sizeof message, "%s %s \""
 				"The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
 				"To start and access the VM or template without GUI virtualization, use the following commands:\n"
 				"qvm-start --no-guid vmname\n"
 				"sudo xl console vmname\"",
-				g->use_kdialog ? "kdialog --sorry" : "zenity --error --text ",
+				g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
+				g->use_kdialog ? "--sorry" : "--error --text ",
 				g->vmname, version_major, version_minor);
 	else
-		snprintf(message, sizeof message, "%s \""
+		snprintf(message, sizeof message, "%s %s \""
 				"The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
 				"To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
-				g->use_kdialog ? "kdialog --sorry" : "zenity --error --text ",
+				g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
+				g->use_kdialog ? "--sorry" : "--error --text ",
 				version_major, version_minor, g->vmname);
 	system(message);
 	exit(1);
 }
 
 /* wait until child process connects to VM */
-void wait_for_connection_in_parent(int *pipe_notify)
+static void wait_for_connection_in_parent(int *pipe_notify)
 {
 	// inside the parent process
 	// wait for daemon to get connection with AppVM
@@ -2424,7 +2444,7 @@ void wait_for_connection_in_parent(int *pipe_notify)
 			exit(1);
 		}
 		if (ret > 0) {
-			if (pipe_pollfd.revents == POLLIN)
+			if (pipe_pollfd.revents & POLLIN)
 				break;
 			if (ghandles.log_level > 0)
 				fprintf(stderr, "exiting\n");
@@ -2447,7 +2467,7 @@ void wait_for_connection_in_parent(int *pipe_notify)
 	exit(0);
 }
 
-void usage()
+static void usage(void)
 {
 	fprintf(stderr,
 		"usage: qubes_guid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q]\n");
@@ -2461,7 +2481,7 @@ void usage()
 	fprintf(stderr, " 2 - debug\n");
 }
 
-void parse_cmdline(Ghandles * g, int argc, char **argv)
+static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
 	int opt;
 	/* defaults */
@@ -2503,7 +2523,7 @@ void parse_cmdline(Ghandles * g, int argc, char **argv)
 	}
 }
 
-void load_default_config_values(Ghandles * g)
+static void load_default_config_values(Ghandles * g)
 {
 
 	g->allow_utf8_titles = 0;
@@ -2516,7 +2536,7 @@ void load_default_config_values(Ghandles * g)
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
-void parse_key_sequence(const char *seq, int *mask, KeySym * key)
+static void parse_key_sequence(const char *seq, int *mask, KeySym * key)
 {
 	const char *seqp = seq;
 	int found_modifier;
@@ -2558,7 +2578,7 @@ void parse_key_sequence(const char *seq, int *mask, KeySym * key)
 	}
 }
 
-void parse_vm_config(Ghandles * g, config_setting_t * group)
+static void parse_vm_config(Ghandles * g, config_setting_t * group)
 {
 	config_setting_t *setting;
 
@@ -2594,7 +2614,7 @@ void parse_vm_config(Ghandles * g, config_setting_t * group)
 	}
 }
 
-void parse_config(Ghandles * g)
+static void parse_config(Ghandles * g)
 {
 	config_t config;
 	config_setting_t *setting;
@@ -2643,7 +2663,7 @@ void parse_config(Ghandles * g)
 }
 
 /* helper to get a file flag path */
-char *guid_fs_flag(char *type, int domid)
+static char *guid_fs_flag(const char *type, int domid)
 {
 	static char buf[256];
 	snprintf(buf, sizeof(buf), "/var/run/qubes/guid-%s.%d",
@@ -2651,10 +2671,10 @@ char *guid_fs_flag(char *type, int domid)
 	return buf;
 }
 
-int guid_boot_lock = -1;
+static int guid_boot_lock = -1;
 
 /* create guid_running file when connected to VM */
-void set_alive_flag(int domid)
+static void set_alive_flag(int domid)
 {
 	char pid_buf[10];
 	int fd = open(guid_fs_flag("running", domid),
@@ -2668,19 +2688,19 @@ void set_alive_flag(int domid)
 }
 
 /* remove guid_running file at exit */
-void unset_alive_flag()
+static void unset_alive_flag(void)
 {
 	unlink(guid_fs_flag("running", ghandles.domid));
 }
 
-void kill_pacat() {
+static void kill_pacat(void) {
 	pid_t pid = ghandles.pulseaudio_pid;
 	if (pid > 0) {
 		kill(pid, SIGTERM);
 	}
 }
 
-void wait_for_pacat(int signum) {
+static void wait_for_pacat(int signum) {
 	int status;
 
 	if (ghandles.pulseaudio_pid > 0) {
@@ -2694,7 +2714,7 @@ void wait_for_pacat(int signum) {
 }
 
 
-void get_boot_lock(int domid)
+static void get_boot_lock(int domid)
 {
 	struct stat st;
 	int fd = open(guid_fs_flag("booting", domid),
@@ -2704,6 +2724,7 @@ void get_boot_lock(int domid)
 		exit(1);
 	}
 	if (flock(fd, LOCK_EX) < 0) {
+		unlink(guid_fs_flag("booting", domid));
 		perror("lock");
 		exit(1);
 	}
@@ -2747,8 +2768,10 @@ int main(int argc, char **argv)
 	if (childpid < 0) {
 		fprintf(stderr, "Cannot fork :(\n");
 		exit(1);
-	} else if (childpid > 0)
+	} else if (childpid > 0) {
 		wait_for_connection_in_parent(pipe_notify);
+	    exit(0);
+	}
 
 	// inside the daemonized process...
 	f = fopen("/var/run/shm.id", "r");
@@ -2768,11 +2791,17 @@ int main(int argc, char **argv)
 	}
 
 	close(0);
+	open("/dev/null", O_RDONLY);
 	snprintf(dbg_log, sizeof(dbg_log),
 		 "/var/log/qubes/guid.%s.log", ghandles.vmname);
 	umask(0007);
 	logfd = open(dbg_log, O_WRONLY | O_CREAT | O_TRUNC, 0640);
 	umask(0077);
+	if (logfd < 0) {
+		fprintf(stderr,
+			"Failed to open log file: %s\n", strerror (errno));
+		exit(1);
+	}
 	dup2(logfd, 1);
 	dup2(logfd, 2);
 
@@ -2789,11 +2818,19 @@ int main(int argc, char **argv)
 	exec_pacat(&ghandles);
 	atexit(kill_pacat);
 	/* drop root privileges */
-	setuid(getuid());
+	if (setgid(getgid()) < 0) {
+		perror("setgid()");
+		exit(1);
+	}
+	if (setuid(getuid()) < 0) {
+		perror("setuid()");
+		exit(1);
+	}
 	set_alive_flag(ghandles.domid);
 	atexit(unset_alive_flag);
 
 	write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully
+	close (pipe_notify[1]);
 
 	signal(SIGTERM, dummy_signal_handler);
 	signal(SIGHUP, sighup_signal_handler);

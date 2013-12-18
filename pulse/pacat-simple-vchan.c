@@ -99,6 +99,7 @@ void pacat_log(const char *fmt, ...) {
 /* A shortcut for terminating the application */
 static void quit(struct userdata *u, int ret) {
 	assert(u->loop);
+	u->ret = ret;
 	g_main_loop_quit(u->loop);
 }
 
@@ -229,7 +230,7 @@ static void send_rec_data(pa_stream *s, struct userdata *u) {
 	}
 	rec_buffer_index = 0;
 
-	while (rec_buffer_length > 0) {
+	while (rec_buffer_length > 0 && u->rec_allowed) {
 		/* can block */
 		if ((l=libvchan_write(u->rec_ctrl, rec_buffer + rec_buffer_index, rec_buffer_length)) < 0) {
 			pacat_log("libvchan_write failed");
@@ -531,30 +532,43 @@ int main(int argc, char *argv[])
 {
 	struct timeval tv;
 	struct userdata u;
-	int ret = 1;
 	pa_glib_mainloop* m = NULL;
 	pa_time_event *time_event = NULL;
 	char *server = NULL;
+	int domid;
 
 
 	if (argc <= 1) {
 		fprintf(stderr, "usage: %s domid\n", argv[0]);
 		exit(1);
 	}
+	domid = atoi(argv[1]);
+	if (domid <= 0) { /* not-a-number returns 0 */
+		fprintf(stderr, "invalid domid: %s\n", argv[1]);
+		exit(1);
+	}
 
 	memset(&u, 0, sizeof(u));
+	u.ret = 1;
 
-	u.play_ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SINK_VCHAN_PORT, &u.name);
+	u.play_ctrl = peer_client_init(domid, QUBES_PA_SINK_VCHAN_PORT, &u.name);
 	if (!u.play_ctrl) {
 		perror("libvchan_client_init");
 		exit(1);
 	}
-	u.rec_ctrl = peer_client_init(atoi(argv[1]), QUBES_PA_SOURCE_VCHAN_PORT, NULL);
+	u.rec_ctrl = peer_client_init(domid, QUBES_PA_SOURCE_VCHAN_PORT, NULL);
 	if (!u.rec_ctrl) {
 		perror("libvchan_client_init");
 		exit(1);
 	}
-	setuid(getuid());
+	if (setgid(getgid()) < 0) {
+		perror("setgid");
+		exit(1);
+	}
+	if (setuid(getuid()) < 0) {
+		perror("setuid");
+		exit(1);
+	}
 
 	u.proplist = pa_proplist_new();
 	pa_proplist_sets(u.proplist, PA_PROP_APPLICATION_NAME, u.name);
@@ -608,9 +622,10 @@ int main(int argc, char *argv[])
 
 	if (dbus_init(&u) < 0) {
 		pacat_log("dbus initialization failed");
+		goto quit;
 	}
 
-	ret = 0;
+	u.ret = 0;
 
 	/* Run the main loop */
 	g_main_loop_run (u.loop);
@@ -674,5 +689,5 @@ quit:
 	if (u.proplist)
 		pa_proplist_free(u.proplist);
 
-	return ret;
+	return u.ret;
 }
