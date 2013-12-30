@@ -33,6 +33,7 @@
 #include <xenctrl.h>
 #include <sys/mman.h>
 #include <alloca.h>
+#include <errno.h>
 #include "list.h"
 #include <qubes-gui-protocol.h>
 
@@ -59,8 +60,10 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
 	if (!cmd_pages || shmid != cmd_pages->shmid)
 		return real_shmat(shmid, shmaddr, shmflg);
 	if (cmd_pages->off >= 4096 || cmd_pages->num_mfn > MAX_MFN_COUNT
-	    || cmd_pages->num_mfn == 0)
+	    || cmd_pages->num_mfn == 0) {
+		errno = EINVAL;
 		return MAP_FAILED;
+	}
 	pfntable = alloca(sizeof(xen_pfn_t) * cmd_pages->num_mfn);
 #ifdef DEBUG
 	fprintf(stderr, "size=%d table=%p\n", cmd_pages->num_mfn,
@@ -80,8 +83,10 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
 		list_insert(addr_list, (long) fakeaddr, (void *) fakesize);
 		list_len++;
 		return fakeaddr + cmd_pages->off;
-	} else
+	} else {
+		errno = ENOMEM;
 		return MAP_FAILED;
+	}
 }
 
 int shmdt(const void *shmaddr)
