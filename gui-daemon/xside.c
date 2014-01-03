@@ -2187,7 +2187,11 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	untrusted_shmcmd->domid = g->domid;
 	inter_appviewer_lock(1);
 	memcpy(g->shmcmd, untrusted_shmcmd_data_from_remote,
-	       4096 * SHM_CMD_NUM_PAGES);
+           sizeof(struct shm_cmd) + SIZEOF_SHARED_MFN * num_mfn);
+    if (SIZEOF_SHARED_MFN * num_mfn + sizeof (struct shm_cmd) < 4096 * SHM_CMD_NUM_PAGES) {
+      memset((char*)g->shmcmd->mfns + SIZEOF_SHARED_MFN * num_mfn, 0,
+             4096 * SHM_CMD_NUM_PAGES - (SIZEOF_SHARED_MFN * num_mfn + sizeof (struct shm_cmd)));
+    }
 	vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
 	vm_window->shminfo.readOnly = True;
 	XSync(g->display, False);
