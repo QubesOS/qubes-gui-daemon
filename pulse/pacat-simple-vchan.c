@@ -155,7 +155,7 @@ static void start_drain(struct userdata *u, pa_stream *s) {
 
 static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_length)
 {
-	size_t l = 0;
+	int l = 0;
 	size_t index, buffer_length;
 	void *buffer = NULL;
 	assert(s);
@@ -211,7 +211,7 @@ static void stream_write_callback(pa_stream *s, size_t length, void *userdata) {
 }
 
 static void send_rec_data(pa_stream *s, struct userdata *u) {
-	size_t l;
+	int l;
 	const void *rec_buffer;
 	size_t rec_buffer_length;
 	int rec_buffer_index;
