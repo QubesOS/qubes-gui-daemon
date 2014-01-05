@@ -219,9 +219,6 @@ static void send_rec_data(pa_stream *s, struct userdata *u) {
 	assert(s);
 	assert(u);
 
-	if (!u->rec_allowed)
-		return;
-
 	if (pa_stream_readable_size(s) <= 0)
 		return;
 
