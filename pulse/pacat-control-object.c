@@ -41,6 +41,7 @@ static void pacat_control_set_property (GObject      *object,
 		GParamSpec   *pspec)
 {
 	PacatControl *p;
+	int rec_allowed;
 
 	p = PACAT_CONTROL (object);
 
@@ -48,7 +49,9 @@ static void pacat_control_set_property (GObject      *object,
 	{
 		case PROP_REC_ALLOWED:
 			assert(p->u);
-			p->u->rec_allowed = g_value_get_boolean(value);
+			rec_allowed = g_value_get_boolean(value);
+			g_mutex_lock(&p->u->prop_mutex);
+			p->u->rec_allowed = rec_allowed;
 			pacat_log("Setting audio-input to %s", p->u->rec_allowed ? "enabled" : "disabled");
 			if (p->u->rec_allowed && p->u->rec_requested) {
 				pacat_log("Recording start");
@@ -58,8 +61,9 @@ static void pacat_control_set_property (GObject      *object,
 				pacat_log("Recording stop");
 				pa_stream_cork(p->u->rec_stream, 1, NULL, NULL);
 			}
+			g_mutex_unlock(&p->u->prop_mutex);
 			/* notify about the change */
-			g_signal_emit(object, signals[SIGNAL_REC_ALLOWED_CHANGED], 0, p->u->rec_allowed, p->u->name);
+			g_signal_emit(object, signals[SIGNAL_REC_ALLOWED_CHANGED], 0, rec_allowed, p->u->name);
 			break;
 
 		default:

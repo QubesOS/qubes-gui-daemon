@@ -29,6 +29,7 @@ struct userdata {
 	int rec_requested;
 	DBusGConnection *dbus;
 	GObject *pacat_control;
+	GMutex prop_mutex;
 };
 
 void pacat_log(const char *fmt, ...);

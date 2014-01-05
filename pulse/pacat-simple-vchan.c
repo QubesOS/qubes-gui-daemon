@@ -295,19 +295,23 @@ static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io
 			}
 			switch (cmd) {
 				case QUBES_PA_SOURCE_START_CMD:
+					g_mutex_lock(&u->prop_mutex);
 					u->rec_requested = 1;
 					if (u->rec_allowed) {
 						pacat_log("Recording start");
 						pa_stream_cork(u->rec_stream, 0, NULL, u);
 					} else
 						pacat_log("Recording requested but not allowed");
+					g_mutex_unlock(&u->prop_mutex);
 					break;
 				case QUBES_PA_SOURCE_STOP_CMD:
+					g_mutex_lock(&u->prop_mutex);
 					u->rec_requested = 0;
 					if (!pa_stream_is_corked(u->rec_stream)) {
 						pacat_log("Recording stop");
 						pa_stream_cork(u->rec_stream, 1, NULL, u);
 					}
+					g_mutex_unlock(&u->prop_mutex);
 					break;
 			}
 		}
@@ -556,6 +560,8 @@ int main(int argc, char *argv[])
 	memset(&u, 0, sizeof(u));
 	u.ret = 1;
 
+	g_mutex_init(&u.prop_mutex);
+
 	u.play_ctrl = peer_client_init(domid, QUBES_PA_SINK_VCHAN_PORT, &u.name);
 	if (!u.play_ctrl) {
 		perror("libvchan_client_init");
@@ -694,5 +700,6 @@ quit:
 	if (u.proplist)
 		pa_proplist_free(u.proplist);
 
+	g_mutex_clear(&u.prop_mutex);
 	return u.ret;
 }
