@@ -112,6 +112,8 @@ static void context_drain_complete(pa_context*c, void *userdata) {
 static void stream_drain_complete(pa_stream*s, int success, void *userdata) {
 	struct userdata *u = userdata;
 
+	assert(s == u->play_stream);
+
 	if (!success) {
 		pacat_log("Failed to drain stream: %s", pa_strerror(pa_context_errno(u->context)));
 		quit(u, 1);
