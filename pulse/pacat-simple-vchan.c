@@ -284,9 +284,15 @@ static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io
 
 	if (u->rec_stream && pa_stream_get_state(u->rec_stream) == PA_STREAM_READY) {
 		/* process VM control command */
-		if (libvchan_data_ready(u->rec_ctrl)) {
-			uint32_t cmd;
-			libvchan_read(u->rec_ctrl, (char*)&cmd, sizeof(cmd));
+		uint32_t cmd;
+		if (libvchan_data_ready(u->rec_ctrl) >= sizeof(cmd)) {
+			if (libvchan_read(u->rec_ctrl, (char*)&cmd, sizeof(cmd)) != sizeof(cmd)) {
+				if (!pa_stream_is_corked(u->rec_stream))
+					pa_stream_cork(u->rec_stream, 1, NULL, u);
+				fprintf(stderr, "Failed to read from vchan\n");
+				quit(u, 1);
+				return;
+			}
 			switch (cmd) {
 				case QUBES_PA_SOURCE_START_CMD:
 					u->rec_requested = 1;
