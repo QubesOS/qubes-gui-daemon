@@ -601,7 +601,7 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 			dup2(fd, 0);
 			close(fd);
 			snprintf(domid_str, sizeof(domid_str), "%d", g->target_domid);
-			execl(QREXEC_CLIENT_PATH, "qrexec_client", "-d", domid_str, service_call, (char*)NULL);
+			execl(QREXEC_CLIENT_PATH, "qrexec-client", "-d", domid_str, service_call, (char*)NULL);
 			perror("execl");
 			_exit(1);
 		default:
@@ -720,7 +720,7 @@ static int evaluate_clipboard_policy(Ghandles * g) {
 			perror("fork");
 			exit(1);
 		case 0:
-			execl(QREXEC_POLICY_PATH, "qrexec_policy", "--assume-yes-for-ask", "--just-evaluate", source_vm, g->vmname, "qubes.ClipboardPaste", "0", (char*)NULL);
+			execl(QREXEC_POLICY_PATH, "qrexec-policy", "--assume-yes-for-ask", "--just-evaluate", source_vm, g->vmname, "qubes.ClipboardPaste", "0", (char*)NULL);
 			perror("execl");
 			_exit(1);
 		default:
