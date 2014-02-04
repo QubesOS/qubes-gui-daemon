@@ -146,6 +146,7 @@ struct _global_handles {
 	pid_t pulseaudio_pid;
 	/* configuration */
 	int log_level;		/* log level */
+	int startup_timeout;
 	int allow_utf8_titles;	/* allow UTF-8 chars in window title */
 	int allow_fullscreen;   /* allow fullscreen windows without decoration */
 	int copy_seq_mask;	/* modifiers mask for secure-copy key sequence */
@@ -2454,15 +2455,13 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 				fprintf(stderr, "exiting\n");
 			exit(1);
 		}
-		if (tries >= 45) {
-			if (ghandles.log_level > 0) {
-				fprintf(stderr,
-					"\nHmm... this takes more time than usual --"
-					" is the VM running?\n");
-				fprintf(stderr,
-					"Connecting to VM's GUI agent: ");
+		if (tries >= ghandles.startup_timeout) {
+			if (ghandles.startup_timeout > 0) {
+				if (ghandles.log_level > 0)
+					fprintf(stderr, "timeout\n");
+				exit(1);
 			}
-			tries = 0;
+			exit(0);
 		}
 
 	}
@@ -2478,6 +2477,7 @@ static void usage(void)
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
+	fprintf(stderr, "       -n  do not wait for agent connection\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Log levels:\n");
 	fprintf(stderr, " 0 - only errors\n");
@@ -2492,7 +2492,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	g->log_level = 1;
 	g->qrexec_clipboard = 0;
 
-	while ((opt = getopt(argc, argv, "d:c:l:i:vqQ")) != -1) {
+	while ((opt = getopt(argc, argv, "d:c:l:i:vqQn")) != -1) {
 		switch (opt) {
 		case 'd':
 			g->domid = atoi(optarg);
@@ -2516,6 +2516,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 		case 'Q':
 			g->qrexec_clipboard = 1;
 			break;
+		case 'n':
+			g->startup_timeout = 0;
+			break;
 		default:
 			usage();
 			exit(1);
@@ -2537,6 +2540,7 @@ static void load_default_config_values(Ghandles * g)
 	g->paste_seq_key = XK_v;
 	g->windows_count_limit_param = 500;
 	g->allow_fullscreen = 0;
+	g->startup_timeout = 45;
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
