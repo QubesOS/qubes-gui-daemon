@@ -20,7 +20,7 @@
 #
 
 CC=gcc
-CFLAGS+=-I../include/ -g -Wall `pkg-config --cflags libconfig` \
+CFLAGS+=-I../include/ -g -Wall -Wextra `pkg-config --cflags libconfig` \
 	`pkg-config --cflags libpng` -pie -fPIC
 OBJS=xside.o png.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
 	../common/list.o 

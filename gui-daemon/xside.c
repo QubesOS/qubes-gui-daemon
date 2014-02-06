@@ -66,6 +66,12 @@
 // Mod2 excluded as it is Num_Lock
 #define SPECIAL_KEYS_MASK (Mod1Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
 
+#ifdef __GNUC__
+#  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#else
+#  define UNUSED(x) UNUSED_ ## x
+#endif
+
 enum clipboard_op {
 	CLIPBOARD_COPY,
 	CLIPBOARD_PASTE
@@ -73,8 +79,8 @@ enum clipboard_op {
 
 /* per-window data */
 struct windowdata {
-	int width;
-	int height;
+	unsigned width;
+	unsigned height;
 	int x;
 	int y;
 	int is_mapped;
@@ -738,7 +744,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 	struct msg_hdr hdr;
 	char *data;
 	int len;
-	if ((ev->state & SPECIAL_KEYS_MASK) ==
+	if (((int)ev->state & SPECIAL_KEYS_MASK) ==
 	    g->copy_seq_mask
 	    && ev->keycode == XKeysymToKeycode(g->display,
 					       g->copy_seq_key)) {
@@ -759,7 +765,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 		}
 		return 1;
 	}
-	if ((ev->state & SPECIAL_KEYS_MASK) ==
+	if (((int)ev->state & SPECIAL_KEYS_MASK) ==
 	    g->paste_seq_mask
 	    && ev->keycode == XKeysymToKeycode(g->display,
 					       g->paste_seq_key)) {
@@ -820,6 +826,7 @@ static void process_xevent_keypress(Ghandles * g, const XKeyEvent * ev)
 }
 
 // debug routine
+#ifdef DEBUG
 static void dump_mapped(Ghandles * g)
 {
 	struct genlist *item = g->wid2windowdata->next;
@@ -836,6 +843,7 @@ static void dump_mapped(Ghandles * g)
 		}
 	}
 }
+#endif
 
 /* handle local Xserver event: XButtonEvent
  * same as XKeyEvent - send to relevant window in VM */
@@ -980,7 +988,7 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		reason = 2;
 	}
 	if (vm_window->x < g->root_width &&
-	    vm_window->x + vm_window->width >
+	    vm_window->x + (int)vm_window->width >
 	    g->root_width - border_width) {
 		vm_window->width =
 		    g->root_width - vm_window->x - border_width;
@@ -988,7 +996,7 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 		reason = 3;
 	}
 	if (vm_window->y < g->root_height &&
-	    vm_window->y + vm_window->height >
+	    vm_window->y + (int)vm_window->height >
 	    g->root_height - border_width) {
 		vm_window->height =
 		    g->root_height - vm_window->y - border_width;
@@ -1027,8 +1035,8 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
 	 */
 	if (!ev->send_event && !vm_window->is_docked)
 		return;
-	if (vm_window->width == ev->width
-	    && vm_window->height == ev->height && vm_window->x == ev->x
+	if ((int)vm_window->width == ev->width
+	    && (int)vm_window->height == ev->height && vm_window->x == ev->x
 	    && vm_window->y == ev->y)
 		return;
 	vm_window->width = ev->width;
@@ -1052,7 +1060,8 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
 static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 {
 	struct msg_configure untrusted_conf;
-	unsigned int x, y, width, height, override_redirect;
+	int x, y;
+	unsigned width, height, override_redirect;
 	int conf_changed;
 
 	read_struct(untrusted_conf);
@@ -1243,8 +1252,8 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 	if (!vm_window->image)
 		return;
 	/* window contains only (forced) frame, so no content to update */
-	if (vm_window->width <= border_width * 2
-	    || vm_window->height <= border_width * 2)
+	if ((int)vm_window->width <= border_width * 2
+	    || (int)vm_window->height <= border_width * 2)
 		return;
 	/* force frame to be visible: */
 	/*   * left */
@@ -1434,8 +1443,8 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev
 {
 	Atom act_type;
 	Atom *state_list;
-	unsigned long nitems, bytesleft;
-	int ret, act_fmt, i;
+	unsigned long nitems, bytesleft, i;
+	int ret, act_fmt;
 	uint32_t flags;
 	struct msg_hdr hdr;
 	struct msg_window_flags msg;
@@ -1552,7 +1561,7 @@ static void process_xevent(Ghandles * g)
 		if (event_buffer.xclient.message_type == g->xembed_message) {
 			process_xevent_xembed(g, (XClientMessageEvent *) &
 					      event_buffer);
-		} else if (event_buffer.xclient.data.l[0] ==
+		} else if ((Atom)event_buffer.xclient.data.l[0] ==
 			   g->wmDeleteMessage) {
 			if (g->log_level > 0)
 				fprintf(stderr, "close for 0x%x\n",
@@ -1735,7 +1744,7 @@ static int validate_utf8_char(unsigned char *untrusted_c) {
 	 *   UTF8-tail   = %x80-BF
 	 */
 
-	if (*untrusted_c >= 0x00 && *untrusted_c <= 0x7F) {
+	if (*untrusted_c <= 0x7F) {
 		return 1;
 	} else if (*untrusted_c >= 0xC2 && *untrusted_c <= 0xDF) {
 		total_size = 2;
@@ -1877,10 +1886,8 @@ static void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 	/* sanitize start */
 	size_hints.flags = 0;
 	/* check every value and pass it only when sane */
-	if ((untrusted_msg.flags & PMinSize) &&
-	    untrusted_msg.min_width >= 0
+	if ((untrusted_msg.flags & PMinSize)
 	    && untrusted_msg.min_width <= MAX_WINDOW_WIDTH
-	    && untrusted_msg.min_height >= 0
 	    && untrusted_msg.min_height <= MAX_WINDOW_HEIGHT) {
 		size_hints.flags |= PMinSize;
 		size_hints.min_width = untrusted_msg.min_width;
@@ -2291,13 +2298,13 @@ static void handle_message(Ghandles * g)
 }
 
 /* signal handler - connected to SIGTERM */
-static void dummy_signal_handler(int x)
+static void dummy_signal_handler(int UNUSED(x))
 {
 	ghandles.signal_caught = 1;
 }
 
 /* signal handler - connected to SIGHUP */
-static void sighup_signal_handler(int x)
+static void sighup_signal_handler(int UNUSED(x))
 {
 	ghandles.reload_requested = 1;
 }
@@ -2708,7 +2715,7 @@ static void kill_pacat(void) {
 	}
 }
 
-static void wait_for_pacat(int signum) {
+static void wait_for_pacat(int UNUSED(signum)) {
 	int status;
 
 	if (ghandles.pulseaudio_pid > 0) {
@@ -2848,7 +2855,8 @@ int main(int argc, char **argv)
 
 	/* provide keyboard map before VM Xserver starts */
 
-	if (snprintf(cmd_tmp, sizeof(cmd_tmp), "/usr/bin/xenstore-write	"
+	/* cast return value to unsigned, so (unsigned)-1 > sizeof(cmd_tmp) */
+	if ((unsigned)snprintf(cmd_tmp, sizeof(cmd_tmp), "/usr/bin/xenstore-write	"
 		     "/local/domain/%d/qubes-keyboard \"`/usr/bin/setxkbmap -print`\"",
 		     ghandles.domid) < sizeof(cmd_tmp)) {
 		/* intentionally ignore return value - don't fail gui-daemon if only
