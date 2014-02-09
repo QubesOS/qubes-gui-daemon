@@ -868,6 +868,12 @@ static void process_xevent_button(Ghandles * g, const XButtonEvent * ev)
 			"xside: win 0x%x(0x%x) type=%d button=%d x=%d, y=%d\n",
 			(int) ev->window, hdr.window, k.type, k.button,
 			k.x, k.y);
+	if (vm_window->is_docked && ev->type == ButtonPress) {
+		/* Take focus to that icon, to make possible keyboard nagivation
+		 * through the menu */
+		XSetInputFocus(g->display, vm_window->local_winid, RevertToParent,
+				CurrentTime);
+	}
 }
 
 /* handle local Xserver event: XCloseEvent
