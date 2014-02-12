@@ -2152,6 +2152,12 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 		release_mapped_mfns(g, vm_window);
 	read_data(untrusted_shmcmd_data_from_remote,
 		  sizeof(struct shm_cmd));
+
+	if (g->log_level > 1)
+		fprintf(stderr, "MSG_MFNDUMP for 0x%x(0x%x): %dx%d, num_mfn 0x%x off 0x%x\n",
+				(int) vm_window->local_winid, (int) vm_window->remote_winid,
+				untrusted_shmcmd->width, untrusted_shmcmd->height,
+				untrusted_shmcmd->num_mfn, untrusted_shmcmd->off);
 	/* sanitize start */
 	VERIFY(untrusted_shmcmd->num_mfn <= MAX_MFN_COUNT);
 	num_mfn = untrusted_shmcmd->num_mfn;
