@@ -2492,7 +2492,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: qubes_guid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q]\n");
+		"usage: qubes-guid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
