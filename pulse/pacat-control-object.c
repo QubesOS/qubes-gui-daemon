@@ -31,7 +31,7 @@ static void pacat_control_finalize (GObject *object)
 	(G_OBJECT_CLASS (pacat_control_parent_class)->finalize) (object);
 }
 
-static void pacat_control_init (PacatControl *obj)
+static void pacat_control_init (PacatControl *obj __attribute__((__unused__)))
 {
 }
 
@@ -129,7 +129,10 @@ int dbus_init(struct userdata *u) {
 	int result, ret;
 
 	g_type_init ();
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 	g_thread_init (NULL);
+#pragma GCC diagnostic pop
 	dbus_g_thread_init ();
 	error = NULL;
 
@@ -155,7 +158,7 @@ int dbus_init(struct userdata *u) {
 		or 4 (we were already the owner of the name)
 
 		The function will return FALSE if it sets the GError. */
-	if (snprintf(obj_path, sizeof(obj_path), "org.QubesOS.Audio.%s", u->name) >= sizeof(obj_path)) {
+	if (snprintf(obj_path, sizeof(obj_path), "org.QubesOS.Audio.%s", u->name) >= (int)sizeof(obj_path)) {
 		pacat_log("VM name too long");
 		goto fail;
 	}

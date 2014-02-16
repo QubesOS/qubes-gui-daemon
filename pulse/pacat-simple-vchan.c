@@ -65,6 +65,11 @@
 #include "pacat-control-object.h"
 
 #define CLEAR_LINE "\x1B[K"
+#ifdef __GNUC__
+#  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#else
+#  define UNUSED(x) UNUSED_ ## x
+#endif
 
 /* The Sample format to use */
 static pa_sample_spec sample_spec = {
@@ -104,7 +109,7 @@ static void quit(struct userdata *u, int ret) {
 }
 
 /* Connection draining complete */
-static void context_drain_complete(pa_context*c, void *userdata) {
+static void context_drain_complete(pa_context*c, void *UNUSED(userdata)) {
 	pa_context_disconnect(c);
 }
 
@@ -253,7 +258,9 @@ static void stream_read_callback(pa_stream *s, size_t length, void *userdata) {
 }
 
 /* vchan event */
-static void vchan_play_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io_event_flags_t f, void *userdata) {
+static void vchan_play_callback(pa_mainloop_api *UNUSED(a),
+		pa_io_event *UNUSED(e),	int UNUSED(fd), pa_io_event_flags_t UNUSED(f),
+		void *userdata) {
 	struct userdata *u = userdata;
 
 	/* receive event */
@@ -270,7 +277,9 @@ static void vchan_play_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_i
 		process_playback_data(u, u->play_stream, pa_stream_writable_size(u->play_stream));
 }
 
-static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io_event_flags_t f, void *userdata) {
+static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
+		pa_io_event *UNUSED(e), int UNUSED(fd), pa_io_event_flags_t UNUSED(f),
+		void *userdata) {
 	struct userdata *u = userdata;
 
 	/* receive event */
@@ -285,7 +294,7 @@ static void vchan_rec_callback(pa_mainloop_api *a, pa_io_event *e, int fd, pa_io
 	if (u->rec_stream && pa_stream_get_state(u->rec_stream) == PA_STREAM_READY) {
 		/* process VM control command */
 		uint32_t cmd;
-		if (libvchan_data_ready(u->rec_ctrl) >= sizeof(cmd)) {
+		if (libvchan_data_ready(u->rec_ctrl) >= (int)sizeof(cmd)) {
 			if (libvchan_read(u->rec_ctrl, (char*)&cmd, sizeof(cmd)) != sizeof(cmd)) {
 				if (!pa_stream_is_corked(u->rec_stream))
 					pa_stream_cork(u->rec_stream, 1, NULL, u);
@@ -365,7 +374,7 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
 	}
 }
 
-static void stream_suspended_callback(pa_stream *s, void *userdata) {
+static void stream_suspended_callback(pa_stream *s, void *UNUSED(userdata)) {
 	assert(s);
 
 	if (verbose) {
@@ -376,42 +385,42 @@ static void stream_suspended_callback(pa_stream *s, void *userdata) {
 	}
 }
 
-static void stream_underflow_callback(pa_stream *s, void *userdata) {
+static void stream_underflow_callback(pa_stream *s, void *UNUSED(userdata)) {
 	assert(s);
 
 	if (verbose)
 		pacat_log("Stream underrun.%s", CLEAR_LINE);
 }
 
-static void stream_overflow_callback(pa_stream *s, void *userdata) {
+static void stream_overflow_callback(pa_stream *s, void *UNUSED(userdata)) {
 	assert(s);
 
 	if (verbose)
 		pacat_log("Stream %s overrun.%s", pa_stream_get_device_name(s), CLEAR_LINE);
 }
 
-static void stream_started_callback(pa_stream *s, void *userdata) {
+static void stream_started_callback(pa_stream *s, void *UNUSED(userdata)) {
 	assert(s);
 
 	if (verbose)
 		pacat_log("Stream started.%s", CLEAR_LINE);
 }
 
-static void stream_moved_callback(pa_stream *s, void *userdata) {
+static void stream_moved_callback(pa_stream *s, void *UNUSED(userdata)) {
 	assert(s);
 
 	if (verbose)
 		pacat_log("Stream moved to device %s (%u, %ssuspended).%s", pa_stream_get_device_name(s), pa_stream_get_device_index(s), pa_stream_is_suspended(s) ? "" : "not ",  CLEAR_LINE);
 }
 
-static void stream_buffer_attr_callback(pa_stream *s, void *userdata) {
+static void stream_buffer_attr_callback(pa_stream *s, void *UNUSED(userdata)) {
 	assert(s);
 
 	if (verbose)
 		pacat_log("Stream buffer attributes changed.%s", CLEAR_LINE);
 }
 
-static void stream_event_callback(pa_stream *s, const char *name, pa_proplist *pl, void *userdata) {
+static void stream_event_callback(pa_stream *s, const char *name, pa_proplist *pl, void *UNUSED(userdata)) {
 	char *t;
 
 	assert(s);
@@ -523,7 +532,8 @@ fail:
 }
 
 
-static void check_vchan_eof_timer(pa_mainloop_api*a, pa_time_event* e, const struct timeval *tv, void *userdata)
+static void check_vchan_eof_timer(pa_mainloop_api*a, pa_time_event* e,
+		const struct timeval *UNUSED(tv), void *userdata)
 {
 	struct userdata *u = userdata;
 	struct timeval restart_tv = { 5, 0 };
