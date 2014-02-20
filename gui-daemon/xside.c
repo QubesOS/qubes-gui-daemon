@@ -1259,8 +1259,13 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		return;
 	/* window contains only (forced) frame, so no content to update */
 	if ((int)vm_window->width <= border_width * 2
-	    || (int)vm_window->height <= border_width * 2)
+	    || (int)vm_window->height <= border_width * 2) {
+		XFillRectangle(g->display, vm_window->local_winid,
+			       g->frame_gc, 0, 0,
+			       vm_window->width,
+			       vm_window->height);
 		return;
+	}
 	/* force frame to be visible: */
 	/*   * left */
 	delta = border_width - x;
