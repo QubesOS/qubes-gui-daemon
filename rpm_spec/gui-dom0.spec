@@ -27,7 +27,7 @@
 
 Name:		qubes-gui-dom0	
 Version:	%{version}
-Release:	1.1%{dist}
+Release:	1%{dist}
 Summary:	The Qubes GUI virtualization (Dom0 side) 
 
 Group:		Qubes
