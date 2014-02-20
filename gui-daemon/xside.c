@@ -1591,9 +1591,10 @@ static void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
 	if (!vm_window->is_mapped)
 		return;
 	if (g->log_level >= 2) {
-		fprintf(stderr, "shmimage for %p, x: %d, y: %d, w: %d, h: %d\n",
-				vm_window, untrusted_mx.x, untrusted_mx.y,
-				              untrusted_mx.width, untrusted_mx.height);
+		fprintf(stderr, "shmimage for 0x%x(remote 0x%x), x: %d, y: %d, w: %d, h: %d\n",
+				(int) vm_window->local_winid, (int) vm_window->remote_winid,
+				untrusted_mx.x, untrusted_mx.y, untrusted_mx.width,
+				untrusted_mx.height);
 	}
 	/* WARNING: passing raw values, input validation is done inside of
 	 * do_shm_update */
