@@ -1293,6 +1293,13 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 	if (w <= 0 || h <= 0)
 		return;
 
+	if (g->log_level > 1)
+		fprintf(stderr,
+				"  do_shm_update for 0x%x(remote 0x%x), after border calc: x=%d, y=%d, w=%d, h=%d\n",
+				(int) vm_window->local_winid,
+				(int) vm_window->remote_winid,
+				x, y, w, h);
+
 #ifdef FILL_TRAY_BG
 	if (vm_window->is_docked) {
 		char *data, *datap;
