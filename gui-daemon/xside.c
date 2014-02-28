@@ -135,6 +135,7 @@ struct _global_handles {
 	unsigned long *icon_data; /* loaded icon image, ready for _NEW_WM_ICON property */
 	int icon_data_len; /* size of icon_data, in sizeof(*icon_data) units */
 	int label_index;	/* label (frame color) hint for WM */
+	struct windowdata *screen_window; /* window of whole VM screen */
 	/* lists of windows: */
 	/*   indexed by remote window id */
 	struct genlist *remote2local;
@@ -408,6 +409,11 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 			(const unsigned char *) g->vmname,
 			strlen(g->vmname));
 
+	if (vm_window->remote_winid == 0) {
+		/* whole screen window */
+		g->screen_window = vm_window;
+	}
+
 	return child_win;
 }
 
@@ -453,6 +459,7 @@ static void mkghandles(Ghandles * g)
 	/* init window lists */
 	g->remote2local = list_new();
 	g->wid2windowdata = list_new();
+	g->screen_window = NULL;
 	/* use qrexec for clipboard operations when stubdom GUI is used */
 	if (g->domid != g->target_domid)
 		g->qrexec_clipboard = 1;
@@ -1238,10 +1245,27 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 				untrusted_y, untrusted_w, untrusted_h);
 		return;
 	}
-	x = min(untrusted_x, vm_window->image_width);
-	y = min(untrusted_y, vm_window->image_height);
-	w = min(max(untrusted_w, 0), vm_window->image_width - x);
-	h = min(max(untrusted_h, 0), vm_window->image_height - y);
+	if (vm_window->image) {
+		x = min(untrusted_x, vm_window->image_width);
+		y = min(untrusted_y, vm_window->image_height);
+		w = min(max(untrusted_w, 0), vm_window->image_width - x);
+		h = min(max(untrusted_h, 0), vm_window->image_height - y);
+	} else if (g->screen_window) {
+		/* update only onscreen window part */
+		if (vm_window->x >= g->screen_window->image_width ||
+				vm_window->y >= g->screen_window->image_height)
+			return;
+		if (vm_window->x+untrusted_x < 0)
+			untrusted_x = -vm_window->x;
+		if (vm_window->y+untrusted_y < 0)
+			untrusted_y = -vm_window->y;
+		x = min(untrusted_x, g->screen_window->image_width - vm_window->x);
+		y = min(untrusted_y, g->screen_window->image_height - vm_window->y);
+		w = min(max(untrusted_w, 0), g->screen_window->image_width - vm_window->x - x);
+		h = min(max(untrusted_h, 0), g->screen_window->image_height - vm_window->y - y);
+	}
+	/* else: no image to update, will return after possibly drawing a frame */
+
 	/* sanitize end */
 
 	if (!vm_window->override_redirect) {
@@ -1255,8 +1279,6 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 
 	int do_border = 0;
 	int delta, i;
-	if (!vm_window->image)
-		return;
 	/* window contains only (forced) frame, so no content to update */
 	if ((int)vm_window->width <= border_width * 2
 	    || (int)vm_window->height <= border_width * 2) {
@@ -1266,6 +1288,8 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 			       vm_window->height);
 		return;
 	}
+	if (!vm_window->image && !(g->screen_window && g->screen_window->image))
+		return;
 	/* force frame to be visible: */
 	/*   * left */
 	delta = border_width - x;
@@ -1311,6 +1335,10 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		size_t data_sz;
 		int xp, yp;
 
+		if (!vm_window->image) {
+			/* TODO: implement screen_window handling */
+			return;
+		}
 		/* allocate image_width _bits_ for each image line */
 		data_sz =
 		    (vm_window->image_width / 8 +
@@ -1387,9 +1415,17 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		return;
 	} else
 #endif
-		XShmPutImage(g->display, vm_window->local_winid,
-			     g->context, vm_window->image, x,
-			     y, x, y, w, h, 0);
+	{
+		if (vm_window->image) {
+			XShmPutImage(g->display, vm_window->local_winid,
+					g->context, vm_window->image, x,
+					y, x, y, w, h, 0);
+		} else {
+			XShmPutImage(g->display, vm_window->local_winid,
+					g->context, g->screen_window->image, vm_window->x+x,
+					vm_window->y+y, x, y, w, h, 0);
+		}
+	}
 	if (!do_border)
 		return;
 	for (i = 0; i < border_width; i++)
@@ -1739,6 +1775,8 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
 	l2 = list_lookup(g->wid2windowdata, vm_window->local_winid);
 	list_remove(l);
 	list_remove(l2);
+	if (vm_window == g->screen_window)
+		g->screen_window = NULL;
 	free(vm_window);
 }
 
