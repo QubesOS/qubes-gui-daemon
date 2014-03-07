@@ -2379,10 +2379,19 @@ static void exec_pacat(Ghandles * g)
 	pid_t pid;
 	char domid_txt[20];
 	char logname[80];
+	char old_logname[80];
 	struct rlimit rl;
+	struct stat stat_buf;
 	snprintf(domid_txt, sizeof domid_txt, "%d", g->domid);
 	snprintf(logname, sizeof logname, "/var/log/qubes/pacat.%s.log",
 		 g->vmname);
+	snprintf(old_logname, sizeof logname, "/var/log/qubes/pacat.%s.log.old",
+		 g->vmname);
+	if (stat(logname, &stat_buf) == 0) {
+	   if (rename(logname, old_logname) < 0) {
+		   perror("Old logfile rename");
+	   }
+	}
 	switch (pid=fork()) {
 	case -1:
 		perror("fork pacat");
