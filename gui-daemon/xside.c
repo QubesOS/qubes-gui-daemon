@@ -161,6 +161,7 @@ struct _global_handles {
 	KeySym paste_seq_key;	/* key for secure-paste key sequence */
 	int qrexec_clipboard;	/* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
 	int use_kdialog;	/* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
+	int audio_low_latency; /* set low-latency mode while starting pacat-simple-vchan */
 };
 
 typedef struct _global_handles Ghandles;
@@ -2411,8 +2412,13 @@ static void exec_pacat(Ghandles * g)
 		umask(0007);
 		fd = open(logname, O_WRONLY | O_CREAT | O_TRUNC, 0640); /* stderr */
 		umask(0077);
-		execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
-		      domid_txt, NULL);
+		if (g->audio_low_latency) {
+			execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
+					"-l", domid_txt, NULL);
+		} else {
+			execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
+					domid_txt, NULL);
+		}
 		perror("execl");
 		_exit(1);
 	default:
@@ -2514,11 +2520,12 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: qubes-guid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q]\n");
+		"usage: qubes-guid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
 	fprintf(stderr, "       -n  do not wait for agent connection\n");
+	fprintf(stderr, "       -a  low-latency audio mode\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Log levels:\n");
 	fprintf(stderr, " 0 - only errors\n");
@@ -2533,8 +2540,11 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	g->log_level = 1;
 	g->qrexec_clipboard = 0;
 
-	while ((opt = getopt(argc, argv, "d:c:l:i:vqQn")) != -1) {
+	while ((opt = getopt(argc, argv, "d:c:l:i:vqQna")) != -1) {
 		switch (opt) {
+		case 'a':
+			g->audio_low_latency = 1;
+			break;
 		case 'd':
 			g->domid = atoi(optarg);
 			break;
@@ -2660,6 +2670,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
 	if ((setting =
 	     config_setting_get_member(group, "allow_fullscreen"))) {
 		g->allow_fullscreen = config_setting_get_bool(setting);
+	}
+
+	if ((setting =
+	     config_setting_get_member(group, "audio_low_latency"))) {
+		g->audio_low_latency = config_setting_get_bool(setting);
 	}
 }
 

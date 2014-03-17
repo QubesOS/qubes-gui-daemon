@@ -77,18 +77,13 @@ static pa_sample_spec sample_spec = {
 	.rate = 44100,
 	.channels = 2
 };
-#ifdef CUSTOM_BUFFERING
 static const pa_buffer_attr custom_bufattr ={
 	.maxlength = 8192,
 	.minreq = (uint32_t)-1,
 	.prebuf = (uint32_t)-1,
 	.tlength = 4096
 };
-pa_buffer_attr * bufattr = &custom_bufattr;
-#else
-pa_buffer_attr * bufattr = NULL;
-#endif
-
+const pa_buffer_attr * bufattr = NULL;
 
 static int verbose = 1;
 
@@ -555,15 +550,30 @@ int main(int argc, char *argv[])
 	pa_time_event *time_event = NULL;
 	char *server = NULL;
 	int domid;
+	int i;
 
 
 	if (argc <= 1) {
-		fprintf(stderr, "usage: %s domid\n", argv[0]);
+		fprintf(stderr, "usage: %s [-l] domid\n", argv[0]);
+		fprintf(stderr, "  -l - low-latency mode (higher CPU usage)\n");
 		exit(1);
 	}
-	domid = atoi(argv[1]);
+	for (i=1; i<argc; i++) {
+		if (argv[i][0] == '-') {
+			switch (argv[i][1]) {
+				case 'l':
+					bufattr = &custom_bufattr;
+					break;
+				default:
+					fprintf(stderr, "Invalid option: %c\n", argv[i][1]);
+					exit(1);
+			}
+		} else {
+			domid = atoi(argv[i]);
+		}
+	}
 	if (domid <= 0) { /* not-a-number returns 0 */
-		fprintf(stderr, "invalid domid: %s\n", argv[1]);
+		fprintf(stderr, "invalid domid\n");
 		exit(1);
 	}
 
