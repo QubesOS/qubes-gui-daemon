@@ -48,6 +48,7 @@
 #include <qubes-xorg-tray-defs.h>
 #include "txrx.h"
 #include "list.h"
+#include "error.h"
 #include "png.h"
 
 /* some configuration */
@@ -2876,6 +2877,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	mkghandles(&ghandles);
+	XSetErrorHandler(dummy_handler);
 	peer_client_init(ghandles.domid, 6000);
 	atexit(vchan_close);
 	signal(SIGCHLD, wait_for_pacat);
