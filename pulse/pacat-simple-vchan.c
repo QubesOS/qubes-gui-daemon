@@ -549,7 +549,7 @@ int main(int argc, char *argv[])
 	pa_glib_mainloop* m = NULL;
 	pa_time_event *time_event = NULL;
 	char *server = NULL;
-	int domid;
+	int domid = 0;
 	int i;
 
 

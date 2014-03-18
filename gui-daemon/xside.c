@@ -580,6 +580,9 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 			path_stdout = "/dev/null";
 			service_call = "DEFAULT:QUBESRPC qubes.ClipboardPaste";
 			break;
+		default:
+			/* not reachable */
+			return 0;
 	}
 	switch (pid=fork()) {
 		case -1:
@@ -2247,7 +2250,7 @@ static void handle_message(Ghandles * g)
 {
 	struct msg_hdr untrusted_hdr;
 	uint32_t type;
-	XID window;
+	XID window = 0;
 	struct genlist *l;
 	struct windowdata *vm_window = NULL;
 
