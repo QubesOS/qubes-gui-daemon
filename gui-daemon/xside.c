@@ -63,6 +63,10 @@
 /* this feature was used to fill icon bg with VM color, later changed to white;
  * discussion: http://wiki.qubes-os.org/trac/ticket/127 */
 // #define FILL_TRAY_BG
+/* this makes any X11 error fatal (i.e. cause exit(1)). This behavior was the
+ * case for a long time before introducing this option, so nothing really have
+ * changed  */
+#define MAKE_X11_ERRORS_FATAL
 
 // Mod2 excluded as it is Num_Lock
 #define SPECIAL_KEYS_MASK (Mod1Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
@@ -307,6 +311,16 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
 	}
 	/* should never happend */
 	return 1;
+}
+
+int x11_error_handler(Display * dpy, XErrorEvent * ev)
+{
+	/* log the error */
+	dummy_handler(dpy, ev);
+#ifdef MAKE_X11_ERRORS_FATAL
+	exit(1);
+#endif
+	return 0;
 }
 
 /* prepare graphic context for painting colorful frame */
@@ -2880,7 +2894,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	mkghandles(&ghandles);
-	XSetErrorHandler(dummy_handler);
+	XSetErrorHandler(x11_error_handler);
 	peer_client_init(ghandles.domid, 6000);
 	atexit(vchan_close);
 	signal(SIGCHLD, wait_for_pacat);
