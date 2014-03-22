@@ -32,9 +32,11 @@
 #include <malloc.h>
 #include <xenctrl.h>
 #include <sys/mman.h>
+#include <semaphore.h>
 #include <alloca.h>
 #include <errno.h>
 #include "list.h"
+#include "shm-common.h"
 #include <qubes-gui-protocol.h>
 
 static void *(*real_shmat) (int shmid, const void *shmaddr, int shmflg);
@@ -50,6 +52,8 @@ static xc_interface *xc_hnd;
 static int xc_hnd;
 #endif
 static int list_len;
+
+static sem_t *shm_access_sem;
 
 void *shmat(int shmid, const void *shmaddr, int shmflg)
 {
@@ -107,6 +111,14 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
 		return real_shmctl(shmid, cmd, buf);
 	memset(&buf->shm_perm, 0, sizeof(buf->shm_perm));
 	buf->shm_segsz = cmd_pages->num_mfn * 4096 - cmd_pages->off;
+	/* this is the last shm* operation in XShmAttach, notify qubes-guid we're
+	 * done */
+	if (cmd_pages->shmid != local_shmid) {
+		int shmid_to_remove = cmd_pages->shmid;
+		cmd_pages->shmid = local_shmid;
+		shmctl(shmid_to_remove, IPC_RMID, 0);
+		sem_post(shm_access_sem);
+	}
 	return 0;
 }
 
@@ -167,6 +179,14 @@ int __attribute__ ((constructor)) initfunc()
 		exit(1);
 	}
 	cmd_pages->shmid = local_shmid;
+	shm_access_sem = sem_open(SEM_NAME, O_CREAT, 0666, 1);
+	if (shm_access_sem == SEM_FAILED) {
+		unlink(SHMID_FILENAME);
+		perror("sem_open");
+		exit(1);
+	}
+
+
 	addr_list = list_new();
 	return 0;
 }
@@ -176,5 +196,7 @@ int __attribute__ ((destructor)) descfunc()
 	real_shmdt(cmd_pages);
 	real_shmctl(local_shmid, IPC_RMID, 0);
 	unlink(SHMID_FILENAME);
+	sem_close(shm_access_sem);
+	sem_unlink(SEM_NAME);
 	return 0;
 }
