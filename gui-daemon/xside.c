@@ -1981,10 +1981,6 @@ static void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 			untrusted_msg.base_height);
 	/* sanitize end */
 
-	/* if no valid values self - do not send it to X server */
-	if (size_hints.flags == 0)
-		return;
-
 	if (g->log_level > 1)
 		fprintf(stderr,
 			"set WM_NORMAL_HINTS for window 0x%x to min=%d/%d, max=%d/%d, base=%d/%d, inc=%d/%d (flags 0x%x)\n",
