@@ -320,12 +320,10 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
 int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
 	if (ev->serial == ghandles.serial_shmattach) {
-		int shmid_to_remove = ghandles.shmcmd->shmid;
 		/* XShmAttach failed, release the lock */
-		if (shmid_to_remove != ghandles.cmd_shmid) {
+		if (ghandles.shmcmd->shmid != ghandles.cmd_shmid) {
 			ghandles.shmcmd->shmid = ghandles.cmd_shmid;
 			sem_post(ghandles.shm_access_sem);
-			shmctl(shmid_to_remove, IPC_RMID, 0);
 		}
 	}
 	/* log the error */
@@ -2179,6 +2177,7 @@ static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 	XDestroyImage(vm_window->image);
 	XSync(g->display, False);
 	vm_window->image = NULL;
+	shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
 }
 
 /* handle VM message: MSG_MFNDUMP

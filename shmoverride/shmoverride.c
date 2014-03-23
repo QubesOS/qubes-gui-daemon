@@ -115,9 +115,7 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
 	/* this is the last shm* operation in XShmAttach, notify qubes-guid we're
 	 * done */
 	if (cmd_pages->shmid != local_shmid) {
-		int shmid_to_remove = cmd_pages->shmid;
 		cmd_pages->shmid = local_shmid;
-		shmctl(shmid_to_remove, IPC_RMID, 0);
 		sem_post(shm_access_sem);
 	}
 	return 0;
