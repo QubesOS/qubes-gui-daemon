@@ -134,7 +134,7 @@ struct _global_handles {
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
 	uint32_t cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
 	sem_t *shm_access_sem; /* semaphore to guard access to the above shared memory */
-	unsigned long serial_shmcmd; /* serial number of XShmAttach/XShmDetach call - for error handling */
+	unsigned long serial_shmattach; /* serial number of XShmAttach call - for error handling */
 	/* Client VM parameters */
 	char vmname[32];	/* name of VM */
 	int domid;		/* Xen domain id (GUI) */
@@ -319,7 +319,7 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
 
 int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
-	if (ev->serial == ghandles.serial_shmcmd) {
+	if (ev->serial == ghandles.serial_shmattach) {
 		/* XShmAttach failed, release the lock */
 		if (ghandles.shmcmd->shmid != ghandles.cmd_shmid) {
 			ghandles.shmcmd->shmid = ghandles.cmd_shmid;
@@ -2166,12 +2166,9 @@ static void inter_appviewer_lock(int mode)
 /* release shared memory connected with given window */
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 {
-	/* The lock is needed because shmoverride->shmdt isn't thread safe
-	 * (list implementation). *
-	 * g->shmcmd is used only to mark the need of releasing the lock. */
-	g->shmcmd->shmid = vm_window->shminfo.shmid;
+	/* we don't use g->shmcmd here, but shmoverride->shmdt isn't thread safe
+	 * (list implementation) */
 	sem_wait(g->shm_access_sem);
-	g->serial_shmcmd = NextRequest(g->display);
 	XShmDetach(g->display, &vm_window->shminfo);
 	XDestroyImage(vm_window->image);
 	XSync(g->display, False);
@@ -2258,7 +2255,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
 	vm_window->shminfo.readOnly = True;
 	XSync(g->display, False);
-	g->serial_shmcmd = NextRequest(g->display);
+	g->serial_shmattach = NextRequest(g->display);
 	if (!XShmAttach(g->display, &vm_window->shminfo)) {
 		fprintf(stderr,
 			"XShmAttach failed for window 0x%x(remote 0x%x)\n",
