@@ -102,7 +102,6 @@ int shmdt(const void *shmaddr)
 	munmap((void *) addr, (long) item->data);
 	list_remove(item);
 	list_len--;
-	sem_post(shm_access_sem);
 	return 0;
 }
 

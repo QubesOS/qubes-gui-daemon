@@ -2166,12 +2166,12 @@ static void inter_appviewer_lock(int mode)
 /* release shared memory connected with given window */
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 {
-	/* we don't use g->shmcmd here, but shmoverride->shmdt isn't thread safe
-	 * (list implementation) */
-	sem_wait(g->shm_access_sem);
+	inter_appviewer_lock(1);
+	g->shmcmd->shmid = vm_window->shminfo.shmid;
 	XShmDetach(g->display, &vm_window->shminfo);
 	XDestroyImage(vm_window->image);
 	XSync(g->display, False);
+	inter_appviewer_lock(0);
 	vm_window->image = NULL;
 	shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
 }
