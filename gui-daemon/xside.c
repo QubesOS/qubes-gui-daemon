@@ -132,7 +132,7 @@ struct _global_handles {
 	Atom frame_extents; /* Atom: _NET_FRAME_EXTENTS */
 	/* shared memory handling */
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
-	int cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
+	uint32_t cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
 	sem_t *shm_access_sem; /* semaphore to guard access to the above shared memory */
 	unsigned long serial_shmcmd; /* serial number of XShmAttach/XShmDetach call - for error handling */
 	/* Client VM parameters */
