@@ -32,7 +32,6 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
-#include <semaphore.h>
 #include <signal.h>
 #include <poll.h>
 #include <errno.h>
@@ -51,7 +50,6 @@
 #include "list.h"
 #include "error.h"
 #include "png.h"
-#include "shm-common.h"
 
 /* some configuration */
 
@@ -133,8 +131,6 @@ struct _global_handles {
 	/* shared memory handling */
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
 	uint32_t cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
-	sem_t *shm_access_sem; /* semaphore to guard access to the above shared memory */
-	unsigned long serial_shmattach; /* serial number of XShmAttach call - for error handling */
 	/* Client VM parameters */
 	char vmname[32];	/* name of VM */
 	int domid;		/* Xen domain id (GUI) */
@@ -319,13 +315,6 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
 
 int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
-	if (ev->serial == ghandles.serial_shmattach) {
-		/* XShmAttach failed, release the lock */
-		if (ghandles.shmcmd->shmid != ghandles.cmd_shmid) {
-			ghandles.shmcmd->shmid = ghandles.cmd_shmid;
-			sem_post(ghandles.shm_access_sem);
-		}
-	}
 	/* log the error */
 	dummy_handler(dpy, ev);
 #ifdef MAKE_X11_ERRORS_FATAL
@@ -2245,7 +2234,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	 * value */
 	untrusted_shmcmd->shmid = vm_window->shminfo.shmid;
 	untrusted_shmcmd->domid = g->domid;
-	sem_wait(g->shm_access_sem);
+	inter_appviewer_lock(1);
 	memcpy(g->shmcmd, untrusted_shmcmd_data_from_remote,
            sizeof(struct shm_cmd) + SIZEOF_SHARED_MFN * num_mfn);
     if (SIZEOF_SHARED_MFN * num_mfn + sizeof (struct shm_cmd) < 4096 * SHM_CMD_NUM_PAGES) {
@@ -2255,7 +2244,6 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
 	vm_window->shminfo.readOnly = True;
 	XSync(g->display, False);
-	g->serial_shmattach = NextRequest(g->display);
 	if (!XShmAttach(g->display, &vm_window->shminfo)) {
 		fprintf(stderr,
 			"XShmAttach failed for window 0x%x(remote 0x%x)\n",
@@ -2263,9 +2251,9 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 			(int) vm_window->remote_winid);
 	}
 	XSync(g->display, False);
-	/* the shm_access_sem lock is released either by shmoverride (upon
-	 * succesful handling the request) or by error handler. The same applies to
-	 * temporary shmid */
+	g->shmcmd->shmid = g->cmd_shmid;
+	inter_appviewer_lock(0);
+	shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
 }
 
 /* VM message dispatcher */
@@ -2878,11 +2866,6 @@ int main(int argc, char **argv)
 		fprintf(stderr,
 			"Invalid or stale shm id 0x%x in /var/run/shm.id\n",
 			ghandles.cmd_shmid);
-		exit(1);
-	}
-	ghandles.shm_access_sem = sem_open(SEM_NAME, 0);
-	if (ghandles.shm_access_sem == SEM_FAILED) {
-		perror("sem_open");
 		exit(1);
 	}
 

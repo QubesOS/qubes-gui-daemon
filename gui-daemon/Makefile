@@ -29,7 +29,6 @@ all: qubes-guid
 qubes-guid: $(OBJS)
 	$(CC) -g -pie -o qubes-guid $(OBJS) \
 		-lX11 -lXext -lvchan -lxenstore -lxenctrl -Wall \
-		-pthread \
 		`pkg-config --libs libpng` \
 		`pkg-config --libs libconfig`
 clean:
