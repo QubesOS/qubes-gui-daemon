@@ -2253,7 +2253,6 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	XSync(g->display, False);
 	g->shmcmd->shmid = g->cmd_shmid;
 	inter_appviewer_lock(0);
-	shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
 }
 
 /* VM message dispatcher */
