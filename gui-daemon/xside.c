@@ -1252,7 +1252,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		   int untrusted_h)
 {
 	int border_width = BORDER_WIDTH;
-	int x, y, w, h;
+	int x = 0, y = 0, w = 0, h = 0;
 
 	/* sanitize start */
 	if (untrusted_x < 0 || untrusted_y < 0) {
