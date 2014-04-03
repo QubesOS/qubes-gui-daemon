@@ -160,6 +160,7 @@ struct _global_handles {
 	/* configuration */
 	int log_level;		/* log level */
 	int startup_timeout;
+	int nofork;			   /* do not fork into background - used during guid restart */
 	int allow_utf8_titles;	/* allow UTF-8 chars in window title */
 	int allow_fullscreen;   /* allow fullscreen windows without decoration */
 	int copy_seq_mask;	/* modifiers mask for secure-copy key sequence */
@@ -2570,12 +2571,13 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: qubes-guid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a]\n");
+		"usage: qubes-guid -d domain_id [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
 	fprintf(stderr, "       -n  do not wait for agent connection\n");
 	fprintf(stderr, "       -a  low-latency audio mode\n");
+	fprintf(stderr, "       -f  do not fork into background\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Log levels:\n");
 	fprintf(stderr, " 0 - only errors\n");
@@ -2589,8 +2591,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	/* defaults */
 	g->log_level = 1;
 	g->qrexec_clipboard = 0;
+	g->nofork = 0;
 
-	while ((opt = getopt(argc, argv, "d:c:l:i:vqQna")) != -1) {
+	while ((opt = getopt(argc, argv, "d:c:l:i:vqQnaf")) != -1) {
 		switch (opt) {
 		case 'a':
 			g->audio_low_latency = 1;
@@ -2619,6 +2622,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 			break;
 		case 'n':
 			g->startup_timeout = 0;
+			break;
+		case 'f':
+			g->nofork = 1;
 			break;
 		default:
 			usage();
@@ -2874,21 +2880,23 @@ int main(int argc, char **argv)
 	load_default_config_values(&ghandles);
 	parse_config(&ghandles);
 
-	// daemonize...
-	if (pipe(pipe_notify) < 0) {
-		perror("canot create pipe:");
-		exit(1);
-	}
+	if (!ghandles.nofork) {
+		// daemonize...
+		if (pipe(pipe_notify) < 0) {
+			perror("canot create pipe:");
+			exit(1);
+		}
 
-	childpid = fork();
-	if (childpid < 0) {
-		fprintf(stderr, "Cannot fork :(\n");
-		exit(1);
-	} else if (childpid > 0) {
-		wait_for_connection_in_parent(pipe_notify);
-	    exit(0);
+		childpid = fork();
+		if (childpid < 0) {
+			fprintf(stderr, "Cannot fork :(\n");
+			exit(1);
+		} else if (childpid > 0) {
+			wait_for_connection_in_parent(pipe_notify);
+			exit(0);
+		}
+		close(pipe_notify[0]);
 	}
-   close(pipe_notify[0]);
 
 	// inside the daemonized process...
 	f = fopen("/var/run/shm.id", "r");
@@ -2907,33 +2915,37 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	close(0);
-	open("/dev/null", O_RDONLY);
-	snprintf(dbg_log, sizeof(dbg_log),
-		 "/var/log/qubes/guid.%s.log", ghandles.vmname);
-	snprintf(dbg_log_old, sizeof(dbg_log_old),
-			"/var/log/qubes/guid.%s.log.old", ghandles.vmname);
-	if (stat(dbg_log, &stat_buf) == 0) {
-		if (rename(dbg_log, dbg_log_old) < 0) {
-			perror("Rename old logfile");
+	if (!ghandles.nofork) {
+		/* output redirection only when started as daemon, if "nofork" option
+		 * is set as part of guid restart, output is already redirected */
+		close(0);
+		open("/dev/null", O_RDONLY);
+		snprintf(dbg_log, sizeof(dbg_log),
+				"/var/log/qubes/guid.%s.log", ghandles.vmname);
+		snprintf(dbg_log_old, sizeof(dbg_log_old),
+				"/var/log/qubes/guid.%s.log.old", ghandles.vmname);
+		if (stat(dbg_log, &stat_buf) == 0) {
+			if (rename(dbg_log, dbg_log_old) < 0) {
+				perror("Rename old logfile");
+			}
 		}
+		umask(0007);
+		logfd = open(dbg_log, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+		umask(0077);
+		if (logfd < 0) {
+			fprintf(stderr,
+					"Failed to open log file: %s\n", strerror (errno));
+			exit(1);
+		}
+		dup2(logfd, 1);
+		dup2(logfd, 2);
+		if (logfd > 2)
+			close(logfd);
 	}
-	umask(0007);
-	logfd = open(dbg_log, O_WRONLY | O_CREAT | O_TRUNC, 0640);
-	umask(0077);
-	if (logfd < 0) {
-		fprintf(stderr,
-			"Failed to open log file: %s\n", strerror (errno));
-		exit(1);
-	}
-	dup2(logfd, 1);
-	dup2(logfd, 2);
-	if (logfd > 2)
-		close(logfd);
 
 	chdir("/var/run/qubes");
 	errno = 0;
-	if (setsid() < 0) {
+	if (!ghandles.nofork && setsid() < 0) {
 		perror("setsid()");
 		exit(1);
 	}
@@ -2956,8 +2968,10 @@ int main(int argc, char **argv)
 	set_alive_flag(ghandles.domid);
 	atexit(unset_alive_flag);
 
-	write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully
-	close (pipe_notify[1]);
+	if (!ghandles.nofork) {
+		write(pipe_notify[1], "Q", 1);	// let the parent know we connected sucessfully
+		close (pipe_notify[1]);
+	}
 
 	signal(SIGTERM, dummy_signal_handler);
 	signal(SIGHUP, sighup_signal_handler);
