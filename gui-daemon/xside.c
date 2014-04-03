@@ -2858,8 +2858,10 @@ int main(int argc, char **argv)
 	int childpid;
 	int pipe_notify[2];
 	char dbg_log[256];
+	char dbg_log_old[256];
 	int logfd;
 	char cmd_tmp[256];
+	struct stat stat_buf;
 
 	parse_cmdline(&ghandles, argc, argv);
 	get_boot_lock(ghandles.domid);
@@ -2909,6 +2911,13 @@ int main(int argc, char **argv)
 	open("/dev/null", O_RDONLY);
 	snprintf(dbg_log, sizeof(dbg_log),
 		 "/var/log/qubes/guid.%s.log", ghandles.vmname);
+	snprintf(dbg_log_old, sizeof(dbg_log_old),
+			"/var/log/qubes/guid.%s.log.old", ghandles.vmname);
+	if (stat(dbg_log, &stat_buf) == 0) {
+		if (rename(dbg_log, dbg_log_old) < 0) {
+			perror("Rename old logfile");
+		}
+	}
 	umask(0007);
 	logfd = open(dbg_log, O_WRONLY | O_CREAT | O_TRUNC, 0640);
 	umask(0077);
