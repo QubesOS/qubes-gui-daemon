@@ -2856,6 +2856,22 @@ static void get_boot_lock(int domid)
 	guid_boot_lock = fd;
 }
 
+static void cleanup() {
+	release_all_mapped_mfns();
+	XCloseDisplay(ghandles.display);
+	kill_pacat();
+	wait_for_pacat(SIGCHLD);
+	unset_alive_flag();
+	close(ghandles.inter_appviewer_lock_fd);
+}
+
+static char** restart_argv;
+void restart_guid() {
+	cleanup();
+	execv("/usr/bin/qubes-guid", restart_argv);
+	perror("execv");
+}
+
 int main(int argc, char **argv)
 {
 	int xfd;
@@ -2913,6 +2929,21 @@ int main(int argc, char **argv)
 			"Invalid or stale shm id 0x%x in /var/run/shm.id\n",
 			ghandles.cmd_shmid);
 		exit(1);
+	}
+
+	/* prepare argv for possible restarts */
+	if (ghandles.nofork) {
+		/* "-f" option already given, use the same argv */
+		restart_argv = argv;
+	} else {
+		/* append "-f" option */
+		int i;
+
+		restart_argv = malloc((argc+1) * sizeof(char*));
+		for (i=0;i<argc;i++)
+			restart_argv[i] = argv[i];
+		restart_argv[argc-1] = strdup("-f");
+		restart_argv[argc] = (char*)NULL;
 	}
 
 	if (!ghandles.nofork) {
@@ -2989,6 +3020,7 @@ int main(int argc, char **argv)
 		 * keyboard layout fails */
 		system(cmd_tmp);
 	}
+	vchan_register_at_eof(restart_guid);
 
 	get_protocol_version(&ghandles);
 	send_xconf(&ghandles);
