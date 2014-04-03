@@ -131,6 +131,7 @@ struct _global_handles {
 	/* shared memory handling */
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
 	uint32_t cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
+	int inter_appviewer_lock_fd; /* FD of lock file used to synchronize shared memory access */
 	/* Client VM parameters */
 	char vmname[32];	/* name of VM */
 	int domid;		/* Xen domain id (GUI) */
@@ -199,7 +200,7 @@ static Ghandles ghandles;
 #define KDIALOG_PATH "/usr/bin/kdialog"
 #define ZENITY_PATH "/usr/bin/zenity"
 
-static void inter_appviewer_lock(int mode);
+static void inter_appviewer_lock(Ghandles *g, int mode);
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 
 static void show_error_message (Ghandles * g, const char *msg)
@@ -494,6 +495,12 @@ static void mkghandles(Ghandles * g)
 			fprintf(stderr, "Icon size: %ldx%ld\n", g->icon_data[0], g->icon_data[1]);
 		}
 	}
+	g->inter_appviewer_lock_fd = open("/var/run/qubes/appviewer.lock",
+			O_RDWR | O_CREAT, 0600);
+	if (g->inter_appviewer_lock_fd < 0) {
+		perror("create lock");
+		exit(1);
+	}
 }
 
 /* reload X server parameters, especially after monitor/screen layout change */
@@ -646,7 +653,7 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 static int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
 	int ret;
 
-	inter_appviewer_lock(1);
+	inter_appviewer_lock(g, 1);
 	ret = run_clipboard_rpc(g, CLIPBOARD_COPY);
 	if (ret) {
 		save_clipboard_source_vmname(g->vmname);
@@ -655,7 +662,7 @@ static int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
 		save_clipboard_source_vmname("");
 	}
 
-	inter_appviewer_lock(0);
+	inter_appviewer_lock(g, 0);
 	return ret;
 }
 
@@ -704,7 +711,7 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 			"received clipboard data when not requested\n");
 		return;
 	}
-	inter_appviewer_lock(1);
+	inter_appviewer_lock(g, 1);
 	file = fopen(QUBES_CLIPBOARD_FILENAME, "w");
 	if (!file) {
 		show_error_message(g, "secure copy: failed to open file " QUBES_CLIPBOARD_FILENAME);
@@ -721,7 +728,7 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	}
 	save_clipboard_source_vmname(g->vmname);
 error:
-	inter_appviewer_lock(0);
+	inter_appviewer_lock(g, 0);
 	g->clipboard_requested = 0;
 	free(untrusted_data);
 }
@@ -797,9 +804,9 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 					       g->paste_seq_key)) {
 		if (ev->type != KeyPress)
 			return 1;
-		inter_appviewer_lock(1);
+		inter_appviewer_lock(g, 1);
 		if (!evaluate_clipboard_policy(g)) {
-			inter_appviewer_lock(0);
+			inter_appviewer_lock(g, 0);
 			return 1;
 		}
 		if (g->qrexec_clipboard) {
@@ -821,7 +828,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 				free(data);
 			}
 		}
-		inter_appviewer_lock(0);
+		inter_appviewer_lock(g, 0);
 
 		return 1;
 	}
@@ -2168,23 +2175,14 @@ static void handle_dock(Ghandles * g, struct windowdata *vm_window)
 
 /* Obtain/release inter-vm lock
  * Used for handling shared Xserver memory and clipboard file */
-static void inter_appviewer_lock(int mode)
+static void inter_appviewer_lock(Ghandles *g, int mode)
 {
 	int cmd;
-	static int fd = -1;
-	if (fd < 0) {
-		fd = open("/var/run/qubes/appviewer.lock",
-			  O_RDWR | O_CREAT, 0600);
-		if (fd < 0) {
-			perror("create lock");
-			exit(1);
-		}
-	}
 	if (mode)
 		cmd = LOCK_EX;
 	else
 		cmd = LOCK_UN;
-	if (flock(fd, cmd) < 0) {
+	if (flock(g->inter_appviewer_lock_fd, cmd) < 0) {
 		perror("lock");
 		exit(1);
 	}
@@ -2193,12 +2191,12 @@ static void inter_appviewer_lock(int mode)
 /* release shared memory connected with given window */
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 {
-	inter_appviewer_lock(1);
+	inter_appviewer_lock(g, 1);
 	g->shmcmd->shmid = vm_window->shminfo.shmid;
 	XShmDetach(g->display, &vm_window->shminfo);
 	XDestroyImage(vm_window->image);
 	XSync(g->display, False);
-	inter_appviewer_lock(0);
+	inter_appviewer_lock(g, 0);
 	vm_window->image = NULL;
 	shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
 }
@@ -2272,7 +2270,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	 * value */
 	untrusted_shmcmd->shmid = vm_window->shminfo.shmid;
 	untrusted_shmcmd->domid = g->domid;
-	inter_appviewer_lock(1);
+	inter_appviewer_lock(g, 1);
 	memcpy(g->shmcmd, untrusted_shmcmd_data_from_remote,
            sizeof(struct shm_cmd) + SIZEOF_SHARED_MFN * num_mfn);
     if (SIZEOF_SHARED_MFN * num_mfn + sizeof (struct shm_cmd) < 4096 * SHM_CMD_NUM_PAGES) {
@@ -2290,7 +2288,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	}
 	XSync(g->display, False);
 	g->shmcmd->shmid = g->cmd_shmid;
-	inter_appviewer_lock(0);
+	inter_appviewer_lock(g, 0);
 }
 
 /* VM message dispatcher */
@@ -2888,6 +2886,7 @@ int main(int argc, char **argv)
 		wait_for_connection_in_parent(pipe_notify);
 	    exit(0);
 	}
+   close(pipe_notify[0]);
 
 	// inside the daemonized process...
 	f = fopen("/var/run/shm.id", "r");
@@ -2920,6 +2919,8 @@ int main(int argc, char **argv)
 	}
 	dup2(logfd, 1);
 	dup2(logfd, 2);
+	if (logfd > 2)
+		close(logfd);
 
 	chdir("/var/run/qubes");
 	errno = 0;

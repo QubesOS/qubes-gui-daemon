@@ -109,6 +109,7 @@ long *load_png(const char *fname, int *ret_size)
 	}
 
 	png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+	fclose(fp);
 	if (ret_size)
 		*ret_size = data_size;
 
