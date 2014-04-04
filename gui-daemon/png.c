@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdint.h>
+#include <string.h>
 
 #define PNGHEADER 8
 

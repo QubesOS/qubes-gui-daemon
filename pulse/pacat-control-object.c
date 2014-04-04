@@ -128,7 +128,9 @@ int dbus_init(struct userdata *u) {
 	PacatControl *pc;
 	int result, ret;
 
+#if !GLIB_CHECK_VERSION(2,35,0)
 	g_type_init ();
+#endif
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 	g_thread_init (NULL);
