@@ -500,7 +500,7 @@ static void mkghandles(Ghandles * g)
 		}
 	}
 	g->inter_appviewer_lock_fd = open("/var/run/qubes/appviewer.lock",
-			O_RDWR | O_CREAT, 0600);
+			O_RDWR | O_CREAT, 0666);
 	if (g->inter_appviewer_lock_fd < 0) {
 		perror("create lock");
 		exit(1);
