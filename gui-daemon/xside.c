@@ -1093,7 +1093,8 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
 // if AppVM has not unacknowledged previous resize msg, do not send another one
 	if (vm_window->have_queued_configure)
 		return;
-	vm_window->have_queued_configure = 1;
+	if (vm_window->remote_winid != FULLSCREEN_WINDOW_ID)
+		vm_window->have_queued_configure = 1;
 	send_configure(vm_window, vm_window->x, vm_window->y,
 		       vm_window->width, vm_window->height);
 }
