@@ -71,6 +71,9 @@
 // Mod2 excluded as it is Num_Lock
 #define SPECIAL_KEYS_MASK (Mod1Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
 
+// Special window ID meaning "whole screen"
+#define FULLSCREEN_WINDOW_ID 0
+
 #ifdef __GNUC__
 #  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
 #else
@@ -427,7 +430,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 			(const unsigned char *) g->vmname,
 			strlen(g->vmname));
 
-	if (vm_window->remote_winid == 0) {
+	if (vm_window->remote_winid == FULLSCREEN_WINDOW_ID) {
 		/* whole screen window */
 		g->screen_window = vm_window;
 	}
