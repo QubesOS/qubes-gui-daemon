@@ -3008,7 +3008,6 @@ int main(int argc, char **argv)
 		close (pipe_notify[1]);
 	}
 
-	signal(SIGTERM, dummy_signal_handler);
 	signal(SIGHUP, sighup_signal_handler);
 	atexit(release_all_mapped_mfns);
 
