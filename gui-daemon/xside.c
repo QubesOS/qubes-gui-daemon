@@ -2229,7 +2229,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 				untrusted_shmcmd->width, untrusted_shmcmd->height,
 				untrusted_shmcmd->num_mfn, untrusted_shmcmd->off);
 	/* sanitize start */
-	VERIFY(untrusted_shmcmd->num_mfn <= MAX_MFN_COUNT);
+	VERIFY(untrusted_shmcmd->num_mfn <= (unsigned)MAX_MFN_COUNT);
 	num_mfn = untrusted_shmcmd->num_mfn;
 	VERIFY((int) untrusted_shmcmd->width >= 0
 	       && (int) untrusted_shmcmd->height >= 0);
