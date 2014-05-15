@@ -505,6 +505,8 @@ static void mkghandles(Ghandles * g)
 		perror("create lock");
 		exit(1);
 	}
+	/* ignore possible errors */
+	fchmod(g->inter_appviewer_lock_fd, 0666);
 }
 
 /* reload X server parameters, especially after monitor/screen layout change */
