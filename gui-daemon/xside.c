@@ -157,6 +157,7 @@ struct _global_handles {
 	int windows_count_limit_param; /* initial limit of created windows - after exceed, warning the user */
 	struct windowdata *last_input_window;
 	/* signal was caught */
+	int volatile signal_caught;
 	int volatile reload_requested;
 	pid_t pulseaudio_pid;
 	/* configuration */
@@ -2383,6 +2384,12 @@ static void handle_message(Ghandles * g)
 	}
 }
 
+/* signal handler - connected to SIGTERM */
+static void dummy_signal_handler(int UNUSED(x))
+{
+	ghandles.signal_caught = 1;
+}
+
 /* signal handler - connected to SIGHUP */
 static void sighup_signal_handler(int UNUSED(x))
 {
@@ -3031,6 +3038,10 @@ int main(int argc, char **argv)
 		int select_fds[2] = { xfd };
 		fd_set retset;
 		int busy;
+		if (ghandles.signal_caught) {
+			fprintf(stderr, "exiting on signal...\n");
+			exit(0);
+		}
 		if (ghandles.reload_requested) {
 			fprintf(stderr, "reloading X server parameters...\n");
 			reload(&ghandles);
