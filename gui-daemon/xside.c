@@ -2019,6 +2019,10 @@ static void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 			(int) vm_window->local_winid,
 			untrusted_msg.base_width,
 			untrusted_msg.base_height);
+	if (untrusted_msg.flags & PPosition)
+		size_hints.flags |= PPosition;
+	if (untrusted_msg.flags & USPosition)
+		size_hints.flags |= USPosition;
 	/* sanitize end */
 
 	if (g->log_level > 1)
