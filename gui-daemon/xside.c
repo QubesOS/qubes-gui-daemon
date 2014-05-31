@@ -1597,7 +1597,22 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 					       vm_window->height);
 			}
 		}
+	} else if (ev->data.l[1] == XEMBED_FOCUS_IN) {
+		struct msg_hdr hdr;
+		struct msg_focus k;
+		char keys[32];
+		XQueryKeymap(g->display, keys);
+		hdr.type = MSG_KEYMAP_NOTIFY;
+		hdr.window = 0;
+		write_message(hdr, keys);
+		hdr.type = MSG_FOCUS;
+		hdr.window = vm_window->remote_winid;
+		k.type = FocusIn;
+		k.mode = NotifyNormal;
+		k.detail = NotifyNonlinear;
+		write_message(hdr, k);
 	}
+
 }
 
 /* dispatch local Xserver event */
