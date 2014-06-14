@@ -47,6 +47,7 @@ Requires:	qubes-libvchan-%{backend_vmm}
 BuildRequires:	pulseaudio-libs-devel
 BuildRequires:	libXt-devel
 BuildRequires:	libXext-devel
+BuildRequires:	libXrandr-devel
 BuildRequires:	libconfig-devel
 BuildRequires:	libpng-devel
 BuildRequires:	libnotify-devel
