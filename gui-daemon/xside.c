@@ -130,6 +130,7 @@ struct _global_handles {
 	Atom wm_state;         /* Atom: _NET_WM_STATE */
 	Atom wm_state_fullscreen; /* Atom: _NET_WM_STATE_FULLSCREEN */
 	Atom wm_state_demands_attention; /* Atom: _NET_WM_STATE_DEMANDS_ATTENTION */
+	Atom wm_state_hidden;	/* Atom: _NET_WM_STATE_HIDDEN */
 	Atom frame_extents; /* Atom: _NET_FRAME_EXTENTS */
 	/* shared memory handling */
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
@@ -468,6 +469,7 @@ static void mkghandles(Ghandles * g)
 	g->wm_state = XInternAtom(g->display, "_NET_WM_STATE", False);
 	g->wm_state_fullscreen = XInternAtom(g->display, "_NET_WM_STATE_FULLSCREEN", False);
 	g->wm_state_demands_attention = XInternAtom(g->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
+	g->wm_state_hidden = XInternAtom(g->display, "_NET_WM_STATE_HIDDEN", False);
 	g->frame_extents = XInternAtom(g->display, "_NET_FRAME_EXTENTS", False);
 	/* create graphical contexts */
 	get_frame_gc(g, g->cmdline_color ? : "red");
@@ -1517,6 +1519,8 @@ static inline uint32_t flags_from_atom(Ghandles * g, Atom a) {
 		return WINDOW_FLAG_FULLSCREEN;
 	else if (a == g->wm_state_demands_attention)
 		return WINDOW_FLAG_DEMANDS_ATTENTION;
+	else if (a == g->wm_state_hidden)
+		return WINDOW_FLAG_MINIMIZE;
 	else {
 		/* ignore unsupported states */
 	}
@@ -2062,8 +2066,13 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 
 	/* sanitize start */
 	VERIFY((untrusted_msg.flags_set & untrusted_msg.flags_unset) == 0);
-	msg.flags_set = untrusted_msg.flags_set & (WINDOW_FLAG_FULLSCREEN | WINDOW_FLAG_DEMANDS_ATTENTION);
-	msg.flags_unset = untrusted_msg.flags_unset & (WINDOW_FLAG_FULLSCREEN | WINDOW_FLAG_DEMANDS_ATTENTION);
+	msg.flags_set = untrusted_msg.flags_set & (
+			WINDOW_FLAG_FULLSCREEN |
+			WINDOW_FLAG_DEMANDS_ATTENTION |
+			WINDOW_FLAG_MINIMIZE);
+	msg.flags_unset = untrusted_msg.flags_unset & (
+			WINDOW_FLAG_FULLSCREEN |
+			WINDOW_FLAG_DEMANDS_ATTENTION);
 	/* sanitize end */
 
 	if (!vm_window->is_mapped) {
@@ -2072,7 +2081,7 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 		Atom state_list[10];
 		int i = 0;
 
-		vm_window->flags_set = 0;
+		vm_window->flags_set &= ~(WINDOW_FLAG_FULLSCREEN | WINDOW_FLAG_DEMANDS_ATTENTION);
 		if (msg.flags_set & WINDOW_FLAG_FULLSCREEN) {
 			if (g->allow_fullscreen) {
 				vm_window->flags_set |= WINDOW_FLAG_FULLSCREEN;
@@ -2095,6 +2104,10 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 		} else
 			/* just in case */
 			XDeleteProperty(g->display, vm_window->local_winid, g->wm_state);
+
+		/* Regarding WINDOW_FLAG_MINIMIZE:
+		 * Restoring window from minimize state is exactly the same as MSG_MAP,
+		 * so to not risk some regressions do not duplicate the code. */
 	} else {
 		/* for mapped windows, send message to window manager (via root window) */
 		XClientMessageEvent ev;
@@ -2103,6 +2116,10 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 		if (!flags_all)
 			/* no change requested */
 			return;
+
+		// WINDOW_FLAG_FULLSCREEN and WINDOW_FLAG_MINIMIZE are mutually exclusive
+		if (msg.flags_set & WINDOW_FLAG_MINIMIZE)
+			msg.flags_set &= ~WINDOW_FLAG_FULLSCREEN;
 
 		memset(&ev, 0, sizeof(ev));
 		ev.type = ClientMessage;
@@ -2133,6 +2150,9 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 			XSendEvent(g->display, g->root_win, False,
 					(SubstructureNotifyMask|SubstructureRedirectMask),
 					(XEvent*) &ev);
+		}
+		if (msg.flags_set & WINDOW_FLAG_MINIMIZE) {
+			XIconifyWindow(g->display, vm_window->local_winid, g->screen);
 		}
 	}
 }
