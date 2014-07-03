@@ -154,8 +154,6 @@ struct _global_handles {
 	/* counters and other state */
 	int clipboard_requested;	/* if clippoard content was requested by dom0 */
 	int windows_count;	/* created window count */
-	int windows_count_limit;	/* current window limit; ask user what to do when exceeded */
-	int windows_count_limit_param; /* initial limit of created windows - after exceed, warning the user */
 	struct windowdata *last_input_window;
 	/* signal was caught */
 	int volatile reload_requested;
@@ -476,8 +474,6 @@ static void mkghandles(Ghandles * g)
 #ifdef FILL_TRAY_BG
 	get_tray_gc(g);
 #endif
-	/* initialize windows limit */
-	g->windows_count_limit = g->windows_count_limit_param;
 	/* init window lists */
 	g->remote2local = list_new();
 	g->wid2windowdata = list_new();
@@ -1701,38 +1697,6 @@ static void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
 		      untrusted_mx.width, untrusted_mx.height);
 }
 
-/* ask user when VM creates too many windows */
-static void ask_whether_flooding(Ghandles * g)
-{
-	char text[1024];
-	int ret;
-	snprintf(text, sizeof(text),
-		 "%s %s "
-		 "'VMapp \"%s\" has created %d windows; it looks numerous, "
-		 "so it may be "
-		 "a beginning of a DoS attack. Do you want to continue:'",
-		 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
-		 g->use_kdialog ? "--yesnocancel" : "--question --text",
-		 g->vmname, g->windows_count);
-	do {
-		ret = system(text);
-		ret = WEXITSTATUS(ret);
-//              fprintf(stderr, "ret=%d\n", ret);
-		switch (ret) {
-		case 2:	/*cancel */
-			break;
-		case 1:	/* NO */
-			exit(1);
-		case 0:	/*YES */
-			g->windows_count_limit += g->windows_count_limit_param;
-			break;
-		default:
-			fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
-			exit(1);
-		}
-	} while (ret == 2);
-}
-
 /* handle VM message: MSG_CREATE
  * checks given attributes and create appropriate window in local Xserver
  * (using mkwindow) */
@@ -1743,8 +1707,6 @@ static void handle_create(Ghandles * g, XID window)
 	struct msg_create untrusted_crt;
 	XID parent;
 
-	if (g->windows_count++ > g->windows_count_limit)
-		ask_whether_flooding(g);
 	vm_window =
 	    (struct windowdata *) calloc(1, sizeof(struct windowdata));
 	if (!vm_window) {
@@ -2689,7 +2651,6 @@ static void load_default_config_values(Ghandles * g)
 	g->copy_seq_key = XK_c;
 	g->paste_seq_mask = ControlMask | ShiftMask;
 	g->paste_seq_key = XK_v;
-	g->windows_count_limit_param = 500;
 	g->allow_fullscreen = 0;
 	g->startup_timeout = 45;
 }
@@ -2755,11 +2716,6 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
 	if ((setting =
 	     config_setting_get_member(group, "allow_utf8_titles"))) {
 		g->allow_utf8_titles = config_setting_get_bool(setting);
-	}
-
-	if ((setting =
-	     config_setting_get_member(group, "windows_count_limit"))) {
-		g->windows_count_limit_param = config_setting_get_int(setting);
 	}
 
 	if ((setting =
