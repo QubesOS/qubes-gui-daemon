@@ -20,8 +20,8 @@
 #
 
 CC=gcc
-CFLAGS+=-I../include/ -g -O2 -Wall -Wextra -Werror `pkg-config --cflags libconfig` \
-	`pkg-config --cflags libpng` -pie -fPIC
+CFLAGS+=-I../include/ -g -O2 -Wall -Wextra -Werror \
+	`pkg-config --cflags libconfig libpng libnotify` -pie -fPIC
 OBJS=xside.o png.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
 	../gui-common/error.o ../common/list.o
 
@@ -29,7 +29,6 @@ all: qubes-guid
 qubes-guid: $(OBJS)
 	$(CC) -g -pie -o qubes-guid $(OBJS) \
 		-lX11 -lXext -lvchan -lxenstore -lxenctrl -Wall \
-		`pkg-config --libs libpng` \
-		`pkg-config --libs libconfig`
+		`pkg-config --libs libpng libnotify libconfig`
 clean:
 	rm -f qubes-guid *.o *~

@@ -44,6 +44,7 @@
 #include <X11/extensions/XShm.h>
 #include <X11/Xatom.h>
 #include <libconfig.h>
+#include <libnotify/notify.h>
 #include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
 #include "txrx.h"
@@ -208,35 +209,23 @@ static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 static void show_error_message (Ghandles * g, const char *msg)
 {
 	char message[1024];
-	pid_t pid;
-	int ret;
+	NotifyNotification *notify;
 
-	snprintf(message, sizeof message, "Error: VM \"%s\": %s", g->vmname, msg);
-	pid = fork();
-	switch (pid) {
-		case 0:
-			if (g->use_kdialog) {
-				execlp(KDIALOG_PATH, "kdialog", "--sorry", message, (char*)NULL);
-			} else {
-				execlp(ZENITY_PATH, "zenity", "--error", "--text", message, (char*)NULL);
-			}
-			perror("execlp");
-			_exit(1);
-		case -1:
-			perror("fork");
-			exit(1);
-		default:
-			waitpid(pid, &ret, 0);
-			ret = WEXITSTATUS(ret);
-	}
-	switch (ret) {
-	case 0:
-	case 1:
+	fprintf(stderr, "%s\n", msg);
+	if (!notify_init("qubes-guid")) {
+		fprintf(stderr, "Failed to init notification subsystem\n");
 		return;
-	default:
-		fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
-		exit(1);
 	}
+	snprintf(message, sizeof message, "ERROR(%s): %s", g->vmname, msg);
+	notify = notify_notification_new(message, NULL, g->cmdline_icon);
+	if (!notify_notification_show(notify, NULL)) {
+		fprintf(stderr, "Failed to send notification\n");
+	}
+	g_object_unref (G_OBJECT (notify));
+	// need to init/uninit every time because some notification daemons (namely
+	// xfce4-notifyd) starts only on demand and connection reference become
+	// stale after some idle period
+	notify_uninit();
 }
 
 /* ask user when VM sent invalid message */

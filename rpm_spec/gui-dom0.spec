@@ -48,6 +48,7 @@ BuildRequires:	libXt-devel
 BuildRequires:	libXext-devel
 BuildRequires:	libconfig-devel
 BuildRequires:	libpng-devel
+BuildRequires:	libnotify-devel
 BuildRequires:	dbus-glib-devel
 BuildRequires:	gcc
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
