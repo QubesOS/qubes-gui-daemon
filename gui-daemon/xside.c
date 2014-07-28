@@ -2928,11 +2928,11 @@ int main(int argc, char **argv)
 		/* append "-f" option */
 		int i;
 
-		restart_argv = malloc((argc+1) * sizeof(char*));
+		restart_argv = malloc((argc+2) * sizeof(char*));
 		for (i=0;i<argc;i++)
 			restart_argv[i] = argv[i];
-		restart_argv[argc-1] = strdup("-f");
-		restart_argv[argc] = (char*)NULL;
+		restart_argv[argc] = strdup("-f");
+		restart_argv[argc+1] = (char*)NULL;
 	}
 
 	if (!ghandles.nofork) {
