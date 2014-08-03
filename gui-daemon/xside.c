@@ -612,7 +612,7 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 			/* in case of error do not use exit(1) in child to not fire
 			 * atexit() registered functions; use _exit() instead (which do not
 			 * fire that functions) */
-			fd = open(path_stdout, O_WRONLY|O_CREAT, 0644);
+			fd = open(path_stdout, O_WRONLY|O_CREAT|O_TRUNC, 0644);
 			if (fd < 0) {
 				perror("open");
 				_exit(1);
