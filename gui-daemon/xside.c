@@ -154,6 +154,7 @@ struct _global_handles {
 	struct genlist *wid2windowdata;
 	/* counters and other state */
 	int clipboard_requested;	/* if clippoard content was requested by dom0 */
+	Time clipboard_xevent_time;  /* timestamp of keypress which triggered last copy/paste */
 	int windows_count;	/* created window count */
 	struct windowdata *last_input_window;
 	/* signal was caught */
@@ -445,6 +446,7 @@ static void mkghandles(Ghandles * g)
 	g->wmDeleteMessage =
 	    XInternAtom(g->display, "WM_DELETE_WINDOW", True);
 	g->clipboard_requested = 0;
+	g->clipboard_xevent_time = 0;
 	snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
 		 "_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display));
 	g->tray_selection =
@@ -517,6 +519,34 @@ static struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
 		return NULL;
 	}
 	return item->data;
+}
+
+/* caller must take inter_appviewer_lock first */
+static Time get_clipboard_file_xevent_timestamp() {
+	FILE *file;
+	Time timestamp;
+
+	file = fopen(QUBES_CLIPBOARD_FILENAME ".xevent", "r");
+	if (!file) {
+		perror("open " QUBES_CLIPBOARD_FILENAME ".xevent");
+		return 0;
+	}
+	fscanf(file, "%lu", &timestamp);
+	fclose(file);
+	return timestamp;
+}
+
+/* caller must take inter_appviewer_lock first */
+static void save_clipboard_file_xevent_timestamp(Time timestamp) {
+	FILE *file;
+
+	file = fopen(QUBES_CLIPBOARD_FILENAME ".xevent", "w");
+	if (!file) {
+		perror("open " QUBES_CLIPBOARD_FILENAME ".xevent");
+		exit(1);
+	}
+	fprintf(file, "%lu\n", timestamp);
+	fclose(file);
 }
 
 static void save_clipboard_source_vmname(const char *vmname) {
@@ -649,6 +679,7 @@ static int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
 	ret = run_clipboard_rpc(g, CLIPBOARD_COPY);
 	if (ret) {
 		save_clipboard_source_vmname(g->vmname);
+		save_clipboard_file_xevent_timestamp(g->clipboard_xevent_time);
 	} else {
 		truncate(QUBES_CLIPBOARD_FILENAME, 0);
 		save_clipboard_source_vmname("");
@@ -681,6 +712,7 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	FILE *file;
 	char *untrusted_data;
 	size_t untrusted_data_sz;
+	Time clipboard_file_xevent_time;
 	if (g->log_level > 0)
 		fprintf(stderr, "handle_clipboard_data, len=0x%x\n",
 			untrusted_len);
@@ -704,6 +736,15 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 		return;
 	}
 	inter_appviewer_lock(g, 1);
+	clipboard_file_xevent_time = get_clipboard_file_xevent_timestamp();
+	if (clipboard_file_xevent_time > g->clipboard_xevent_time) {
+		/* some other clipboard operation happened in the meantime, discard
+		 * request */
+		inter_appviewer_lock(g, 0);
+		fprintf(stderr,
+			"received clipboard data after some other clipboard op, discarding\n");
+		return;
+	}
 	file = fopen(QUBES_CLIPBOARD_FILENAME, "w");
 	if (!file) {
 		show_error_message(g, "secure copy: failed to open file " QUBES_CLIPBOARD_FILENAME);
@@ -719,6 +760,7 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 		goto error;
 	}
 	save_clipboard_source_vmname(g->vmname);
+	save_clipboard_file_xevent_timestamp(g->clipboard_xevent_time);
 error:
 	inter_appviewer_lock(g, 0);
 	g->clipboard_requested = 0;
@@ -769,12 +811,14 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 	struct msg_hdr hdr;
 	char *data;
 	int len;
+	Time clipboard_file_xevent_time;
 	if (((int)ev->state & SPECIAL_KEYS_MASK) ==
 	    g->copy_seq_mask
 	    && ev->keycode == XKeysymToKeycode(g->display,
 					       g->copy_seq_key)) {
 		if (ev->type != KeyPress)
 			return 1;
+		g->clipboard_xevent_time = ev->time;
 		if (g->qrexec_clipboard) {
 			int ret = fetch_qubes_clipboard_using_qrexec(g);
 			if (g->log_level > 0)
@@ -797,6 +841,15 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 		if (ev->type != KeyPress)
 			return 1;
 		inter_appviewer_lock(g, 1);
+		clipboard_file_xevent_time = get_clipboard_file_xevent_timestamp();
+		if (clipboard_file_xevent_time > ev->time) {
+			/* some other clipboard operation happened in the meantime, discard
+			 * request */
+			inter_appviewer_lock(g, 0);
+			fprintf(stderr,
+					"received clipboard xevent after some other clipboard op, discarding\n");
+			return 1;
+		}
 		if (!evaluate_clipboard_policy(g)) {
 			inter_appviewer_lock(g, 0);
 			return 1;
