@@ -87,6 +87,8 @@ const pa_buffer_attr * bufattr = NULL;
 
 static int verbose = 1;
 
+static void context_state_callback(pa_context *c, void *userdata);
+
 void pacat_log(const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
@@ -101,6 +103,39 @@ static void quit(struct userdata *u, int ret) {
 	assert(u->loop);
 	u->ret = ret;
 	g_main_loop_quit(u->loop);
+}
+
+void pulseaudio_reconnect(struct userdata *u) {
+	char *server = NULL;
+
+	pacat_log("Reconnecting to PulseAudio server...");
+	if (u->play_stream) {
+		pa_stream_unref(u->play_stream);
+		u->play_stream = NULL;
+	}
+
+	if (u->rec_stream) {
+		pa_stream_unref(u->rec_stream);
+		u->rec_stream = NULL;
+	}
+
+	if (u->context) {
+		pa_context_disconnect(u->context);
+		pa_context_unref(u->context);
+		u->context = NULL;
+	}
+
+	if (!(u->context = pa_context_new_with_proplist(u->mainloop_api, NULL, u->proplist))) {
+		pacat_log("pa_context_new() failed.");
+		quit(u, 1);
+	}
+
+	pa_context_set_state_callback(u->context, context_state_callback, u);
+	/* Connect the context */
+	if (pa_context_connect(u->context, server, PA_CONTEXT_NOFAIL, NULL) < 0) {
+		pacat_log("pa_context_connect() failed: %s", pa_strerror(pa_context_errno(u->context)));
+		quit(u, 1);
+	}
 }
 
 /* Connection draining complete */
@@ -363,6 +398,11 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
 			break;
 
 		case PA_STREAM_FAILED:
+			if (pa_context_errno(pa_stream_get_context(s)) == PA_ERR_CONNECTIONTERMINATED) {
+				/* handled at context level */
+				break;
+			}
+			/* fallthrough */
 		default:
 			pacat_log("Stream error: %s", pa_strerror(pa_context_errno(pa_stream_get_context(s))));
 			quit(u, 1);
@@ -514,6 +554,11 @@ static void context_state_callback(pa_context *c, void *userdata) {
 			break;
 
 		case PA_CONTEXT_FAILED:
+			if (pa_context_errno(c) == PA_ERR_CONNECTIONTERMINATED) {
+				pulseaudio_reconnect(u);
+				break;
+			}
+			/* fallthrough */
 		default:
 			pacat_log("Connection failure: %s", pa_strerror(pa_context_errno(c)));
 			goto fail;
@@ -646,7 +691,7 @@ int main(int argc, char *argv[])
 
 	pa_context_set_state_callback(u.context, context_state_callback, &u);
 	/* Connect the context */
-	if (pa_context_connect(u.context, server, 0, NULL) < 0) {
+	if (pa_context_connect(u.context, server, PA_CONTEXT_NOFAIL, NULL) < 0) {
 		pacat_log("pa_context_connect() failed: %s", pa_strerror(pa_context_errno(u.context)));
 		goto quit;
 	}
