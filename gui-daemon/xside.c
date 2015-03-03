@@ -167,6 +167,7 @@ struct _global_handles {
 	int log_level;		/* log level */
 	int startup_timeout;
 	int nofork;			   /* do not fork into background - used during guid restart */
+	int invisible;			/* do not show any VM window */
 	int allow_utf8_titles;	/* allow UTF-8 chars in window title */
 	int allow_fullscreen;   /* allow fullscreen windows without decoration */
 	int copy_seq_mask;	/* modifiers mask for secure-copy key sequence */
@@ -1631,7 +1632,7 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 	if (ev->data.l[1] == XEMBED_EMBEDDED_NOTIFY) {
 		if (vm_window->is_docked < 2) {
 			vm_window->is_docked = 2;
-			if (!vm_window->is_mapped)
+			if (!vm_window->is_mapped && !g->invisible)
 				XMapWindow(g->display, ev->window);
 			/* move tray to correct position in VM */
 			if (fix_docked_xy
@@ -2172,6 +2173,8 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
 	struct msg_map_info untrusted_txt;
 
 	read_struct(g->vchan, untrusted_txt);
+	if (g->invisible)
+		return;
 	vm_window->is_mapped = 1;
 	if (untrusted_txt.transient_for
 	    && (trans =
@@ -2629,6 +2632,7 @@ static void usage(void)
 	fprintf(stderr, "       -n  do not wait for agent connection\n");
 	fprintf(stderr, "       -a  low-latency audio mode\n");
 	fprintf(stderr, "       -f  do not fork into background\n");
+	fprintf(stderr, "       -I  run in \"invisible\" mode - do not show any VM window\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Log levels:\n");
 	fprintf(stderr, " 0 - only errors\n");
@@ -2646,7 +2650,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	g->qrexec_clipboard = 0;
 	g->nofork = 0;
 
-	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:vqQnaf")) != -1) {
+	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:vqQnafI")) != -1) {
 		switch (opt) {
 		case 'a':
 			g->audio_low_latency = 1;
@@ -2684,6 +2688,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 			break;
 		case 'f':
 			g->nofork = 1;
+			break;
+		case 'I':
+			g->invisible = 1;
 			break;
 		default:
 			usage();
