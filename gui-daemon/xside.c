@@ -2246,6 +2246,8 @@ static void inter_appviewer_lock(Ghandles *g, int mode)
 /* release shared memory connected with given window */
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 {
+	if (g->invisible)
+		return;
 	inter_appviewer_lock(g, 1);
 	g->shmcmd->shmid = vm_window->shminfo.shmid;
 	XShmDetach(g->display, &vm_window->shminfo);
@@ -2266,7 +2268,6 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	    (struct shm_cmd *) untrusted_shmcmd_data_from_remote;
 	unsigned num_mfn, off;
 	static char dummybuf[100];
-
 
 	if (vm_window->image)
 		release_mapped_mfns(g, vm_window);
@@ -2293,6 +2294,8 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 	vm_window->image_height = untrusted_shmcmd->height;	/* sanitized above */
 	read_data(g->vchan, (char *) untrusted_shmcmd->mfns,
 		  SIZEOF_SHARED_MFN * num_mfn);
+	if (g->invisible)
+		return;
 	vm_window->image =
 	    XShmCreateImage(g->display,
 			    DefaultVisual(g->display, g->screen), 24,
@@ -2980,20 +2983,22 @@ int main(int argc, char **argv)
 	}
 
 	// inside the daemonized process...
-	f = fopen("/var/run/shm.id", "r");
-	if (!f) {
-		fprintf(stderr,
-			"Missing /var/run/shm.id; run X with preloaded shmoverride\n");
-		exit(1);
-	}
-	fscanf(f, "%d", &ghandles.cmd_shmid);
-	fclose(f);
-	ghandles.shmcmd = shmat(ghandles.cmd_shmid, NULL, 0);
-	if (ghandles.shmcmd == (void *) (-1UL)) {
-		fprintf(stderr,
-			"Invalid or stale shm id 0x%x in /var/run/shm.id\n",
-			ghandles.cmd_shmid);
-		exit(1);
+	if (!ghandles.invisible) {
+		f = fopen("/var/run/shm.id", "r");
+		if (!f) {
+			fprintf(stderr,
+					"Missing /var/run/shm.id; run X with preloaded shmoverride\n");
+			exit(1);
+		}
+		fscanf(f, "%d", &ghandles.cmd_shmid);
+		fclose(f);
+		ghandles.shmcmd = shmat(ghandles.cmd_shmid, NULL, 0);
+		if (ghandles.shmcmd == (void *) (-1UL)) {
+			fprintf(stderr,
+					"Invalid or stale shm id 0x%x in /var/run/shm.id\n",
+					ghandles.cmd_shmid);
+			exit(1);
+		}
 	}
 
 	/* prepare argv for possible restarts */
