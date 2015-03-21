@@ -9,12 +9,12 @@
 
 long *load_png(const char *fname, int *ret_size)
 {
-	FILE *fp = NULL;
+	static FILE *fp = NULL;
 	unsigned char header[PNGHEADER];
 	int width, height, depth, color_type;
 	int i;
 	int data_size;
-	uint32_t *data = NULL;
+	static uint32_t *data = NULL;
 	unsigned char **row_pointers = NULL;
 	png_structp png_ptr = NULL;
 	png_infop info_ptr = NULL;
