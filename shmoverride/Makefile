@@ -20,7 +20,8 @@
 #
 #
 
-CFLAGS+=-I../include/ -fPIC
+CFLAGS+=-I../include/ -fPIC \
+		-DBACKEND_VMM_$(BACKEND_VMM)
 CC=gcc
 
 all: shmoverride.so X-wrapper-qubes

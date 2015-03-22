@@ -71,9 +71,13 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
 #endif
 	for (i = 0; i < cmd_pages->num_mfn; i++)
 		pfntable[i] = cmd_pages->mfns[i];
+#ifdef BACKEND_VMM_xen
 	fakeaddr =
 	    xc_map_foreign_pages(xc_hnd, cmd_pages->domid, PROT_READ,
 				 pfntable, cmd_pages->num_mfn);
+#else
+#error "shmoverride implemented only for Xen"
+#endif
 	fakesize = 4096 * cmd_pages->num_mfn;
 #ifdef DEBUG
 	fprintf(stderr, "num=%d, addr=%p, len=%d\n",
