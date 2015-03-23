@@ -21,13 +21,18 @@
  */
 
 #include <stdlib.h>
+#include <unistd.h>
 
 #define SHMOVERRIDE_LIB_PATH "shmoverride.so"
 #define XORG_PATH "/usr/bin/Xorg"
+#define XORG_PATH_NEW "/usr/libexec/Xorg.bin"
 
 int main (int argc, char **argv) {
 	putenv ("LD_PRELOAD=" SHMOVERRIDE_LIB_PATH);
-	execv (XORG_PATH, argv);
+    if (access(XORG_PATH_NEW, X_OK) == 0)
+        execv(XORG_PATH_NEW, argv);
+    else
+        execv (XORG_PATH, argv);
 	perror("X-wrapper-qubes: execv");
 	return 1;
 }
