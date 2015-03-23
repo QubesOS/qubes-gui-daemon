@@ -128,6 +128,7 @@ int __attribute__ ((constructor)) initfunc()
 		perror("shmoverride: missing shm API");
 		exit(1);
 	}
+	addr_list = list_new();
 #ifdef XENCTRL_HAS_XC_INTERFACE
 	xc_hnd = xc_interface_open(NULL, NULL, 0);
 	if (!xc_hnd) {
@@ -171,7 +172,6 @@ int __attribute__ ((constructor)) initfunc()
 		exit(1);
 	}
 	cmd_pages->shmid = local_shmid;
-	addr_list = list_new();
 	return 0;
 }
 
