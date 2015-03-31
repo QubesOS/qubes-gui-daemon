@@ -798,7 +798,8 @@ static int evaluate_clipboard_policy(Ghandles * g) {
 			perror("fork");
 			exit(1);
 		case 0:
-			execl(QREXEC_POLICY_PATH, "qrexec-policy", "--assume-yes-for-ask", "--just-evaluate", source_vm, g->vmname, "qubes.ClipboardPaste", "0", (char*)NULL);
+			execl(QREXEC_POLICY_PATH, "qrexec-policy", "--assume-yes-for-ask", "--just-evaluate",
+					"dummy_id", source_vm, g->vmname, "qubes.ClipboardPaste", "0", (char*)NULL);
 			perror("execl");
 			_exit(1);
 		default:
