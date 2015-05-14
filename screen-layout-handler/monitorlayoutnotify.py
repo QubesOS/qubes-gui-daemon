@@ -67,6 +67,9 @@ def notify_vm(vm, monitor_layout):
 def notify_vm_by_name(vmname):
     monitor_layout = get_monitor_layout()
 
+    if len(monitor_layout) == 0:
+        return
+
     qc = QubesVmCollection()
     qc.lock_db_for_reading()
     qc.load()
@@ -87,6 +90,9 @@ def notify_vm_by_name(vmname):
 def notify_vms():
 
     monitor_layout = get_monitor_layout()
+
+    if len(monitor_layout) == 0:
+        return
 
     qc = QubesVmCollection()
     qc.lock_db_for_reading()
