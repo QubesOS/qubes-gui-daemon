@@ -78,9 +78,10 @@ static pa_sample_spec sample_spec = {
 	.channels = 2
 };
 static const pa_buffer_attr custom_bufattr ={
-	.maxlength = 8192,
+	.maxlength = (uint32_t)-1,
 	.minreq = (uint32_t)-1,
 	.prebuf = (uint32_t)-1,
+	.fragsize = 4096,
 	.tlength = 4096
 };
 const pa_buffer_attr * bufattr = NULL;
@@ -513,8 +514,9 @@ static void context_state_callback(pa_context *c, void *userdata) {
 			pa_stream_set_started_callback(u->play_stream, stream_started_callback, u);
 			pa_stream_set_event_callback(u->play_stream, stream_event_callback, u);
 			pa_stream_set_buffer_attr_callback(u->play_stream, stream_buffer_attr_callback, u);
+			flags = PA_STREAM_ADJUST_LATENCY;
 
-			if (pa_stream_connect_playback(u->play_stream, u->play_device, bufattr, 0 /* flags */, NULL /* volume */, NULL) < 0) {
+			if (pa_stream_connect_playback(u->play_stream, u->play_device, bufattr, flags, NULL /* volume */, NULL) < 0) {
 				pacat_log("pa_stream_connect_playback() failed: %s", pa_strerror(pa_context_errno(c)));
 				goto fail;
 			}
@@ -538,7 +540,7 @@ static void context_state_callback(pa_context *c, void *userdata) {
 			pa_stream_set_event_callback(u->rec_stream, stream_event_callback, u);
 			pa_stream_set_buffer_attr_callback(u->rec_stream, stream_buffer_attr_callback, u);
 
-			flags = PA_STREAM_START_CORKED;
+			flags = PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY;
 			u->rec_allowed = u->rec_requested = 0;
 
 			if (pa_stream_connect_record(u->rec_stream, u->rec_device, bufattr, flags) < 0) {
