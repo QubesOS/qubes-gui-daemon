@@ -325,7 +325,7 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
 	if (u->rec_stream && pa_stream_get_state(u->rec_stream) == PA_STREAM_READY) {
 		/* process VM control command */
 		uint32_t cmd;
-		if (libvchan_data_ready(u->rec_ctrl) >= (int)sizeof(cmd)) {
+		while (libvchan_data_ready(u->rec_ctrl) >= (int)sizeof(cmd)) {
 			if (libvchan_read(u->rec_ctrl, (char*)&cmd, sizeof(cmd)) != sizeof(cmd)) {
 				if (!pa_stream_is_corked(u->rec_stream))
 					pa_stream_cork(u->rec_stream, 1, NULL, u);
