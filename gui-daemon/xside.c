@@ -98,6 +98,7 @@ struct windowdata {
 	int is_docked;		/* is it docked tray icon */
 	XID remote_winid;	/* window id on VM side */
 	Window local_winid;	/* window id on X side */
+	Window local_frame_winid; /* window id of frame window created by window manager */
 	struct windowdata *parent;	/* parent window */
 	struct windowdata *transient_for;	/* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
 	int override_redirect;	/* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
@@ -971,6 +972,29 @@ static void process_xevent_close(Ghandles * g, XID window)
 	write_struct(g->vchan, hdr);
 }
 
+/* handle local Xserver event XReparentEvent
+ * store information whether the window is reparented into some frame window */
+static void process_xevent_reparent(Ghandles *g, XReparentEvent *ev) {
+	CHECK_NONMANAGED_WINDOW(g, ev->window);
+
+	/* check if current parent matches the one in the VM - this means the
+	 * window is reparented back into original structure (window manager
+	 * restart?)
+	 */
+	if ((vm_window->parent && ev->parent == vm_window->parent->local_winid) ||
+	    (!vm_window->parent && ev->parent == g->root_win))
+		vm_window->local_frame_winid = 0;
+	else
+		vm_window->local_frame_winid = ev->parent;
+	if (g->log_level > 1)
+		fprintf(stderr,
+			"process_xevent_reparent(synth %d) local 0x%x remote 0x%x, "
+			"local parent 0x%x, frame window 0x%x\n",
+			ev->send_event,
+			(int) vm_window->local_winid, (int) vm_window->remote_winid,
+			(int)ev->parent, (int)vm_window->local_frame_winid);
+}
+
 /* send configure request for specified VM window */
 static void send_configure(Ghandles * g, struct windowdata *vm_window, int x, int y,
 		int w, int h)
@@ -1107,6 +1131,7 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
  * after some checks/fixes send to relevant window in VM */
 static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
 {
+	int x, y;
 	CHECK_NONMANAGED_WINDOW(g, ev->window);
 	if (g->log_level > 1)
 		fprintf(stderr,
@@ -1118,21 +1143,38 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
 			ev->height, vm_window->width, vm_window->height,
 			ev->x, ev->y, vm_window->x, vm_window->y);
 	/* non-synthetic events are about window position/size relative to the embeding
-	 * frame window, wait for the synthetic one (produced by window manager), which
-	 * is about window position relative to original window parent.
+	 * frame window (if applies), synthetic one (produced by window manager) are
+	 * about window position relative to original window parent.
+	 * Because synthetic one isn't generated in all the cases (for example
+	 * resize window without changing its position), process both of them and
+	 * possibly ignore if nothing have changed
 	 * See http://tronche.com/gui/x/icccm/sec-4.html#s-4.1.5 for details
 	 */
-	if (!ev->send_event && !vm_window->is_docked)
-		return;
+	if (!ev->send_event && vm_window->local_frame_winid) {
+		/* needs to translate coordinates */
+		Window parent, child;
+		if (vm_window->parent)
+			parent = vm_window->parent->local_winid;
+		else
+			parent = g->root_win;
+		XTranslateCoordinates(g->display, ev->window, parent,
+				0, 0, &x, &y, &child);
+		if (g->log_level > 1)
+			fprintf(stderr, "  translated to %d/%d\n", x, y);
+	} else {
+		x = ev->x;
+		y = ev->y;
+	}
+
 	if ((int)vm_window->width == ev->width
-	    && (int)vm_window->height == ev->height && vm_window->x == ev->x
-	    && vm_window->y == ev->y)
+	    && (int)vm_window->height == ev->height && vm_window->x == x
+	    && vm_window->y == y)
 		return;
 	vm_window->width = ev->width;
 	vm_window->height = ev->height;
 	if (!vm_window->is_docked) {
-		vm_window->x = ev->x;
-		vm_window->y = ev->y;
+		vm_window->x = x;
+		vm_window->y = y;
 	} else
 		fix_docked_xy(g, vm_window, "process_xevent_configure");
 
@@ -1684,6 +1726,9 @@ static void process_xevent(Ghandles * g)
 	case KeyPress:
 	case KeyRelease:
 		process_xevent_keypress(g, (XKeyEvent *) & event_buffer);
+		break;
+	case ReparentNotify:
+		process_xevent_reparent(g, (XReparentEvent *) &event_buffer);
 		break;
 	case ConfigureNotify:
 		process_xevent_configure(g, (XConfigureEvent *) &
