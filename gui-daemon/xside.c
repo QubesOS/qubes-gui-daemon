@@ -423,6 +423,14 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 			(const unsigned char *) g->vmname,
 			strlen(g->vmname));
 
+	// Set '_QUBES_VMWINDOWID' property so that additional plugins can
+	// synchronize window state (icon etc)
+	atom_label = XInternAtom(g->display, "_QUBES_VMWINDOWID", 0);
+	XChangeProperty(g->display, child_win, atom_label, XA_WINDOW,
+			32, PropModeReplace,
+			(const unsigned char *)&vm_window->remote_winid,
+			1);
+
 	if (vm_window->remote_winid == FULLSCREEN_WINDOW_ID) {
 		/* whole screen window */
 		g->screen_window = vm_window;
