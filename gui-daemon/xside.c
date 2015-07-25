@@ -169,6 +169,7 @@ struct _global_handles {
 	int startup_timeout;
 	int nofork;			   /* do not fork into background - used during guid restart */
 	int invisible;			/* do not show any VM window */
+	pid_t kill_on_connect;  /* pid to kill when connection to gui agent is established */
 	int allow_utf8_titles;	/* allow UTF-8 chars in window title */
 	int allow_fullscreen;   /* allow fullscreen windows without decoration */
 	int copy_seq_mask;	/* modifiers mask for secure-copy key sequence */
@@ -2698,7 +2699,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: qubes-guid -d domain_id -N domain_name [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f]\n");
+		"usage: qubes-guid -d domain_id -N domain_name [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f] [-K pid]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
@@ -2706,6 +2707,7 @@ static void usage(void)
 	fprintf(stderr, "       -a  low-latency audio mode\n");
 	fprintf(stderr, "       -f  do not fork into background\n");
 	fprintf(stderr, "       -I  run in \"invisible\" mode - do not show any VM window\n");
+	fprintf(stderr, "       -K  when established connection to VM agent, send SIGUSR1 to given pid (ignored when -f set)\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Log levels:\n");
 	fprintf(stderr, " 0 - only errors\n");
@@ -2733,10 +2735,11 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	g->log_level = 1;
 	g->qrexec_clipboard = 0;
 	g->nofork = 0;
+	g->kill_on_connect = 0;
 
 	optind = 1;
 
-	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:vqQnafI")) != -1) {
+	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafI")) != -1) {
 		switch (opt) {
 		case 'a':
 			g->audio_low_latency = 1;
@@ -2778,6 +2781,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 		case 'I':
 			g->invisible = 1;
 			break;
+		case 'K':
+			g->kill_on_connect = strtoul(optarg, NULL, 0);
+			break;
 		default:
 			usage();
 			exit(1);
@@ -2787,6 +2793,15 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 		fprintf(stderr, "domid<=0?");
 		exit(1);
 	}
+
+	if (g->nofork) {
+		/* -K (kill on connect) doesn't make much sense in case of foreground
+		 * process, clear that flag. This will prevent killing innocent process
+		 * in case of guid restart (-f is appended there).
+		 */
+		g->kill_on_connect = 0;
+	}
+
 	/* default target_domid to domid */
 	if (!g->target_domid)
 		g->target_domid = g->domid;
@@ -3168,6 +3183,11 @@ int main(int argc, char **argv)
 	signal(SIGTERM, dummy_signal_handler);
 	signal(SIGHUP, sighup_signal_handler);
 	atexit(release_all_mapped_mfns);
+
+	if (ghandles.kill_on_connect) {
+		kill(ghandles.kill_on_connect, SIGUSR1);
+	}
+
 
 	xfd = ConnectionNumber(ghandles.display);
 
