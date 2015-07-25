@@ -2682,6 +2682,9 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 				if (ghandles.log_level > 0)
 					fprintf(stderr, "timeout\n");
 				exit(1);
+			} else {
+				if (ghandles.log_level > 0)
+					fprintf(stderr, "in the background\n");
 			}
 			exit(0);
 		}
@@ -2712,6 +2715,17 @@ static void usage(void)
 	fprintf(stderr, "target_domid should be used in case domain_id is stubdom\n");
 }
 
+static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
+{
+	int opt;
+	optind = 1;
+
+	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafI")) != -1) {
+		if (opt == 'N')
+			strncpy(g->vmname, optarg, sizeof(g->vmname));
+	}
+}
+
 static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
 	int opt;
@@ -2719,6 +2733,8 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	g->log_level = 1;
 	g->qrexec_clipboard = 0;
 	g->nofork = 0;
+
+	optind = 1;
 
 	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:vqQnafI")) != -1) {
 		switch (opt) {
@@ -2732,7 +2748,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 			g->target_domid = atoi(optarg);
 			break;
 		case 'N':
-			strncpy(g->vmname, optarg, sizeof(g->vmname));
+			/* already handled in parse_cmdline_vmname */
 			break;
 		case 'c':
 			g->cmdline_color = optarg;
@@ -2744,7 +2760,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 			g->cmdline_icon = optarg;
 			break;
 		case 'q':
-			if (g->log_level>0)
+			if (g->log_level > 0)
 				g->log_level--;
 			break;
 		case 'v':
@@ -3025,11 +3041,14 @@ int main(int argc, char **argv)
 	char cmd_tmp[256];
 	struct stat stat_buf;
 
+	load_default_config_values(&ghandles);
+	/* get the VM name to read the right section in config file */
+	parse_cmdline_vmname(&ghandles, argc, argv);
+	/* load config file */
+	parse_config(&ghandles);
+	/* parse cmdline, possibly overriding values from config */
 	parse_cmdline(&ghandles, argc, argv);
 	get_boot_lock(ghandles.domid);
-	/* load config file */
-	load_default_config_values(&ghandles);
-	parse_config(&ghandles);
 
 	if (!ghandles.nofork) {
 		// daemonize...
