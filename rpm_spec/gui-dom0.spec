@@ -45,6 +45,7 @@ Requires:	service(graphical-login)
 Requires:	pulseaudio
 Requires:	libconfig
 Requires:	qubes-libvchan-%{backend_vmm}
+Requires:   python-xpyb
 BuildRequires:	pulseaudio-libs-devel
 BuildRequires:	libXt-devel
 BuildRequires:	libXext-devel
