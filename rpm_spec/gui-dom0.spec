@@ -45,6 +45,7 @@ Requires:	service(graphical-login)
 Requires:	pulseaudio
 Requires:	libconfig
 Requires:	qubes-libvchan-%{backend_vmm}
+Requires:   python-xpyb
 BuildRequires:	pulseaudio-libs-devel
 BuildRequires:	libXt-devel
 BuildRequires:	libXext-devel
@@ -91,6 +92,7 @@ install -D screen-layout-handler/monitorlayoutnotify.py $RPM_BUILD_ROOT%{python_
 install -D screen-layout-handler/qubes-monitor-layout-notify $RPM_BUILD_ROOT/usr/bin/qubes-monitor-layout-notify
 install -D screen-layout-handler/watch-screen-layout-changes $RPM_BUILD_ROOT/usr/libexec/qubes/watch-screen-layout-changes
 install -D screen-layout-handler/qubes-screen-layout-watches.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/qubes-screen-layout-watches.desktop
+make -C window-icon-updater DESTDIR=$RPM_BUILD_ROOT install
 
 %triggerin -- xorg-x11-server-Xorg
 ln -sf /usr/bin/X-wrapper-qubes /usr/bin/X
@@ -119,3 +121,6 @@ rm -f %{name}-%{version}
 /usr/share/dbus-1/interfaces/org.QubesOS.Audio.xml
 /usr/libexec/qubes/watch-screen-layout-changes
 %{python_sitearch}/qubes/monitorlayoutnotify.py*
+/usr/lib/qubes/icon-receiver
+%config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.WindowIconUpdater
+%config %{_sysconfdir}/qubes-rpc/qubes.WindowIconUpdater
