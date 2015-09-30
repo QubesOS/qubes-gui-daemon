@@ -2821,6 +2821,7 @@ static void load_default_config_values(Ghandles * g)
 	g->paste_seq_key = XK_v;
 	g->allow_fullscreen = 0;
 	g->startup_timeout = 45;
+	g->audio_low_latency = 1;
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
