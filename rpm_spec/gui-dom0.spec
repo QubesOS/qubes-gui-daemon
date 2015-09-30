@@ -46,6 +46,7 @@ Requires:	pulseaudio
 Requires:	libconfig
 Requires:	qubes-libvchan-%{backend_vmm}
 Requires:   python-xpyb
+Requires:   qubes-utils >= 3.1.0
 BuildRequires:	pulseaudio-libs-devel
 BuildRequires:	libXt-devel
 BuildRequires:	libXext-devel
