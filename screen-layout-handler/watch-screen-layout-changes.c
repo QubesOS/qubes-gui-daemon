@@ -23,6 +23,7 @@ int main(int argc, char **argv) {
 	}
 
 	signal(SIGTERM, sigterm_handler);
+	signal(SIGCHLD, SIG_IGN);
 
 	d = XOpenDisplay(NULL);
 	if (!d) {
