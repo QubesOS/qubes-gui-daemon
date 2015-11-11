@@ -212,6 +212,7 @@ static Ghandles ghandles;
 
 static void inter_appviewer_lock(Ghandles *g, int mode);
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
+static void print_backtrace(void);
 
 static void show_error_message (Ghandles * g, const char *msg)
 {
@@ -313,11 +314,39 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
 	return 1;
 }
 
+#ifdef MAKE_X11_ERRORS_FATAL
+/* nothing called from X11 error handler can send X11 requests, so release
+ * shared memory and simply forget about the image - the gui daemon will exit
+ * shortly anyway.
+ */
+static void release_all_shm_no_x11_calls() {
+	struct genlist *curr;
+	if (ghandles.log_level > 1)
+		fprintf(stderr, "release_all_shm_no_x11_calls running\n");
+	print_backtrace();
+	for (curr = ghandles.wid2windowdata->next;
+	     curr != ghandles.wid2windowdata; curr = curr->next) {
+		struct windowdata *vm_window = curr->data;
+		if (vm_window->image) {
+			vm_window->image = NULL;
+			shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
+		}
+	}
+
+}
+#endif
+
 int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
 	/* log the error */
 	dummy_handler(dpy, ev);
 #ifdef MAKE_X11_ERRORS_FATAL
+	/* The exit(1) below will call release_all_mapped_mfns (registerd with
+	 * atexit(3)), which would try to release window images with XShmDetach. We
+	 * can't send X11 requests in X11 error handler, so clean window images
+	 * without calling to X11. And hope that X server will call XShmDetach
+	 * internally when cleaning windows of disconnected client */
+	release_all_shm_no_x11_calls();
 	exit(1);
 #endif
 	return 0;
@@ -2543,7 +2572,7 @@ static void release_all_mapped_mfns(void)
 	     curr != ghandles.wid2windowdata; curr = curr->next) {
 		struct windowdata *vm_window = curr->data;
 		if (vm_window->image)
-			/* use og ghandles directly, as no other way get it (atexec cannot
+			/* use ghandles directly, as no other way get it (atexit cannot
 			 * pass argument) */
 			release_mapped_mfns(&ghandles, vm_window);
 	}
