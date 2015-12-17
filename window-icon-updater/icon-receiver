@@ -25,7 +25,7 @@ import os
 import struct
 import sys
 import fcntl
-from qubes.imgconverter import ICON_MAXSIZE, Image
+from qubesimgconverter import ICON_MAXSIZE, Image
 
 import xcb
 import xcb.xcb
