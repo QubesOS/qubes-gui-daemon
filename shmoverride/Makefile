@@ -20,7 +20,7 @@
 #
 #
 
-CFLAGS+=-I../include/ -fPIC \
+CFLAGS+=-g -O2 -I../include/ -fPIC \
 		-DBACKEND_VMM_$(BACKEND_VMM)
 CC=gcc
 
