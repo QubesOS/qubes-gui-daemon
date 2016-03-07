@@ -2770,8 +2770,14 @@ static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
 	optind = 1;
 
 	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafI")) != -1) {
-		if (opt == 'N')
+		if (opt == 'N') {
 			strncpy(g->vmname, optarg, sizeof(g->vmname));
+			g->vmname[sizeof(g->vmname) - 1] = '\0';
+			if (strcmp(g->vmname, optarg)) {
+				fprintf(stderr, "domain name too long");
+				exit(1);
+			}
+		}
 	}
 }
 
