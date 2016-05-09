@@ -194,6 +194,7 @@ struct _global_handles {
 	int qrexec_clipboard;	/* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
 	int use_kdialog;	/* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
 	int audio_low_latency; /* set low-latency mode while starting pacat-simple-vchan */
+	int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
 };
 
 typedef struct _global_handles Ghandles;
@@ -2088,13 +2089,13 @@ static void fix_menu(Ghandles * g, struct windowdata *vm_window)
 		moveresize_vm_window(g, vm_window);
 }
 
-/* handle VM message: MSG_VMNAME
+/* handle VM message: MSG_WMNAME
  * remove non-printable characters and pass to X server */
 static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 {
 	XTextProperty text_prop;
 	struct msg_wmname untrusted_msg;
-	char buf[sizeof(untrusted_msg.data)];
+	char buf[sizeof(untrusted_msg.data) + sizeof(g->vmname) + 3];
 	char *list[1] = { buf };
 
 	read_struct(g->vchan, untrusted_msg);
@@ -2102,7 +2103,10 @@ static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 	untrusted_msg.data[sizeof(untrusted_msg.data) - 1] = 0;
 	sanitize_string_from_vm((unsigned char *) (untrusted_msg.data),
 				g->allow_utf8_titles);
-	snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
+	if (g->prefix_titles)
+		snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, untrusted_msg.data);
+	else
+		snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
 	/* sanitize end */
 	if (g->log_level > 1)
 		fprintf(stderr, "set title for window 0x%x\n",
@@ -2757,7 +2761,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: qubes-guid -d domain_id -N domain_name [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f] [-K pid] [-p prop=value]\n");
+		"usage: qubes-guid -d domain_id -N domain_name [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f] [-K pid] [-p prop=value] [-T]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
@@ -2768,6 +2772,7 @@ static void usage(void)
 	fprintf(stderr, "       -K  when established connection to VM agent, send SIGUSR1 to given pid (ignored when -f set)\n");
 	fprintf(stderr, "       -p  add additional X11 property on all the windows of this VM (up to 10 properties)\n");
 	fprintf(stderr, "           specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
+	fprintf(stderr, "       -T  prefix window titles with VM name\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Log levels:\n");
 	fprintf(stderr, " 0 - only errors\n");
@@ -2782,7 +2787,7 @@ static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
 	int opt;
 	optind = 1;
 
-	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafIp:")) != -1) {
+	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafIp:T")) != -1) {
 		if (opt == 'N')
 			strncpy(g->vmname, optarg, sizeof(g->vmname));
 	}
@@ -2876,11 +2881,12 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 	g->qrexec_clipboard = 0;
 	g->nofork = 0;
 	g->kill_on_connect = 0;
+	g->prefix_titles = 0;
 	memset(g->extra_props, 0, MAX_EXTRA_PROPS * sizeof(struct extra_prop));
 
 	optind = 1;
 
-	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafIp:")) != -1) {
+	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafIp:T")) != -1) {
 		switch (opt) {
 		case 'a':
 			g->audio_low_latency = 1;
@@ -2932,6 +2938,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 			}
 			/* delay parsing until connected to X server */
 			g->extra_props[prop_num++].raw_option = strdup(optarg);
+			break;
+		case 'T':
+			g->prefix_titles = 1;
 			break;
 		default:
 			usage();
