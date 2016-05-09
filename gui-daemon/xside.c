@@ -2118,6 +2118,41 @@ static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 	XFree(text_prop.value);
 }
 
+/* handle VM message: MSG_WMCLASS
+ * remove non-printable characters and pass to X server, prefixed with VM name */
+static void handle_wmclass(Ghandles * g, struct windowdata *vm_window)
+{
+	struct msg_wmclass untrusted_msg;
+	char res_class[sizeof(untrusted_msg.res_class) + sizeof(g->vmname) + 3];
+	char res_name[sizeof(untrusted_msg.res_name) + sizeof(g->vmname) + 3];
+	XClassHint class_hint;
+
+	read_struct(g->vchan, untrusted_msg);
+	if (vm_window->is_mapped) {
+		/* ICCCM 4.1.2.5. allows changing WM_CLASS only in Withdrawn state */
+		if (g->log_level > 0)
+			fprintf(stderr, "cannot set class hint for window 0x%x, "
+					"because it is mapped (not in Withdrawn state)\n",
+					(int) vm_window->local_winid);
+		return;
+	}
+
+	/* sanitize start */
+	untrusted_msg.res_class[sizeof(untrusted_msg.res_class) - 1] = 0;
+	sanitize_string_from_vm((unsigned char*)untrusted_msg.res_class, 0);
+	untrusted_msg.res_name[sizeof(untrusted_msg.res_name) - 1] = 0;
+	sanitize_string_from_vm((unsigned char*)untrusted_msg.res_name, 0);
+	snprintf(res_class, sizeof(res_class), "%s:%s", g->vmname, untrusted_msg.res_class);
+	snprintf(res_name, sizeof(res_name), "%s:%s", g->vmname, untrusted_msg.res_name);
+	/* sanitize end */
+	if (g->log_level > 1)
+		fprintf(stderr, "set class hint for window 0x%x to (%s, %s)\n",
+			(int) vm_window->local_winid, res_class, res_name);
+	class_hint.res_name = res_name;
+	class_hint.res_class = res_class;
+	XSetClassHint(g->display, vm_window->local_winid, &class_hint);
+}
+
 /* handle VM message: MSG_WMHINTS
  * Pass hints for window manager to local X server */
 static void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
@@ -2545,6 +2580,9 @@ static void handle_message(Ghandles * g)
 		break;
 	case MSG_WMNAME:
 		handle_wmname(g, vm_window);
+		break;
+	case MSG_WMCLASS:
+		handle_wmclass(g, vm_window);
 		break;
 	case MSG_DOCK:
 		handle_dock(g, vm_window);
