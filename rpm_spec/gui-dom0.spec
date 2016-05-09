@@ -58,7 +58,7 @@ BuildRequires:	dbus-glib-devel
 BuildRequires:	gcc
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
 BuildRequires:	qubes-core-libs
-BuildRequires:	qubes-gui-common-devel
+BuildRequires:	qubes-gui-common-devel >= 3.2.0
 BuildRequires:	qubes-libvchan-%{backend_vmm}-devel
 
 %define _builddir %(pwd)
