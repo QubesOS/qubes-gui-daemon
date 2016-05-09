@@ -352,6 +352,14 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
 					}
 					g_mutex_unlock(&u->prop_mutex);
 					break;
+				case QUBES_PA_SINK_CORK_CMD:
+					pacat_log("Stream cork");
+					pa_stream_cork(u->play_stream, 1, NULL, u);
+					break;
+				case QUBES_PA_SINK_UNCORK_CMD:
+					pacat_log("Stream uncork");
+					pa_stream_cork(u->play_stream, 0, NULL, u);
+					break;
 			}
 		}
 		/* send the data if space is available */
