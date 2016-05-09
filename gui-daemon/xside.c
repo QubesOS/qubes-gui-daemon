@@ -45,6 +45,7 @@
 #include <X11/Xatom.h>
 #include <libconfig.h>
 #include <libnotify/notify.h>
+#include <assert.h>
 #include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
 #include <libvchan.h>
@@ -77,6 +78,8 @@
 // Special window ID meaning "whole screen"
 #define FULLSCREEN_WINDOW_ID 0
 
+#define MAX_EXTRA_PROPS 10
+
 #ifdef __GNUC__
 #  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
 #else
@@ -108,6 +111,17 @@ struct windowdata {
 	int image_width;
 	int have_queued_configure;	/* have configure request been sent to VM - waiting for confirmation */
 	uint32_t flags_set;	/* window flags acked to gui-agent */
+};
+
+/* extra X11 property to set on every window, prepared parameters for
+ * XChangeProperty */
+struct extra_prop {
+	char *raw_option; /* raw command line option, not parsed yet */
+	Atom prop; /* property name */
+	Atom type; /* property type */
+	int format; /* data format (8, 16, 32) */
+	void *data; /* actual data */
+	int nelements; /* data size, in "format" units */
 };
 
 /* global variables
@@ -151,6 +165,7 @@ struct _global_handles {
 	int icon_data_len; /* size of icon_data, in sizeof(*icon_data) units */
 	int label_index;	/* label (frame color) hint for WM */
 	struct windowdata *screen_window; /* window of whole VM screen */
+	struct extra_prop extra_props[MAX_EXTRA_PROPS];
 	/* lists of windows: */
 	/*   indexed by remote window id */
 	struct genlist *remote2local;
@@ -213,6 +228,7 @@ static Ghandles ghandles;
 static void inter_appviewer_lock(Ghandles *g, int mode);
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 static void print_backtrace(void);
+static void parse_cmdline_prop(Ghandles *g);
 
 static void show_error_message (Ghandles * g, const char *msg)
 {
@@ -397,6 +413,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 	Window parent;
 	XSizeHints my_size_hints;	/* hints for the window manager */
 	Atom atom_label;
+	int i;
 
 	my_size_hints.flags = PSize;
 	my_size_hints.width = vm_window->width;
@@ -460,6 +477,16 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 			32, PropModeReplace,
 			(const unsigned char *)&vm_window->remote_winid,
 			1);
+	/* extra properties from command line */
+	for (i = 0; i < MAX_EXTRA_PROPS; i++) {
+		if (g->extra_props[i].prop) {
+			XChangeProperty(g->display, child_win, g->extra_props[i].prop,
+					g->extra_props[i].type, g->extra_props[i].format,
+					PropModeReplace,
+					(const unsigned char*)g->extra_props[i].data,
+					g->extra_props[i].nelements);
+		}
+	}
 
 	if (vm_window->remote_winid == FULLSCREEN_WINDOW_ID) {
 		/* whole screen window */
@@ -508,6 +535,8 @@ static void mkghandles(Ghandles * g)
 #ifdef FILL_TRAY_BG
 	get_tray_gc(g);
 #endif
+	/* parse -p arguments now, as we have X server connection */
+	parse_cmdline_prop(g);
 	/* init window lists */
 	g->remote2local = list_new();
 	g->wid2windowdata = list_new();
@@ -2728,7 +2757,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 static void usage(void)
 {
 	fprintf(stderr,
-		"usage: qubes-guid -d domain_id -N domain_name [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f] [-K pid]\n");
+		"usage: qubes-guid -d domain_id -N domain_name [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f] [-K pid] [-p prop=value]\n");
 	fprintf(stderr, "       -v  increase log verbosity\n");
 	fprintf(stderr, "       -q  decrease log verbosity\n");
 	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
@@ -2737,6 +2766,8 @@ static void usage(void)
 	fprintf(stderr, "       -f  do not fork into background\n");
 	fprintf(stderr, "       -I  run in \"invisible\" mode - do not show any VM window\n");
 	fprintf(stderr, "       -K  when established connection to VM agent, send SIGUSR1 to given pid (ignored when -f set)\n");
+	fprintf(stderr, "       -p  add additional X11 property on all the windows of this VM (up to 10 properties)\n");
+	fprintf(stderr, "           specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Log levels:\n");
 	fprintf(stderr, " 0 - only errors\n");
@@ -2751,24 +2782,105 @@ static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
 	int opt;
 	optind = 1;
 
-	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafI")) != -1) {
+	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafIp:")) != -1) {
 		if (opt == 'N')
 			strncpy(g->vmname, optarg, sizeof(g->vmname));
+	}
+}
+
+static void parse_cmdline_prop(Ghandles *g) {
+	int prop_num;
+	char *name, *type, *value;
+
+	for (prop_num = 0; prop_num < MAX_EXTRA_PROPS; prop_num++) {
+		if (!g->extra_props[prop_num].raw_option)
+			continue;
+
+		name = strtok(g->extra_props[prop_num].raw_option, "=");
+		type = strtok(NULL, ":");
+		value = strtok(NULL, "");
+
+		if (!name || !type || !value) {
+			fprintf(stderr, "Invalid -p argument format: should be PROP_NAME=TYPE:VALUE\n");
+			exit(1);
+		}
+
+		g->extra_props[prop_num].prop = XInternAtom(g->display, name, False);
+		if (g->extra_props[prop_num].prop == None) {
+			fprintf(stderr, "Failed to get %s atom\n", name);
+			exit(1);
+		}
+		if (strcmp(type, "s") == 0) {
+			g->extra_props[prop_num].type = XA_STRING;
+			g->extra_props[prop_num].format = 8;
+			g->extra_props[prop_num].data = strdup(value);
+			g->extra_props[prop_num].nelements = strlen(value);
+		} else if (strcmp(type, "a") == 0) {
+			Atom value_a;
+			g->extra_props[prop_num].type = XA_ATOM;
+			g->extra_props[prop_num].format = 32;
+			g->extra_props[prop_num].data = malloc(sizeof(Atom));
+			value_a = XInternAtom(g->display, value, False);
+			if (value_a == None) {
+				fprintf(stderr, "Failed to get %s atom\n", value);
+				exit(1);
+			}
+			*(Atom*)g->extra_props[prop_num].data = value_a;
+			g->extra_props[prop_num].nelements = 1;
+		} else if (strcmp(type, "c") == 0) {
+			char *value_tok;
+			long *value_c;
+			int nelements, i;
+
+			nelements = 1;
+			for (i = 0; value[i] != '\0'; i++)
+				if (value[i] == ',')
+					nelements++;
+
+			value_c = malloc(nelements * 4);
+			if (!value_c) {
+				fprintf(stderr, "Out of memory\n");
+				exit(1);
+			}
+			i = 0;
+			while ((value_tok = strtok(value, ","))) {
+				errno = 0;
+				value_c[i] = strtoul(value_tok, NULL, 0);
+				if (errno) {
+					perror("strtoul");
+					exit(1);
+				}
+				i++;
+				value = NULL;
+			}
+			assert(i == nelements);
+			g->extra_props[prop_num].type = XA_CARDINAL;
+			g->extra_props[prop_num].format = 32;
+			g->extra_props[prop_num].data = (char*)value_c;
+			g->extra_props[prop_num].nelements = nelements;
+		} else {
+			fprintf(stderr, "Unsupported -p format: %s\n", type);
+			exit(1);
+		}
+		free(g->extra_props[prop_num].raw_option);
+		g->extra_props[prop_num].raw_option = NULL;
 	}
 }
 
 static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
 	int opt;
+	int prop_num = 0;
 	/* defaults */
 	g->log_level = 1;
 	g->qrexec_clipboard = 0;
 	g->nofork = 0;
 	g->kill_on_connect = 0;
+	memset(g->extra_props, 0, MAX_EXTRA_PROPS * sizeof(struct extra_prop));
 
 	optind = 1;
 
-	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafI")) != -1) {
+	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafIp:")) != -1) {
 		switch (opt) {
 		case 'a':
 			g->audio_low_latency = 1;
@@ -2812,6 +2924,14 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 			break;
 		case 'K':
 			g->kill_on_connect = strtoul(optarg, NULL, 0);
+			break;
+		case 'p':
+			if (prop_num >= MAX_EXTRA_PROPS) {
+				fprintf(stderr, "Too many extra properties (-p)\n");
+				exit(1);
+			}
+			/* delay parsing until connected to X server */
+			g->extra_props[prop_num++].raw_option = strdup(optarg);
 			break;
 		default:
 			usage();
