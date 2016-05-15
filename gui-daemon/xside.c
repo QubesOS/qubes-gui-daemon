@@ -582,7 +582,10 @@ static Time get_clipboard_file_xevent_timestamp() {
 /* caller must take inter_appviewer_lock first */
 static void save_clipboard_file_xevent_timestamp(Time timestamp) {
 	FILE *file;
+	mode_t old_umask;
 
+	/* grant group read/write */
+	old_umask = umask(0002);
 	file = fopen(QUBES_CLIPBOARD_FILENAME ".xevent", "w");
 	if (!file) {
 		perror("open " QUBES_CLIPBOARD_FILENAME ".xevent");
@@ -590,11 +593,15 @@ static void save_clipboard_file_xevent_timestamp(Time timestamp) {
 	}
 	fprintf(file, "%lu\n", timestamp);
 	fclose(file);
+	umask(old_umask);
 }
 
 static void save_clipboard_source_vmname(const char *vmname) {
 	FILE *file;
+	mode_t old_umask;
 
+	/* grant group write */
+	old_umask = umask(0002);
 	file = fopen(QUBES_CLIPBOARD_FILENAME ".source", "w");
 	if (!file) {
 		perror("open " QUBES_CLIPBOARD_FILENAME ".source");
@@ -602,6 +609,7 @@ static void save_clipboard_source_vmname(const char *vmname) {
 	}
 	fwrite(vmname, strlen(vmname), 1, file);
 	fclose(file);
+	umask(old_umask);
 }
 
 /* fetch clippboard content from file */
@@ -661,6 +669,7 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 	int fd;
 	char domid_str[16];
 	int status;
+	mode_t old_umask;
 
 	switch (op) {
 		case CLIPBOARD_COPY:
@@ -685,11 +694,15 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 			/* in case of error do not use exit(1) in child to not fire
 			 * atexit() registered functions; use _exit() instead (which do not
 			 * fire that functions) */
+
+			/* grant group write */
+			old_umask = umask(0002);
 			fd = open(path_stdout, O_WRONLY|O_CREAT|O_TRUNC, 0644);
 			if (fd < 0) {
 				perror("open");
 				_exit(1);
 			}
+			umask(old_umask);
 			if (op == CLIPBOARD_COPY) {
 				rl.rlim_cur = MAX_CLIPBOARD_SIZE;
 				rl.rlim_max = MAX_CLIPBOARD_SIZE;
@@ -756,6 +769,8 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	char *untrusted_data;
 	size_t untrusted_data_sz;
 	Time clipboard_file_xevent_time;
+	mode_t old_umask;
+
 	if (g->log_level > 0)
 		fprintf(stderr, "handle_clipboard_data, len=0x%x\n",
 			untrusted_len);
@@ -788,6 +803,8 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 			"received clipboard data after some other clipboard op, discarding\n");
 		return;
 	}
+	/* grant group write */
+	old_umask = umask(0002);
 	file = fopen(QUBES_CLIPBOARD_FILENAME, "w");
 	if (!file) {
 		show_error_message(g, "secure copy: failed to open file " QUBES_CLIPBOARD_FILENAME);
@@ -805,6 +822,7 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 	save_clipboard_source_vmname(g->vmname);
 	save_clipboard_file_xevent_timestamp(g->clipboard_xevent_time);
 error:
+	umask(old_umask);
 	inter_appviewer_lock(g, 0);
 	g->clipboard_requested = 0;
 	free(untrusted_data);
