@@ -50,6 +50,7 @@
 #include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
 #include <libvchan.h>
+#include "xside.h"
 #include "txrx.h"
 #include "double-buffer.h"
 #include "list.h"
@@ -58,147 +59,6 @@
 
 /* some configuration */
 
-/* default width of forced colorful border */
-#define BORDER_WIDTH 2
-#define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes-clipboard.bin"
-#define QREXEC_CLIENT_PATH "/usr/lib/qubes/qrexec-client"
-#define QREXEC_POLICY_PATH "/usr/lib/qubes/qrexec-policy"
-#define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
-#define GUID_CONFIG_DIR "/etc/qubes"
-/* this feature was used to fill icon bg with VM color, later changed to white;
- * discussion: http://wiki.qubes-os.org/trac/ticket/127 */
-// #define FILL_TRAY_BG
-/* this makes any X11 error fatal (i.e. cause exit(1)). This behavior was the
- * case for a long time before introducing this option, so nothing really have
- * changed  */
-#define MAKE_X11_ERRORS_FATAL
-
-// Mod2 excluded as it is Num_Lock
-#define SPECIAL_KEYS_MASK (Mod1Mask | Mod3Mask | Mod4Mask | ShiftMask | ControlMask )
-
-// Special window ID meaning "whole screen"
-#define FULLSCREEN_WINDOW_ID 0
-
-#define MAX_EXTRA_PROPS 10
-
-#ifdef __GNUC__
-#  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
-#else
-#  define UNUSED(x) UNUSED_ ## x
-#endif
-
-enum clipboard_op {
-	CLIPBOARD_COPY,
-	CLIPBOARD_PASTE
-};
-
-/* per-window data */
-struct windowdata {
-	unsigned width;
-	unsigned height;
-	int x;
-	int y;
-	int is_mapped;
-	int is_docked;		/* is it docked tray icon */
-	XID remote_winid;	/* window id on VM side */
-	Window local_winid;	/* window id on X side */
-	Window local_frame_winid; /* window id of frame window created by window manager */
-	struct windowdata *parent;	/* parent window */
-	struct windowdata *transient_for;	/* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
-	int override_redirect;	/* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
-	XShmSegmentInfo shminfo;	/* temporary shmid; see shmoverride/README */
-	XImage *image;		/* image with window content */
-	int image_height;	/* size of window content, not always the same as window in dom0! */
-	int image_width;
-	int have_queued_configure;	/* have configure request been sent to VM - waiting for confirmation */
-	uint32_t flags_set;	/* window flags acked to gui-agent */
-};
-
-/* extra X11 property to set on every window, prepared parameters for
- * XChangeProperty */
-struct extra_prop {
-	char *raw_option; /* raw command line option, not parsed yet */
-	Atom prop; /* property name */
-	Atom type; /* property type */
-	int format; /* data format (8, 16, 32) */
-	void *data; /* actual data */
-	int nelements; /* data size, in "format" units */
-};
-
-/* global variables
- * keep them in this struct for readability
- */
-struct _global_handles {
-	/* local X server handles and attributes */
-	Display *display;
-	int screen;		/* shortcut to the default screen */
-	Window root_win;	/* root attributes */
-	int root_width;		/* size of root window */
-	int root_height;
-	GC context;		/* context for pixmap operations */
-	GC frame_gc;		/* graphic context to paint window frame */
-#ifdef FILL_TRAY_BG
-	GC tray_gc;		/* graphic context to paint tray background */
-#endif
-	/* atoms for comunitating with xserver */
-	Atom wmDeleteMessage;	/* Atom: WM_DELETE_WINDOW */
-	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
-	Atom tray_opcode;	/* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
-	Atom xembed_message;	/* Atom: _XEMBED */
-	Atom xembed_info;	/* Atom: _XEMBED_INFO */
-	Atom wm_state;         /* Atom: _NET_WM_STATE */
-	Atom wm_state_fullscreen; /* Atom: _NET_WM_STATE_FULLSCREEN */
-	Atom wm_state_demands_attention; /* Atom: _NET_WM_STATE_DEMANDS_ATTENTION */
-	Atom wm_state_hidden;	/* Atom: _NET_WM_STATE_HIDDEN */
-	Atom frame_extents; /* Atom: _NET_FRAME_EXTENTS */
-	/* shared memory handling */
-	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
-	uint32_t cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
-	int inter_appviewer_lock_fd; /* FD of lock file used to synchronize shared memory access */
-	/* Client VM parameters */
-	libvchan_t *vchan;
-	char vmname[32];	/* name of VM */
-	int domid;		/* Xen domain id (GUI) */
-	int target_domid;		/* Xen domain id (VM) - can differ from domid when GUI is stubdom */
-	char *cmdline_color;	/* color of frame */
-	char *cmdline_icon;	/* icon hint for WM */
-	unsigned long *icon_data; /* loaded icon image, ready for _NEW_WM_ICON property */
-	int icon_data_len; /* size of icon_data, in sizeof(*icon_data) units */
-	int label_index;	/* label (frame color) hint for WM */
-	struct windowdata *screen_window; /* window of whole VM screen */
-	struct extra_prop extra_props[MAX_EXTRA_PROPS];
-	/* lists of windows: */
-	/*   indexed by remote window id */
-	struct genlist *remote2local;
-	/*   indexed by local window id */
-	struct genlist *wid2windowdata;
-	/* counters and other state */
-	int clipboard_requested;	/* if clippoard content was requested by dom0 */
-	Time clipboard_xevent_time;  /* timestamp of keypress which triggered last copy/paste */
-	int windows_count;	/* created window count */
-	struct windowdata *last_input_window;
-	/* signal was caught */
-	int volatile reload_requested;
-	pid_t pulseaudio_pid;
-	/* configuration */
-	int log_level;		/* log level */
-	int startup_timeout;
-	int nofork;			   /* do not fork into background - used during guid restart */
-	int invisible;			/* do not show any VM window */
-	pid_t kill_on_connect;  /* pid to kill when connection to gui agent is established */
-	int allow_utf8_titles;	/* allow UTF-8 chars in window title */
-	int allow_fullscreen;   /* allow fullscreen windows without decoration */
-	int copy_seq_mask;	/* modifiers mask for secure-copy key sequence */
-	KeySym copy_seq_key;	/* key for secure-copy key sequence */
-	int paste_seq_mask;	/* modifiers mask for secure-paste key sequence */
-	KeySym paste_seq_key;	/* key for secure-paste key sequence */
-	int qrexec_clipboard;	/* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
-	int use_kdialog;	/* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
-	int audio_low_latency; /* set low-latency mode while starting pacat-simple-vchan */
-	int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
-};
-
-typedef struct _global_handles Ghandles;
 static Ghandles ghandles;
 
 /* macro used to verify data from VM */
@@ -223,9 +83,6 @@ static Ghandles ghandles;
 #ifndef max
 #define max(x,y) ((x)<(y)?(y):(x))
 #endif
-
-#define KDIALOG_PATH "/usr/bin/kdialog"
-#define ZENITY_PATH "/usr/bin/zenity"
 
 static void inter_appviewer_lock(Ghandles *g, int mode);
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
