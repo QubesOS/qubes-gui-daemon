@@ -55,6 +55,7 @@ BuildRequires:	libconfig-devel
 BuildRequires:	libpng-devel
 BuildRequires:	libnotify-devel
 BuildRequires:	dbus-glib-devel
+BuildRequires:	help2man
 BuildRequires:	gcc
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
 BuildRequires:	qubes-core-libs
@@ -82,6 +83,7 @@ make dom0
 %install
 rm -rf $RPM_BUILD_ROOT
 install -D gui-daemon/qubes-guid $RPM_BUILD_ROOT/usr/bin/qubes-guid
+install -m 0644 -D gui-daemon/qubes-guid.1 $RPM_BUILD_ROOT%{_mandir}/man1/qubes-guid.1
 install -D pulse/pacat-simple-vchan $RPM_BUILD_ROOT/usr/bin/pacat-simple-vchan
 install -D pulse/pacat-control-api.xml $RPM_BUILD_ROOT/usr/share/dbus-1/interfaces/org.QubesOS.Audio.xml
 install -D shmoverride/X-wrapper-qubes $RPM_BUILD_ROOT/usr/bin/X-wrapper-qubes
@@ -111,6 +113,7 @@ rm -f %{name}-%{version}
 %files
 %defattr(-,root,root,-)
 %attr(4750,root,qubes) /usr/bin/qubes-guid
+%{_mandir}/man1/qubes-guid.1.gz
 /usr/bin/pacat-simple-vchan
 /usr/bin/X-wrapper-qubes
 %{_libdir}/shmoverride.so

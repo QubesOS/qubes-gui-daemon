@@ -28,7 +28,7 @@ CFLAGS+=-I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
 OBJS=xside.o png.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
 	../gui-common/error.o ../common/list.o
 
-all: qubes-guid
+all: qubes-guid qubes-guid.1
 qubes-guid: $(OBJS)
 	$(CC) -g -pie -o qubes-guid $(OBJS) \
 		-lX11 -lXext -Wall \
@@ -36,5 +36,9 @@ qubes-guid: $(OBJS)
 		`pkg-config --libs libpng` \
 		`pkg-config --libs libconfig` \
 		`pkg-config --libs libnotify`
+
+qubes-guid.1: qubes-guid
+	help2man --version-string=`cat ../version` --no-info --name="Qubes GUI daemon" ./qubes-guid  > qubes-guid.1
+
 clean:
 	rm -f qubes-guid *.o *~
