@@ -37,6 +37,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <execinfo.h>
+#include <getopt.h>
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Intrinsic.h>
@@ -2814,28 +2815,58 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 	exit(0);
 }
 
-static void usage(void)
+struct option longopts[] = {
+	{ "domid", required_argument, NULL, 'd' },
+	{ "name", required_argument, NULL, 'N' },
+	{ "target-domid", required_argument, NULL, 't' },
+	{ "color", required_argument, NULL, 'c' },
+	{ "label", required_argument, NULL, 'l' },
+	{ "icon", required_argument, NULL, 'i' },
+	{ "verbose", no_argument, NULL, 'v' },
+	{ "quiet", no_argument, NULL, 'q' },
+	{ "background", no_argument, NULL, 'n' },
+	{ "invisible", no_argument, NULL, 'I' },
+	{ "qrexec-for-clipboard", no_argument, NULL, 'Q' },
+	{ "audio-low-latency", no_argument, NULL, 'a' },
+	{ "foreground", no_argument, NULL, 'f' },
+	{ "kill-on-connect", required_argument, NULL, 'K' },
+	{ "prop", required_argument, NULL, 'p' },
+	{ "title-name", no_argument, NULL, 'T' },
+	{ "help", no_argument, NULL, 'h' },
+	{ },
+};
+static const char optstring[] = "d:t:N:c:l:i:K:vqQnafIp:Th";
+
+static void usage(FILE *stream)
 {
-	fprintf(stderr,
-		"usage: qubes-guid -d domain_id -N domain_name [-t target_domid] [-c color] [-l label_index] [-i icon name, no suffix, or icon.png path] [-v] [-q] [-a] [-f] [-K pid] [-p prop=value] [-T]\n");
-	fprintf(stderr, "       -v  increase log verbosity\n");
-	fprintf(stderr, "       -q  decrease log verbosity\n");
-	fprintf(stderr, "       -Q  force usage of Qrexec for clipboard operations\n");
-	fprintf(stderr, "       -n  do not wait for agent connection\n");
-	fprintf(stderr, "       -a  low-latency audio mode\n");
-	fprintf(stderr, "       -f  do not fork into background\n");
-	fprintf(stderr, "       -I  run in \"invisible\" mode - do not show any VM window\n");
-	fprintf(stderr, "       -K  when established connection to VM agent, send SIGUSR1 to given pid (ignored when -f set)\n");
-	fprintf(stderr, "       -p  add additional X11 property on all the windows of this VM (up to 10 properties)\n");
-	fprintf(stderr, "           specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
-	fprintf(stderr, "       -T  prefix window titles with VM name\n");
-	fprintf(stderr, "\n");
-	fprintf(stderr, "Log levels:\n");
-	fprintf(stderr, " 0 - only errors\n");
-	fprintf(stderr, " 1 - some basic messages (default)\n");
-	fprintf(stderr, " 2 - debug\n");
-	fprintf(stderr, "\n");
-	fprintf(stderr, "target_domid should be used in case domain_id is stubdom\n");
+	fprintf(stream,
+		"Usage: qubes-guid -d domain_id -N domain_name [options]\n");
+	fprintf(stream, "\n");
+	fprintf(stream, "Options:\n");
+	fprintf(stream, " --verbose, -v\tincrease log verbosity\n");
+	fprintf(stream, " --quiet, -q\tdecrease log verbosity\n");
+	fprintf(stream, " --domid=ID, -d ID\tdomain ID running GUI agent\n");
+	fprintf(stream, " --target-domid=ID, -t ID\tdomain ID of actual VM (may be different from --domid in case of stubdomain)\n");
+	fprintf(stream, " --name=NAME, -N NAME\tVM name\n");
+	fprintf(stream, " --color=COLOR, -c COLOR\tVM color (in format 0xRRGGBB)\n");
+	fprintf(stream, " --label=LABEL_INDEX, -l LABEL_INDEX\tVM label index\n");
+	fprintf(stream, " --icon=ICON, -i ICON\tIcon name (without suffix), or full icon path\n");
+	fprintf(stream, " --qrexec-for-clipboard, -Q\tforce usage of Qrexec for clipboard operations\n");
+	fprintf(stream, " --background, -n\tdo not wait for agent connection\n");
+	fprintf(stream, " --audio-low-latency, -a\tlow-latency audio mode\n");
+	fprintf(stream, " --foreground, -f\tdo not fork into background\n");
+	fprintf(stream, " --invisible, -I\trun in \"invisible\" mode - do not show any VM window\n");
+	fprintf(stream, " --kill-on-connect=PID, -K PID\twhen established connection to VM agent, send SIGUSR1 to given pid (ignored when -f set)\n");
+	fprintf(stream, " --prop=name=type:value, -p\tadd additional X11 property on all the windows of this VM (up to 10 properties)\n");
+	fprintf(stream, "          specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
+	fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
+	fprintf(stream, " --help, -h\tPrint help message\n");
+	fprintf(stream, "\n");
+	fprintf(stream, "Log levels:\n");
+	fprintf(stream, " 0 - only errors\n");
+	fprintf(stream, " 1 - some basic messages (default)\n");
+	fprintf(stream, " 2 - debug\n");
+	fprintf(stream, "\n");
 }
 
 static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
@@ -2843,7 +2874,7 @@ static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
 	int opt;
 	optind = 1;
 
-	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafIp:T")) != -1) {
+	while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
 		if (opt == 'N') {
 			strncpy(g->vmname, optarg, sizeof(g->vmname));
 			g->vmname[sizeof(g->vmname) - 1] = '\0';
@@ -2851,6 +2882,9 @@ static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
 				fprintf(stderr, "domain name too long");
 				exit(1);
 			}
+		} else if (opt == 'h') {
+			usage(stdout);
+			exit(0);
 		}
 	}
 }
@@ -2948,7 +2982,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 
 	optind = 1;
 
-	while ((opt = getopt(argc, argv, "d:t:N:c:l:i:K:vqQnafIp:T")) != -1) {
+	while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
 		switch (opt) {
 		case 'a':
 			g->audio_low_latency = 1;
@@ -3005,7 +3039,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 			g->prefix_titles = 1;
 			break;
 		default:
-			usage();
+			usage(stderr);
 			exit(1);
 		}
 	}
