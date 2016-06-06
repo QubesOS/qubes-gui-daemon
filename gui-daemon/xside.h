@@ -30,9 +30,6 @@
 #define QREXEC_POLICY_PATH "/usr/lib/qubes/qrexec-policy"
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
-/* this feature was used to fill icon bg with VM color, later changed to white;
- * discussion: http://wiki.qubes-os.org/trac/ticket/127 */
-// #define FILL_TRAY_BG
 /* this makes any X11 error fatal (i.e. cause exit(1)). This behavior was the
  * case for a long time before introducing this option, so nothing really have
  * changed  */
@@ -64,6 +61,11 @@
 enum clipboard_op {
 	CLIPBOARD_COPY,
 	CLIPBOARD_PASTE
+};
+
+enum trayicon_mode {
+    TRAY_BORDER,
+    TRAY_BACKGROUND,
 };
 
 /* per-window data */
@@ -111,9 +113,7 @@ struct _global_handles {
 	int root_height;
 	GC context;		/* context for pixmap operations */
 	GC frame_gc;		/* graphic context to paint window frame */
-#ifdef FILL_TRAY_BG
-	GC tray_gc;		/* graphic context to paint tray background */
-#endif
+	GC tray_gc;		/* graphic context to paint tray background - only in TRAY_BACKGROUND mode */
 	/* atoms for comunitating with xserver */
 	Atom wmDeleteMessage;	/* Atom: WM_DELETE_WINDOW */
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
@@ -170,6 +170,7 @@ struct _global_handles {
 	int use_kdialog;	/* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
 	int audio_low_latency; /* set low-latency mode while starting pacat-simple-vchan */
 	int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
+    enum trayicon_mode trayicon_mode; /* trayicon coloring mode */
 };
 
 typedef struct _global_handles Ghandles;

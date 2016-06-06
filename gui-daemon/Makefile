@@ -25,7 +25,7 @@ CFLAGS+=-I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
 		`pkg-config --cflags libnotify` \
 		`pkg-config --cflags libpng` \
 		`pkg-config --cflags vchan-$(BACKEND_VMM)`
-OBJS=xside.o png.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
+OBJS=xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
 	../gui-common/error.o ../common/list.o
 
 all: qubes-guid qubes-guid.1

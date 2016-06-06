@@ -56,6 +56,7 @@
 #include "list.h"
 #include "error.h"
 #include "png.h"
+#include "trayicon.h"
 
 /* some configuration */
 
@@ -251,17 +252,6 @@ static void get_frame_gc(Ghandles * g, const char *name)
 	    XCreateGC(g->display, g->root_win, GCForeground, &values);
 }
 
-#ifdef FILL_TRAY_BG
-/* prepare graphic context for tray background */
-static void get_tray_gc(Ghandles * g)
-{
-	XGCValues values;
-	values.foreground = WhitePixel(g->display, g->screen);
-	g->tray_gc =
-	    XCreateGC(g->display, g->root_win, GCForeground, &values);
-}
-#endif
-
 /* create local window - on VM request.
  * parameters are sanitized already
  */
@@ -391,9 +381,9 @@ static void mkghandles(Ghandles * g)
 	g->frame_extents = XInternAtom(g->display, "_NET_FRAME_EXTENTS", False);
 	/* create graphical contexts */
 	get_frame_gc(g, g->cmdline_color ? : "red");
-#ifdef FILL_TRAY_BG
-	get_tray_gc(g);
-#endif
+	if (g->trayicon_mode == TRAY_BACKGROUND)
+		init_tray_bg(g);
+	/* nothing extra needed for TRAY_BORDER */
 	/* parse -p arguments now, as we have X server connection */
 	parse_cmdline_prop(g);
 	/* init window lists */
@@ -1405,93 +1395,10 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 				(int) vm_window->remote_winid,
 				x, y, w, h);
 
-#ifdef FILL_TRAY_BG
-	if (vm_window->is_docked) {
-		char *data, *datap;
-		size_t data_sz;
-		int xp, yp;
-
-		if (!vm_window->image) {
-			/* TODO: implement screen_window handling */
-			return;
-		}
-		/* allocate image_width _bits_ for each image line */
-		data_sz =
-		    (vm_window->image_width / 8 +
-		     1) * vm_window->image_height;
-		data = datap = calloc(1, data_sz);
-		if (!data) {
-			perror("malloc(%dx%x -> %zu\n",
-				vm_window->image_width, vm_window->image_height, data_sz);
-			exit(1);
-		}
-
-		/* Create local pixmap, put vmside image to it
-		 * then get local image of the copy.
-		 * This is needed because XGetPixel does not seem to work
-		 * with XShmImage data.
-		 *
-		 * Always use 0,0 w+x,h+y coordinates to generate proper mask. */
-		w = w + x;
-		h = h + y;
-		if (w > vm_window->image_width)
-			w = vm_window->image_width;
-		if (h > vm_window->image_height)
-			h = vm_window->image_height;
-		Pixmap pixmap =
-		    XCreatePixmap(g->display, vm_window->local_winid,
-				  vm_window->image_width,
-				  vm_window->image_height,
-				  24);
-		XShmPutImage(g->display, pixmap, g->context,
-			     vm_window->image, 0, 0, 0, 0,
-			     vm_window->image_width,
-			     vm_window->image_height, 0);
-		XImage *image = XGetImage(g->display, pixmap, 0, 0, w, h,
-					  0xFFFFFFFF, ZPixmap);
-		/* Use top-left corner pixel color as transparency color */
-		unsigned long back = XGetPixel(image, 0, 0);
-		/* Generate data for transparency mask Bitmap */
-		for (yp = 0; yp < h; yp++) {
-			int step = 0;
-			for (xp = 0; xp < w; xp++) {
-				if (datap - data >= data_sz) {
-					fprintf(stderr,
-						"Impossible internal error\n");
-					exit(1);
-				}
-				if (XGetPixel(image, xp, yp) != back)
-					*datap |= 1 << (step % 8);
-				if (step % 8 == 7)
-					datap++;
-				step++;
-			}
-			/* ensure that new line will start at new byte */
-			if ((step - 1) % 8 != 7)
-				datap++;
-		}
-		Pixmap mask = XCreateBitmapFromData(g->display,
-						    vm_window->local_winid,
-						    data, w, h);
-		/* set trayicon background to white color */
-		XFillRectangle(g->display, vm_window->local_winid,
-			       g->tray_gc, 0, 0, vm_window->width,
-			       vm_window->height);
-		/* Paint clipped Image */
-		XSetClipMask(g->display, g->context, mask);
-		XPutImage(g->display, vm_window->local_winid,
-			  g->context, image, 0, 0, 0, 0, w, h);
-		/* Remove clipping */
-		XSetClipMask(g->display, g->context, None);
-
-		XFreePixmap(g->display, mask);
-		XDestroyImage(image);
-		XFreePixmap(g->display, pixmap);
-		free(data);
+	if (vm_window->is_docked && g->trayicon_mode == TRAY_BACKGROUND) {
+		fill_tray_bg_and_update(g, vm_window, x, y, w, h);
 		return;
-	} else
-#endif
-	{
+	} else {
 		if (vm_window->image) {
 			XShmPutImage(g->display, vm_window->local_winid,
 					g->context, vm_window->image, x,
@@ -2672,6 +2579,10 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 	exit(0);
 }
 
+enum {
+	opt_trayicon_mode = 257,
+};
+
 struct option longopts[] = {
 	{ "domid", required_argument, NULL, 'd' },
 	{ "name", required_argument, NULL, 'N' },
@@ -2689,6 +2600,7 @@ struct option longopts[] = {
 	{ "kill-on-connect", required_argument, NULL, 'K' },
 	{ "prop", required_argument, NULL, 'p' },
 	{ "title-name", no_argument, NULL, 'T' },
+	{ "trayicon-mode", required_argument, NULL, opt_trayicon_mode },
 	{ "help", no_argument, NULL, 'h' },
 	{ },
 };
@@ -2717,6 +2629,7 @@ static void usage(FILE *stream)
 	fprintf(stream, " --prop=name=type:value, -p\tadd additional X11 property on all the windows of this VM (up to 10 properties)\n");
 	fprintf(stream, "          specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
 	fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
+	fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (bg, border); default: border\n");
 	fprintf(stream, " --help, -h\tPrint help message\n");
 	fprintf(stream, "\n");
 	fprintf(stream, "Log levels:\n");
@@ -2825,6 +2738,17 @@ static void parse_cmdline_prop(Ghandles *g) {
 	}
 }
 
+static void parse_trayicon_mode(Ghandles *g, const char *mode_str) {
+	if (strcmp(mode_str, "bg") == 0) {
+		g->trayicon_mode = TRAY_BACKGROUND;
+	} else if (strcmp(mode_str, "border") == 0) {
+		g->trayicon_mode = TRAY_BORDER;
+	} else {
+		fprintf(stderr, "Invalid trayicon mode: %s\n", mode_str);
+		exit(1);
+	}
+}
+
 static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
 	int opt;
@@ -2895,6 +2819,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 		case 'T':
 			g->prefix_titles = 1;
 			break;
+		case opt_trayicon_mode:
+			parse_trayicon_mode(g, optarg);
+			break;
 		default:
 			usage(stderr);
 			exit(1);
@@ -2933,6 +2860,7 @@ static void load_default_config_values(Ghandles * g)
 	g->allow_fullscreen = 0;
 	g->startup_timeout = 45;
 	g->audio_low_latency = 1;
+	g->trayicon_mode = TRAY_BORDER;
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
@@ -3011,6 +2939,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
 	if ((setting =
 	     config_setting_get_member(group, "audio_low_latency"))) {
 		g->audio_low_latency = config_setting_get_bool(setting);
+	}
+
+	if ((setting =
+	     config_setting_get_member(group, "trayicon_mode"))) {
+		parse_trayicon_mode(g, config_setting_get_string(setting));
 	}
 }
 
