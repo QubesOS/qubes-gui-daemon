@@ -171,6 +171,7 @@ struct _global_handles {
 	int audio_low_latency; /* set low-latency mode while starting pacat-simple-vchan */
 	int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
     enum trayicon_mode trayicon_mode; /* trayicon coloring mode */
+    int trayicon_border; /* position of trayicon border - 0 - no border, 1 - at the edges, 2 - 1px from the edges */
 };
 
 typedef struct _global_handles Ghandles;

@@ -1299,6 +1299,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 		   int untrusted_h)
 {
 	int border_width = BORDER_WIDTH;
+	int border_padding = 0; /* start forced border x pixels from the edge */
 	int x = 0, y = 0, w = 0, h = 0;
 
 	/* sanitize start */
@@ -1340,7 +1341,11 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 	}
 
 	if (vm_window->is_docked) {
-		border_width = 1;
+		if (g->trayicon_border) {
+			border_width = 1;
+			border_padding = g->trayicon_border - 1;
+		} else
+			border_width = 0;
 	}
 
 	int do_border = 0;
@@ -1395,9 +1400,9 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 				(int) vm_window->remote_winid,
 				x, y, w, h);
 
-	if (vm_window->is_docked && g->trayicon_mode == TRAY_BACKGROUND) {
-		fill_tray_bg_and_update(g, vm_window, x, y, w, h);
-		return;
+	if (vm_window->is_docked && g->trayicon_mode != TRAY_BORDER) {
+		if (g->trayicon_mode == TRAY_BACKGROUND)
+			fill_tray_bg_and_update(g, vm_window, x, y, w, h);
 	} else {
 		if (vm_window->image) {
 			XShmPutImage(g->display, vm_window->local_winid,
@@ -1411,7 +1416,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 	}
 	if (!do_border)
 		return;
-	for (i = 0; i < border_width; i++)
+	for (i = border_padding; i < border_padding + border_width; i++)
 		XDrawRectangle(g->display, vm_window->local_winid,
 			       g->frame_gc, i, i,
 			       vm_window->width - 1 - 2 * i,
@@ -2629,7 +2634,11 @@ static void usage(FILE *stream)
 	fprintf(stream, " --prop=name=type:value, -p\tadd additional X11 property on all the windows of this VM (up to 10 properties)\n");
 	fprintf(stream, "          specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
 	fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
-	fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (bg, border); default: border\n");
+	fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (bg, border1, border2, tint); default: border1\n");
+	fprintf(stream, " \tAvailable modes:\n");
+	fprintf(stream, " \tbg: color full icon background to the VM color\n");
+	fprintf(stream, " \tborder1: add 1px border at the icon edges\n");
+	fprintf(stream, " \tborder2: add 1px border, 1px from the icon edges\n");
 	fprintf(stream, " --help, -h\tPrint help message\n");
 	fprintf(stream, "\n");
 	fprintf(stream, "Log levels:\n");
@@ -2741,8 +2750,13 @@ static void parse_cmdline_prop(Ghandles *g) {
 static void parse_trayicon_mode(Ghandles *g, const char *mode_str) {
 	if (strcmp(mode_str, "bg") == 0) {
 		g->trayicon_mode = TRAY_BACKGROUND;
-	} else if (strcmp(mode_str, "border") == 0) {
+		g->trayicon_border = 0;
+	} else if (strcmp(mode_str, "border1") == 0) {
 		g->trayicon_mode = TRAY_BORDER;
+		g->trayicon_border = 1;
+	} else if (strcmp(mode_str, "border2") == 0) {
+		g->trayicon_mode = TRAY_BORDER;
+		g->trayicon_border = 2;
 	} else {
 		fprintf(stderr, "Invalid trayicon mode: %s\n", mode_str);
 		exit(1);
@@ -2861,6 +2875,7 @@ static void load_default_config_values(Ghandles * g)
 	g->startup_timeout = 45;
 	g->audio_low_latency = 1;
 	g->trayicon_mode = TRAY_BORDER;
+	g->trayicon_border = 1;
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
