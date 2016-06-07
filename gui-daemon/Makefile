@@ -31,7 +31,7 @@ OBJS=xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-v
 all: qubes-guid qubes-guid.1
 qubes-guid: $(OBJS)
 	$(CC) -g -pie -o qubes-guid $(OBJS) \
-		-lX11 -lXext -Wall \
+		-lX11 -lXext -Wall -lm \
 		`pkg-config --libs vchan-$(BACKEND_VMM)` \
 		`pkg-config --libs libpng` \
 		`pkg-config --libs libconfig` \

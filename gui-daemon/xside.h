@@ -66,6 +66,7 @@ enum clipboard_op {
 enum trayicon_mode {
     TRAY_BORDER,
     TRAY_BACKGROUND,
+    TRAY_TINT,
 };
 
 /* per-window data */
@@ -114,6 +115,8 @@ struct _global_handles {
 	GC context;		/* context for pixmap operations */
 	GC frame_gc;		/* graphic context to paint window frame */
 	GC tray_gc;		/* graphic context to paint tray background - only in TRAY_BACKGROUND mode */
+    double tint_h;  /* precomputed H and S for tray coloring - only in TRAY_TINT mode */
+    double tint_s;
 	/* atoms for comunitating with xserver */
 	Atom wmDeleteMessage;	/* Atom: WM_DELETE_WINDOW */
 	Atom tray_selection;	/* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */

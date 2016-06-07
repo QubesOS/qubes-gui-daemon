@@ -23,6 +23,7 @@
 #include <string.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <math.h>
 #include "xside.h"
 
 /* initialization required for TRAY_BACKGROUND mode */
@@ -120,4 +121,155 @@ void fill_tray_bg_and_update(Ghandles *g, struct windowdata *vm_window,
     XDestroyImage(image);
     XFreePixmap(g->display, pixmap);
     free(data);
+}
+
+
+/* based on /usr/share/awesome/lib/gears/colors.lua */
+
+static inline double max3(double a, double b, double c) {
+    double r = a;
+    if (b > r)
+        r = b;
+    if (c > r)
+        r = c;
+    return r;
+}
+
+static inline double min3(double a, double b, double c) {
+    double r = a;
+    if (b < r)
+        r = b;
+    if (c < r)
+        r = c;
+    return r;
+}
+
+static void rgb_to_hls(uint32_t rgb, double *out_h, double *out_l, double *out_s) {
+	double r, g, b;
+    double maxc, minc, l, h, s, rc, gc, bc;
+
+    r = ((rgb >> 16) & 0xff) * 1.0 / 255.0;
+    g = ((rgb >>  8) & 0xff) * 1.0 / 255.0;
+    b = ((rgb >>  0) & 0xff) * 1.0 / 255.0;
+
+
+    maxc = max3(r, g, b);
+    minc = min3(r, g, b);
+    // XXX Can optimize (maxc+minc) and (maxc-minc)
+    l = (minc+maxc)/2.0;
+    if (minc == maxc) {
+        *out_h = 0.0;
+        *out_l = l;
+        *out_s = 0.0;
+        return;
+    }
+    if (l <= 0.5) {
+        s = (maxc-minc) / (maxc+minc);
+    } else {
+        s = (maxc-minc) / (2.0-maxc-minc);
+    }
+    rc = (maxc-r) / (maxc-minc);
+    gc = (maxc-g) / (maxc-minc);
+    bc = (maxc-b) / (maxc-minc);
+    if (r == maxc) {
+        h = bc-gc;
+    } else if (g == maxc) {
+        h = 2.0+rc-bc;
+    } else {
+        h = 4.0+gc-rc;
+    }
+    h = (h/6.0) - floor(h/6.0);
+
+    *out_h = h;
+    *out_l = l;
+    *out_s = s;
+}
+
+/* based on /usr/share/awesome/lib/gears/colors.lua */
+static uint8_t v(double m1, double m2, double hue) {
+    hue = hue - floor(hue);
+    if (hue < 1.0/6.0)
+        return (m1 + (m2-m1)*hue*6.0) * 0xff;
+    if (hue < 0.5)
+        return (m2) * 0xff;
+    if (hue < 2.0/3.0)
+        return (m1 + (m2-m1)*(2.0/3.0-hue)*6.0) * 0xff;
+    return m1 * 0xff;
+}
+
+static uint32_t hls_to_rgb(double h, double l, double s) {
+    double m1, m2;
+
+    if (s == 0.0)
+        return
+            (int)(l * 0xff) << 16 |
+            (int)(l * 0xff) <<  8 |
+            (int)(l * 0xff) <<  0;
+    if (l <= 0.5)
+        m2 = l * (1.0+s);
+    else
+        m2 = l+s-(l*s);
+    m1 = 2.0*l - m2;
+    return
+        (uint32_t)v(m1, m2, h+1.0/3.0) << 16 |
+        (uint32_t)v(m1, m2, h)         <<  8 |
+        (uint32_t)v(m1, m2, h-1.0/3.0) <<  0;
+}
+
+void init_tray_tint(Ghandles *g) {
+    XGCValues gcvalues;
+    double l_ignore;
+    XColor color;
+    if (!XGetGCValues(g->display, g->frame_gc, GCForeground, &gcvalues)) {
+        fprintf(stderr, "Failed to obtain color for tray coloring, aborting\n");
+        exit(1);
+    }
+
+    color.pixel = gcvalues.foreground;
+    if (!XQueryColor(g->display, DefaultColormap(g->display, g->screen), &color)) {
+        fprintf(stderr, "XQueryColor failed\n");
+        exit(1);
+    }
+    rgb_to_hls((color.red >> 8) << 16 | (color.green >> 8) << 8 | (color.blue >> 8),
+            &g->tint_h, &l_ignore, &g->tint_s);
+}
+
+void tint_tray_and_update(Ghandles *g, struct windowdata *vm_window,
+        int x, int y, int w, int h) {
+    int yp, xp;
+    uint32_t pixel;
+    double h_ignore, l, s_ignore;
+    /* Create local pixmap, put vmside image to it
+     * then get local image of the copy.
+     * This is needed because XGetPixel does not seem to work
+     * with XShmImage data.
+     */
+    Pixmap pixmap =
+        XCreatePixmap(g->display, vm_window->local_winid,
+                vm_window->image_width,
+                vm_window->image_height,
+                24);
+    XShmPutImage(g->display, pixmap, g->context,
+            vm_window->image, 0, 0, 0, 0,
+            vm_window->image_width,
+            vm_window->image_height, 0);
+    XImage *image = XGetImage(g->display, pixmap, x, y, w, h,
+            0xFFFFFFFF, ZPixmap);
+    /* tint image */
+    for (yp = 0; yp < h; yp++) {
+        for (xp = 0; xp < w; xp++) {
+            pixel = XGetPixel(image, xp, yp);
+            rgb_to_hls(pixel, &h_ignore, &l, &s_ignore);
+            pixel = hls_to_rgb(g->tint_h, l, g->tint_s);
+            if (!XPutPixel(image, xp, yp, pixel)) {
+                fprintf(stderr, "Failed to update pixel %d,%d of tray window 0x%lx(remote 0x%lx)\n",
+                        xp, yp, vm_window->local_winid, vm_window->remote_winid);
+                exit(1);
+            }
+        }
+    }
+    XPutImage(g->display, vm_window->local_winid,
+            g->context, image, x, x, x, x, w, h);
+    XDestroyImage(image);
+    XFreePixmap(g->display, pixmap);
 }

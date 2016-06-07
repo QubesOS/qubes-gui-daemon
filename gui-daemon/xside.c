@@ -383,6 +383,8 @@ static void mkghandles(Ghandles * g)
 	get_frame_gc(g, g->cmdline_color ? : "red");
 	if (g->trayicon_mode == TRAY_BACKGROUND)
 		init_tray_bg(g);
+	else if (g->trayicon_mode == TRAY_TINT)
+		init_tray_tint(g);
 	/* nothing extra needed for TRAY_BORDER */
 	/* parse -p arguments now, as we have X server connection */
 	parse_cmdline_prop(g);
@@ -1403,6 +1405,8 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 	if (vm_window->is_docked && g->trayicon_mode != TRAY_BORDER) {
 		if (g->trayicon_mode == TRAY_BACKGROUND)
 			fill_tray_bg_and_update(g, vm_window, x, y, w, h);
+		else if (g->trayicon_mode == TRAY_TINT)
+			tint_tray_and_update(g, vm_window, x, y, w, h);
 	} else {
 		if (vm_window->image) {
 			XShmPutImage(g->display, vm_window->local_winid,
@@ -2639,6 +2643,7 @@ static void usage(FILE *stream)
 	fprintf(stream, " \tbg: color full icon background to the VM color\n");
 	fprintf(stream, " \tborder1: add 1px border at the icon edges\n");
 	fprintf(stream, " \tborder2: add 1px border, 1px from the icon edges\n");
+	fprintf(stream, " \ttint: tint icon to the VM color\n");
 	fprintf(stream, " --help, -h\tPrint help message\n");
 	fprintf(stream, "\n");
 	fprintf(stream, "Log levels:\n");
@@ -2757,6 +2762,9 @@ static void parse_trayicon_mode(Ghandles *g, const char *mode_str) {
 	} else if (strcmp(mode_str, "border2") == 0) {
 		g->trayicon_mode = TRAY_BORDER;
 		g->trayicon_border = 2;
+	} else if (strcmp(mode_str, "tint") == 0) {
+		g->trayicon_mode = TRAY_TINT;
+		g->trayicon_border = 0;
 	} else {
 		fprintf(stderr, "Invalid trayicon mode: %s\n", mode_str);
 		exit(1);
