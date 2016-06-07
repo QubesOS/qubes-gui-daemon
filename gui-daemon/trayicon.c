@@ -232,6 +232,9 @@ void init_tray_tint(Ghandles *g) {
     }
     rgb_to_hls((color.red >> 8) << 16 | (color.green >> 8) << 8 | (color.blue >> 8),
             &g->tint_h, &l_ignore, &g->tint_s);
+
+    if (g->trayicon_tint_reduce_saturation)
+        g->tint_s *= 0.5;
 }
 
 void tint_tray_and_update(Ghandles *g, struct windowdata *vm_window,
@@ -259,8 +262,12 @@ void tint_tray_and_update(Ghandles *g, struct windowdata *vm_window,
     for (yp = 0; yp < h; yp++) {
         for (xp = 0; xp < w; xp++) {
             pixel = XGetPixel(image, xp, yp);
-            rgb_to_hls(pixel, &h_ignore, &l, &s_ignore);
-            pixel = hls_to_rgb(g->tint_h, l, g->tint_s);
+            if (g->trayicon_tint_whitehack && pixel == 0xffffff)
+                pixel = 0xfefefe;
+            else {
+                rgb_to_hls(pixel, &h_ignore, &l, &s_ignore);
+                pixel = hls_to_rgb(g->tint_h, l, g->tint_s);
+            }
             if (!XPutPixel(image, xp, yp, pixel)) {
                 fprintf(stderr, "Failed to update pixel %d,%d of tray window 0x%lx(remote 0x%lx)\n",
                         xp, yp, vm_window->local_winid, vm_window->remote_winid);

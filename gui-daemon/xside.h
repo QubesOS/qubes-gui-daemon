@@ -175,6 +175,8 @@ struct _global_handles {
 	int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
     enum trayicon_mode trayicon_mode; /* trayicon coloring mode */
     int trayicon_border; /* position of trayicon border - 0 - no border, 1 - at the edges, 2 - 1px from the edges */
+    bool trayicon_tint_reduce_saturation; /* reduce trayicon saturation by 50% (available only for "tint" mode) */
+    bool trayicon_tint_whitehack; /* replace white pixels with almost-white 0xfefefe (available only for "tint" mode) */
 };
 
 typedef struct _global_handles Ghandles;

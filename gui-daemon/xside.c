@@ -2643,7 +2643,10 @@ static void usage(FILE *stream)
 	fprintf(stream, " \tbg: color full icon background to the VM color\n");
 	fprintf(stream, " \tborder1: add 1px border at the icon edges\n");
 	fprintf(stream, " \tborder2: add 1px border, 1px from the icon edges\n");
-	fprintf(stream, " \ttint: tint icon to the VM color\n");
+	fprintf(stream, " \ttint: tint icon to the VM color, can be used with additional modifiers (you can enable multiple of them):\n");
+	fprintf(stream, " \ttint+border1, tint+border2: same as tint, but also add a border\n");
+	fprintf(stream, " \ttint+saturation50: same as tint, but reduce icon saturation by 50%%\n");
+	fprintf(stream, " \ttint+whitehack: same as tint, but change white pixels (0xffffff) to almost-white (0xfefefe)\n");
 	fprintf(stream, " --help, -h\tPrint help message\n");
 	fprintf(stream, "\n");
 	fprintf(stream, "Log levels:\n");
@@ -2762,9 +2765,17 @@ static void parse_trayicon_mode(Ghandles *g, const char *mode_str) {
 	} else if (strcmp(mode_str, "border2") == 0) {
 		g->trayicon_mode = TRAY_BORDER;
 		g->trayicon_border = 2;
-	} else if (strcmp(mode_str, "tint") == 0) {
+	} else if (strncmp(mode_str, "tint", 4) == 0) {
 		g->trayicon_mode = TRAY_TINT;
 		g->trayicon_border = 0;
+		if (strstr(mode_str, "+border1"))
+			g->trayicon_border = 1;
+		if (strstr(mode_str, "+border2"))
+			g->trayicon_border = 2;
+		if (strstr(mode_str, "+saturation50"))
+			g->trayicon_tint_reduce_saturation = 1;
+		if (strstr(mode_str, "+whitehack"))
+			g->trayicon_tint_whitehack = 1;
 	} else {
 		fprintf(stderr, "Invalid trayicon mode: %s\n", mode_str);
 		exit(1);
@@ -2884,6 +2895,8 @@ static void load_default_config_values(Ghandles * g)
 	g->audio_low_latency = 1;
 	g->trayicon_mode = TRAY_BORDER;
 	g->trayicon_border = 1;
+	g->trayicon_tint_reduce_saturation = 0;
+	g->trayicon_tint_whitehack = 0;
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
