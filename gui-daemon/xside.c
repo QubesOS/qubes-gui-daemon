@@ -2638,21 +2638,23 @@ static void usage(FILE *stream)
 	fprintf(stream, " --prop=name=type:value, -p\tadd additional X11 property on all the windows of this VM (up to 10 properties)\n");
 	fprintf(stream, "          specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
 	fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
-	fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (bg, border1, border2, tint); default: border1\n");
-	fprintf(stream, " \tAvailable modes:\n");
-	fprintf(stream, " \tbg: color full icon background to the VM color\n");
-	fprintf(stream, " \tborder1: add 1px border at the icon edges\n");
-	fprintf(stream, " \tborder2: add 1px border, 1px from the icon edges\n");
-	fprintf(stream, " \ttint: tint icon to the VM color, can be used with additional modifiers (you can enable multiple of them):\n");
-	fprintf(stream, " \ttint+border1, tint+border2: same as tint, but also add a border\n");
-	fprintf(stream, " \ttint+saturation50: same as tint, but reduce icon saturation by 50%%\n");
-	fprintf(stream, " \ttint+whitehack: same as tint, but change white pixels (0xffffff) to almost-white (0xfefefe)\n");
+	fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: border1\n");
 	fprintf(stream, " --help, -h\tPrint help message\n");
 	fprintf(stream, "\n");
 	fprintf(stream, "Log levels:\n");
 	fprintf(stream, " 0 - only errors\n");
 	fprintf(stream, " 1 - some basic messages (default)\n");
 	fprintf(stream, " 2 - debug\n");
+	fprintf(stream, "\n");
+	fprintf(stream, "Available trayicon modes:\n");
+	fprintf(stream, "  bg:\tcolor full icon background to the VM color\n");
+	fprintf(stream, "  border1:\tadd 1px border at the icon edges\n");
+	fprintf(stream, "  border2:\tadd 1px border 1px from the icon edges\n");
+	fprintf(stream, "  tint :\ttint icon to the VM color,\n");
+	fprintf(stream, "    can be used with additional modifiers (you can enable multiple of them)\n");
+	fprintf(stream, "  tint+border1,tint+border2:\tsame as tint, but also add a border\n");
+	fprintf(stream, "  tint+saturation50:\tsame as tint, but reduce icon saturation by 50%%\n");
+	fprintf(stream, "  tint+whitehack:\tsame as tint, but change white pixels (0xffffff) to almost-white (0xfefefe)\n");
 	fprintf(stream, "\n");
 }
 
