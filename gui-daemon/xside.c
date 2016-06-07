@@ -2638,7 +2638,7 @@ static void usage(FILE *stream)
 	fprintf(stream, " --prop=name=type:value, -p\tadd additional X11 property on all the windows of this VM (up to 10 properties)\n");
 	fprintf(stream, "          specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
 	fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
-	fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: border1\n");
+	fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: tint\n");
 	fprintf(stream, " --help, -h\tPrint help message\n");
 	fprintf(stream, "\n");
 	fprintf(stream, "Log levels:\n");
@@ -2895,8 +2895,8 @@ static void load_default_config_values(Ghandles * g)
 	g->allow_fullscreen = 0;
 	g->startup_timeout = 45;
 	g->audio_low_latency = 1;
-	g->trayicon_mode = TRAY_BORDER;
-	g->trayicon_border = 1;
+	g->trayicon_mode = TRAY_TINT;
+	g->trayicon_border = 0;
 	g->trayicon_tint_reduce_saturation = 0;
 	g->trayicon_tint_whitehack = 0;
 }
