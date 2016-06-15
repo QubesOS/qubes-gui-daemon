@@ -2611,7 +2611,7 @@ struct option longopts[] = {
 	{ "title-name", no_argument, NULL, 'T' },
 	{ "trayicon-mode", required_argument, NULL, opt_trayicon_mode },
 	{ "help", no_argument, NULL, 'h' },
-	{ },
+	{ 0, 0, 0, 0 },
 };
 static const char optstring[] = "d:t:N:c:l:i:K:vqQnafIp:Th";
 
