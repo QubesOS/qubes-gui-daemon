@@ -1030,13 +1030,13 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 	    vm_window->height;
 
 	if (vm_window->x < border_width
-	    && vm_window->x + vm_window->width > 0) {
+	    && vm_window->x + (int)vm_window->width > 0) {
 		vm_window->x = border_width;
 		do_move = 1;
 		reason = 1;
 	}
 	if (vm_window->y < border_width
-	    && vm_window->y + vm_window->height > 0) {
+	    && vm_window->y + (int)vm_window->height > 0) {
 		vm_window->y = border_width;
 		do_move = 1;
 		reason = 2;
