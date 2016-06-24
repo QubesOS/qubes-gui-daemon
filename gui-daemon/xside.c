@@ -39,6 +39,7 @@
 #include <execinfo.h>
 #include <getopt.h>
 #include <X11/X.h>
+#include <X11/Xproto.h>
 #include <X11/Xlib.h>
 #include <X11/Intrinsic.h>
 #include <X11/Xutil.h>
@@ -216,6 +217,10 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
 	/* log the error */
 	dummy_handler(dpy, ev);
+	if (ev->request_code == X_DestroyWindow && ev->error_code == BadWindow) {
+		fprintf(stderr, "  someone else already destroyed this window, ignoring\n");
+		return 0;
+	}
 #ifdef MAKE_X11_ERRORS_FATAL
 	/* The exit(1) below will call release_all_mapped_mfns (registerd with
 	 * atexit(3)), which would try to release window images with XShmDetach. We
