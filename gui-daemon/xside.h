@@ -138,6 +138,7 @@ struct _global_handles {
 	int domid;		/* Xen domain id (GUI) */
 	int target_domid;		/* Xen domain id (VM) - can differ from domid when GUI is stubdom */
 	char *cmdline_color;	/* color of frame */
+	uint32_t label_color_rgb; /* color of the frame in RGB */
 	char *cmdline_icon;	/* icon hint for WM */
 	unsigned long *icon_data; /* loaded icon image, ready for _NEW_WM_ICON property */
 	int icon_data_len; /* size of icon_data, in sizeof(*icon_data) units */

@@ -217,21 +217,8 @@ static uint32_t hls_to_rgb(double h, double l, double s) {
 }
 
 void init_tray_tint(Ghandles *g) {
-    XGCValues gcvalues;
     double l_ignore;
-    XColor color;
-    if (!XGetGCValues(g->display, g->frame_gc, GCForeground, &gcvalues)) {
-        fprintf(stderr, "Failed to obtain color for tray coloring, aborting\n");
-        exit(1);
-    }
-
-    color.pixel = gcvalues.foreground;
-    if (!XQueryColor(g->display, DefaultColormap(g->display, g->screen), &color)) {
-        fprintf(stderr, "XQueryColor failed\n");
-        exit(1);
-    }
-    rgb_to_hls((color.red >> 8) << 16 | (color.green >> 8) << 8 | (color.blue >> 8),
-            &g->tint_h, &l_ignore, &g->tint_s);
+    rgb_to_hls(g->label_color_rgb, &g->tint_h, &l_ignore, &g->tint_s);
 
     if (g->trayicon_tint_reduce_saturation)
         g->tint_s *= 0.5;

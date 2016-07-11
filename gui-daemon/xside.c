@@ -233,7 +233,8 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
 	return 0;
 }
 
-/* prepare graphic context for painting colorful frame */
+/* prepare graphic context for painting colorful frame and set RGB value of the
+ * color */
 static void get_frame_gc(Ghandles * g, const char *name)
 {
 	XGCValues values;
@@ -252,6 +253,10 @@ static void get_frame_gc(Ghandles * g, const char *name)
 		XAllocNamedColor(g->display,
 				 XDefaultColormap(g->display, g->screen),
 				 name, &fcolor, &dummy);
+	g->label_color_rgb =
+		(fcolor.red >> 8) << 16 |
+		(fcolor.green >> 8) << 8 |
+		(fcolor.blue >> 8);
 	values.foreground = fcolor.pixel;
 	g->frame_gc =
 	    XCreateGC(g->display, g->root_win, GCForeground, &values);
