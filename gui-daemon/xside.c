@@ -322,6 +322,12 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 			8 /* 8 bit is enough */ , PropModeReplace,
 			(unsigned char *) &g->label_index, 1);
 
+	// Set '_QUBES_LABEL_COLOR' property so that Window Manager can read it and draw proper decoration
+	atom_label = XInternAtom(g->display, "_QUBES_LABEL_COLOR", 0);
+	XChangeProperty(g->display, child_win, atom_label, XA_CARDINAL,
+			32 /* bits */ , PropModeReplace,
+			(unsigned char *) &g->label_color_rgb, 1);
+
 	// Set '_QUBES_VMNAME' property so that Window Manager can read it and nicely display it
 	atom_label = XInternAtom(g->display, "_QUBES_VMNAME", 0);
 	XChangeProperty(g->display, child_win, atom_label, XA_STRING,
