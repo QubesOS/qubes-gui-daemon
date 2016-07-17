@@ -42,7 +42,7 @@ static int (*real_shmdt) (const void *shmaddr);
 static int (*real_shmctl) (int shmid, int cmd, struct shmid_ds * buf);
 
 static int local_shmid = 0xabcdef;
-static struct shm_cmd *cmd_pages;
+static struct shm_cmd *cmd_pages = NULL;
 static struct genlist *addr_list;
 #ifdef XENCTRL_HAS_XC_INTERFACE
 static xc_interface *xc_hnd;
@@ -177,8 +177,10 @@ int __attribute__ ((constructor)) initfunc()
 
 int __attribute__ ((destructor)) descfunc()
 {
-    real_shmdt(cmd_pages);
-    real_shmctl(local_shmid, IPC_RMID, 0);
-    unlink(SHMID_FILENAME);
+    if (cmd_pages) {
+        real_shmdt(cmd_pages);
+        real_shmctl(local_shmid, IPC_RMID, 0);
+        unlink(SHMID_FILENAME);
+    }
     return 0;
 }
