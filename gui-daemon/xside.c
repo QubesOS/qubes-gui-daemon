@@ -3184,10 +3184,11 @@ int main(int argc, char **argv)
 
 	// inside the daemonized process...
 	if (!ghandles.invisible) {
-		f = fopen("/var/run/shm.id", "r");
+		f = fopen(GUID_SHMID_FILE, "r");
 		if (!f) {
 			fprintf(stderr,
-					"Missing /var/run/shm.id; run X with preloaded shmoverride\n");
+					"Missing %s; run X with preloaded shmoverride\n",
+					GUID_SHMID_FILE);
 			exit(1);
 		}
 		fscanf(f, "%d", &ghandles.cmd_shmid);
@@ -3195,8 +3196,9 @@ int main(int argc, char **argv)
 		ghandles.shmcmd = shmat(ghandles.cmd_shmid, NULL, 0);
 		if (ghandles.shmcmd == (void *) (-1UL)) {
 			fprintf(stderr,
-					"Invalid or stale shm id 0x%x in /var/run/shm.id\n",
-					ghandles.cmd_shmid);
+					"Invalid or stale shm id 0x%x in %s\n",
+					ghandles.cmd_shmid,
+					GUID_SHMID_FILE);
 			exit(1);
 		}
 	}

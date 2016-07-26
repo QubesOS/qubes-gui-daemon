@@ -114,7 +114,7 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
     return 0;
 }
 
-#define SHMID_FILENAME "/var/run/shm.id"
+#define SHMID_FILENAME "/var/run/qubes/shm.id"
 int __attribute__ ((constructor)) initfunc()
 {
     int idfd, len;
