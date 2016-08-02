@@ -1996,10 +1996,9 @@ static void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 		fprintf(stderr, "invalid PMaxSize for 0x%x (%d/%d)\n",
 			(int) vm_window->local_winid,
 			untrusted_msg.max_width, untrusted_msg.max_height);
-	if ((untrusted_msg.flags & PResizeInc) && size_hints.width_inc >= 0
-	    && size_hints.width_inc < MAX_WINDOW_WIDTH
-	    && size_hints.height_inc >= 0
-	    && size_hints.height_inc < MAX_WINDOW_HEIGHT) {
+	if ((untrusted_msg.flags & PResizeInc)
+	    && untrusted_msg.width_inc < MAX_WINDOW_WIDTH
+	    && untrusted_msg.height_inc < MAX_WINDOW_HEIGHT) {
 		size_hints.flags |= PResizeInc;
 		size_hints.width_inc = untrusted_msg.width_inc;
 		size_hints.height_inc = untrusted_msg.height_inc;
@@ -2007,10 +2006,9 @@ static void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 		fprintf(stderr, "invalid PResizeInc for 0x%x (%d/%d)\n",
 			(int) vm_window->local_winid,
 			untrusted_msg.width_inc, untrusted_msg.height_inc);
-	if ((untrusted_msg.flags & PBaseSize) && size_hints.base_width >= 0
-	    && size_hints.base_width <= MAX_WINDOW_WIDTH
-	    && size_hints.base_height >= 0
-	    && size_hints.base_height <= MAX_WINDOW_HEIGHT) {
+	if ((untrusted_msg.flags & PBaseSize)
+	    && untrusted_msg.base_width <= MAX_WINDOW_WIDTH
+	    && untrusted_msg.base_height <= MAX_WINDOW_HEIGHT) {
 		size_hints.flags |= PBaseSize;
 		size_hints.base_width = untrusted_msg.base_width;
 		size_hints.base_height = untrusted_msg.base_height;
