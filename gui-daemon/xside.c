@@ -217,7 +217,8 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
 	/* log the error */
 	dummy_handler(dpy, ev);
-	if (ev->request_code == X_DestroyWindow && ev->error_code == BadWindow) {
+	if ((ev->request_code == X_DestroyWindow || ev->request_code == X_UnmapWindow)
+			&& ev->error_code == BadWindow) {
 		fprintf(stderr, "  someone else already destroyed this window, ignoring\n");
 		return 0;
 	}
