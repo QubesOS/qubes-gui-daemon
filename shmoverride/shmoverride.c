@@ -22,6 +22,7 @@
 // #define DEBUG
 
 #define _GNU_SOURCE 1
+#define XC_WANT_COMPAT_MAP_FOREIGN_API
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <fcntl.h>
