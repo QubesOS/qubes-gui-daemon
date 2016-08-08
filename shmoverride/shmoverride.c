@@ -35,6 +35,7 @@
 #include <sys/mman.h>
 #include <alloca.h>
 #include <errno.h>
+#include <unistd.h>
 #include "list.h"
 #include <qubes-gui-protocol.h>
 
@@ -54,11 +55,11 @@ static int list_len;
 
 void *shmat(int shmid, const void *shmaddr, int shmflg)
 {
-    int i;
+    unsigned int i;
     xen_pfn_t *pfntable;
     char *fakeaddr;
     long fakesize;
-    if (!cmd_pages || shmid != cmd_pages->shmid)
+    if (!cmd_pages || (uint32_t)shmid != cmd_pages->shmid)
         return real_shmat(shmid, shmaddr, shmflg);
     if (cmd_pages->off >= 4096 || cmd_pages->num_mfn > MAX_MFN_COUNT
             || cmd_pages->num_mfn == 0) {
@@ -108,7 +109,7 @@ int shmdt(const void *shmaddr)
 
 int shmctl(int shmid, int cmd, struct shmid_ds *buf)
 {
-    if (!cmd_pages || shmid != cmd_pages->shmid || cmd != IPC_STAT)
+    if (!cmd_pages || (uint32_t)shmid != cmd_pages->shmid || cmd != IPC_STAT)
         return real_shmctl(shmid, cmd, buf);
     memset(&buf->shm_perm, 0, sizeof(buf->shm_perm));
     buf->shm_segsz = cmd_pages->num_mfn * 4096 - cmd_pages->off;
