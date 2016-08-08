@@ -53,6 +53,7 @@
 #define ZENITY_PATH "/usr/bin/zenity"
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <libvchan.h>
 #include <X11/Xlib.h>
