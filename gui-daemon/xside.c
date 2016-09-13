@@ -1976,48 +1976,53 @@ static void handle_wmhints(Ghandles * g, struct windowdata *vm_window)
 	/* sanitize start */
 	size_hints.flags = 0;
 	/* check every value and pass it only when sane */
-	if ((untrusted_msg.flags & PMinSize)
-	    && untrusted_msg.min_width <= MAX_WINDOW_WIDTH
-	    && untrusted_msg.min_height <= MAX_WINDOW_HEIGHT) {
-		size_hints.flags |= PMinSize;
-		size_hints.min_width = untrusted_msg.min_width;
-		size_hints.min_height = untrusted_msg.min_height;
-	} else
-		fprintf(stderr, "invalid PMinSize for 0x%x (%d/%d)\n",
-			(int) vm_window->local_winid,
-			untrusted_msg.min_width, untrusted_msg.min_height);
-	if ((untrusted_msg.flags & PMaxSize) && untrusted_msg.max_width > 0
-	    && untrusted_msg.max_width <= MAX_WINDOW_WIDTH
-	    && untrusted_msg.max_height > 0
-	    && untrusted_msg.max_height <= MAX_WINDOW_HEIGHT) {
-		size_hints.flags |= PMaxSize;
-		size_hints.max_width = untrusted_msg.max_width;
-		size_hints.max_height = untrusted_msg.max_height;
-	} else
-		fprintf(stderr, "invalid PMaxSize for 0x%x (%d/%d)\n",
-			(int) vm_window->local_winid,
-			untrusted_msg.max_width, untrusted_msg.max_height);
-	if ((untrusted_msg.flags & PResizeInc)
-	    && untrusted_msg.width_inc < MAX_WINDOW_WIDTH
-	    && untrusted_msg.height_inc < MAX_WINDOW_HEIGHT) {
-		size_hints.flags |= PResizeInc;
-		size_hints.width_inc = untrusted_msg.width_inc;
-		size_hints.height_inc = untrusted_msg.height_inc;
-	} else
-		fprintf(stderr, "invalid PResizeInc for 0x%x (%d/%d)\n",
-			(int) vm_window->local_winid,
-			untrusted_msg.width_inc, untrusted_msg.height_inc);
-	if ((untrusted_msg.flags & PBaseSize)
-	    && untrusted_msg.base_width <= MAX_WINDOW_WIDTH
-	    && untrusted_msg.base_height <= MAX_WINDOW_HEIGHT) {
-		size_hints.flags |= PBaseSize;
-		size_hints.base_width = untrusted_msg.base_width;
-		size_hints.base_height = untrusted_msg.base_height;
-	} else
-		fprintf(stderr, "invalid PBaseSize for 0x%x (%d/%d)\n",
-			(int) vm_window->local_winid,
-			untrusted_msg.base_width,
-			untrusted_msg.base_height);
+	if (untrusted_msg.flags & PMinSize) {
+		if (untrusted_msg.min_width <= MAX_WINDOW_WIDTH
+				&& untrusted_msg.min_height <= MAX_WINDOW_HEIGHT) {
+			size_hints.flags |= PMinSize;
+			size_hints.min_width = untrusted_msg.min_width;
+			size_hints.min_height = untrusted_msg.min_height;
+		} else
+			fprintf(stderr, "invalid PMinSize for 0x%x (%d/%d)\n",
+					(int) vm_window->local_winid,
+					untrusted_msg.min_width, untrusted_msg.min_height);
+	}
+	if (untrusted_msg.flags & PMaxSize) {
+		if (untrusted_msg.max_width > 0
+				&& untrusted_msg.max_width <= MAX_WINDOW_WIDTH
+				&& untrusted_msg.max_height > 0
+				&& untrusted_msg.max_height <= MAX_WINDOW_HEIGHT) {
+			size_hints.flags |= PMaxSize;
+			size_hints.max_width = untrusted_msg.max_width;
+			size_hints.max_height = untrusted_msg.max_height;
+		} else
+			fprintf(stderr, "invalid PMaxSize for 0x%x (%d/%d)\n",
+					(int) vm_window->local_winid,
+					untrusted_msg.max_width, untrusted_msg.max_height);
+	}
+	if (untrusted_msg.flags & PResizeInc) {
+		if (untrusted_msg.width_inc < MAX_WINDOW_WIDTH
+				&& untrusted_msg.height_inc < MAX_WINDOW_HEIGHT) {
+			size_hints.flags |= PResizeInc;
+			size_hints.width_inc = untrusted_msg.width_inc;
+			size_hints.height_inc = untrusted_msg.height_inc;
+		} else
+			fprintf(stderr, "invalid PResizeInc for 0x%x (%d/%d)\n",
+					(int) vm_window->local_winid,
+					untrusted_msg.width_inc, untrusted_msg.height_inc);
+	}
+	if (untrusted_msg.flags & PBaseSize) {
+		if (untrusted_msg.base_width <= MAX_WINDOW_WIDTH
+				&& untrusted_msg.base_height <= MAX_WINDOW_HEIGHT) {
+			size_hints.flags |= PBaseSize;
+			size_hints.base_width = untrusted_msg.base_width;
+			size_hints.base_height = untrusted_msg.base_height;
+		} else
+			fprintf(stderr, "invalid PBaseSize for 0x%x (%d/%d)\n",
+					(int) vm_window->local_winid,
+					untrusted_msg.base_width,
+					untrusted_msg.base_height);
+	}
 	if (untrusted_msg.flags & PPosition)
 		size_hints.flags |= PPosition;
 	if (untrusted_msg.flags & USPosition)
