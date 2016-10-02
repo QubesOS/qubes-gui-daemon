@@ -58,7 +58,7 @@ def get_monitor_layout():
             output_params = REGEX_OUTPUT.match(line).groupdict()
             if output_params['width']:
                 phys_size = ""
-                if output_params['width_mm']:
+                if output_params['width_mm'] and int(output_params['width_mm']):
                     # don't provide real values for privacy reasons - see
                     # #1951 for details
                     dpi = (int(output_params['width']) * 254 /
