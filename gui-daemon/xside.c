@@ -20,9 +20,7 @@
  *
  */
 
-/* high level documentation is here:
- * http://wiki.qubes-os.org/trac/wiki/GUIdocs
- */
+/* high level documentation is here: https://www.qubes-os.org/doc/gui/ */
 
 #include <stdio.h>
 #include <stdlib.h>
