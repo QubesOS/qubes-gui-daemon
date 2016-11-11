@@ -5,7 +5,7 @@ instead of attaching regular shared memory, memory from a foreign domain is
 attached via xc_map_foreign_pages. This mechanism is used to map composition
 buffers from a foreign domain into Xorg server.
 	During its init, shmoverride.so creates a shared memory segment
-(cmd_pages) and writes its shmid to /var/run/shm.id. All instances of
+(cmd_pages) and writes its shmid to /var/run/qubes/shm.id. All instances of
 qubes_guid map this segment and communicate with shmoverride.so code by
 setting its fields. When qubes_guid wants its
 XShmAttach(...synth_shmid...) call to be handled by shmoverride.so, it sets the 
