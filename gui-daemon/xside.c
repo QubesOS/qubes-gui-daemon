@@ -2915,35 +2915,38 @@ static void load_default_config_values(Ghandles * g)
 static void parse_key_sequence(const char *seq, int *mask, KeySym * key)
 {
 	const char *seqp = seq;
+	char *name;
 	int found_modifier;
+	size_t i;
+
+	const struct {
+		char *name;
+		int mask;
+	} masks[] = {
+		{"Shift-", ShiftMask},
+		{"Ctrl-", ControlMask},
+		{"Mod1-", Mod1Mask},
+		{"Alt-", Mod1Mask}, /* alternate convenience name */
+		{"Mod2-", Mod2Mask},
+		{"Mod3-", Mod3Mask},
+		{"Mod4-", Mod4Mask},
+	};
 
 	// ignore null string
 	if (seq == NULL)
 		return;
+
 	*mask = 0;
 	do {
-		found_modifier = 1;
-		if (strncasecmp(seqp, "Ctrl-", 5) == 0) {
-			*mask |= ControlMask;
-			seqp += 5;
-		} else if (strncasecmp(seqp, "Mod1-", 5) == 0) {
-			*mask |= Mod1Mask;
-			seqp += 5;
-		} else if (strncasecmp(seqp, "Mod3-", 5) == 0) {
-			*mask |= Mod3Mask;
-			seqp += 5;
-		} else if (strncasecmp(seqp, "Mod4-", 5) == 0) {
-			*mask |= Mod4Mask;
-			seqp += 5;
-			/* second name just for convenience */
-		} else if (strncasecmp(seqp, "Alt-", 4) == 0) {
-			*mask |= Mod1Mask;
-			seqp += 4;
-		} else if (strncasecmp(seqp, "Shift-", 6) == 0) {
-			*mask |= ShiftMask;
-			seqp += 6;
-		} else
-			found_modifier = 0;
+		found_modifier = 0;
+		for (i = 0; i < sizeof(masks)/sizeof(masks[0]); i++) {
+			name = masks[i].name;
+			if (strncasecmp(seqp, name, strlen(name)) == 0) {
+				*mask |= masks[i].mask;
+				seqp += strlen(name);
+				found_modifier = 1;
+			}
+		}
 	} while (found_modifier);
 
 	*key = XStringToKeysym(seqp);
