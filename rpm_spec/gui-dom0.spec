@@ -91,8 +91,6 @@ install -D shmoverride/shmoverride.so $RPM_BUILD_ROOT/%{_libdir}/shmoverride.so
 install -D gui-daemon/guid.conf $RPM_BUILD_ROOT/%{_sysconfdir}/qubes/guid.conf
 install -D gui-daemon/qubes-localgroup.sh $RPM_BUILD_ROOT/etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
 install -D gui-daemon/qubes.ClipboardPaste.policy $RPM_BUILD_ROOT%{_sysconfdir}/qubes-rpc/policy/qubes.ClipboardPaste
-install -D screen-layout-handler/monitorlayoutnotify.py $RPM_BUILD_ROOT%{python_sitearch}/qubes/monitorlayoutnotify.py
-install -D screen-layout-handler/qubes-monitor-layout-notify $RPM_BUILD_ROOT/usr/bin/qubes-monitor-layout-notify
 install -D screen-layout-handler/watch-screen-layout-changes $RPM_BUILD_ROOT/usr/libexec/qubes/watch-screen-layout-changes
 install -D screen-layout-handler/qubes-screen-layout-watches.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/qubes-screen-layout-watches.desktop
 make -C window-icon-updater DESTDIR=$RPM_BUILD_ROOT install
@@ -117,14 +115,12 @@ rm -f %{name}-%{version}
 /usr/bin/pacat-simple-vchan
 /usr/bin/X-wrapper-qubes
 %{_libdir}/shmoverride.so
-/usr/bin/qubes-monitor-layout-notify
 %config(noreplace) %{_sysconfdir}/qubes/guid.conf
 %config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.ClipboardPaste
 /etc/xdg/autostart/qubes-screen-layout-watches.desktop
 /etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
 /usr/share/dbus-1/interfaces/org.QubesOS.Audio.xml
 /usr/libexec/qubes/watch-screen-layout-changes
-%{python_sitearch}/qubes/monitorlayoutnotify.py*
 /usr/lib/qubes/icon-receiver
 %config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.WindowIconUpdater
 %config %{_sysconfdir}/qubes-rpc/qubes.WindowIconUpdater
