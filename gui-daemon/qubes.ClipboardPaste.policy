@@ -6,5 +6,6 @@
 
 ## Please use a single # to start your custom comments
 
-$anyvm  $anyvm  ask
+dom0	$anyvm	ask
+$anyvm	$anyvm	ask
 
