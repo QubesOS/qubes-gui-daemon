@@ -761,7 +761,7 @@ static int evaluate_clipboard_policy(Ghandles * g) {
 }
 
 /* check and handle guid-special keys
- * currently only for inter-vm clipboard copy
+ * used for: inter-vm clipboard copy/paste & pausing all vms
  */
 static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
 {
@@ -834,6 +834,19 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 
 		return 1;
 	}
+
+	/* pause */
+	if (((int)ev->state & SPECIAL_KEYS_MASK) == g->pause_seq_mask
+	    && ev->keycode == XKeysymToKeycode(g->display, g->pause_seq_key)) {
+		if (ev->type != KeyPress)
+			return 1;
+
+		if (g->log_level > 0)
+			fprintf(stderr, "secure pause\n");
+		system("qvm-run --pause --all");
+		return 1;
+	}
+
 	return 0;
 }
 
@@ -2900,6 +2913,8 @@ static void load_default_config_values(Ghandles * g)
 	g->copy_seq_key = XK_c;
 	g->paste_seq_mask = ControlMask | ShiftMask;
 	g->paste_seq_key = XK_v;
+	g->pause_seq_mask = ControlMask | Mod1Mask | ShiftMask;
+	g->pause_seq_key = XK_p;
 	g->allow_fullscreen = 0;
 	g->startup_timeout = 45;
 	g->audio_low_latency = 1;
@@ -2968,6 +2983,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
 	     config_setting_get_member(group, "secure_paste_sequence"))) {
 		parse_key_sequence(config_setting_get_string(setting),
 				   &g->paste_seq_mask, &g->paste_seq_key);
+	}
+	if ((setting =
+	     config_setting_get_member(group, "secure_pause_sequence"))) {
+		parse_key_sequence(config_setting_get_string(setting),
+				   &g->pause_seq_mask, &g->pause_seq_key);
 	}
 
 	if ((setting =
