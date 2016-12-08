@@ -37,6 +37,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include "list.h"
+#include "shmid.h"
 #include <qubes-gui-protocol.h>
 
 static void *(*real_shmat) (int shmid, const void *shmaddr, int shmflg);
@@ -52,6 +53,8 @@ static xc_interface *xc_hnd;
 static int xc_hnd;
 #endif
 static int list_len;
+static char __shmid_filename[SHMID_FILENAME_LEN];
+static char *shmid_filename = NULL;
 
 void *shmat(int shmid, const void *shmaddr, int shmflg)
 {
@@ -116,7 +119,6 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
     return 0;
 }
 
-#define SHMID_FILENAME "/var/run/qubes/shm.id"
 int __attribute__ ((constructor)) initfunc()
 {
     int idfd, len;
@@ -141,9 +143,12 @@ int __attribute__ ((constructor)) initfunc()
         perror("shmoverride xc_interface_open");
         return 0;	//allow it to run when not under Xen
     }
-    idfd = open(SHMID_FILENAME, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    snprintf(__shmid_filename, SHMID_FILENAME_LEN, SHMID_FILENAME);
+    shmid_filename = __shmid_filename;
+    idfd = open(shmid_filename, O_WRONLY | O_CREAT | O_EXCL, 0600);
     if (idfd < 0) {
-        perror("shmoverride creating " SHMID_FILENAME);
+        fprintf(stderr, "shmoverride creating %s: %s\n",
+            shmid_filename, strerror(errno));
         xc_interface_close(xc_hnd);
         return 0;
     }
@@ -151,25 +156,27 @@ int __attribute__ ((constructor)) initfunc()
         shmget(IPC_PRIVATE, SHM_CMD_NUM_PAGES * 4096,
                 IPC_CREAT | 0700);
     if (local_shmid == -1) {
-        unlink(SHMID_FILENAME);
+        unlink(shmid_filename);
         perror("shmoverride shmget");
         exit(1);
     }
     sprintf(idbuf, "%d", local_shmid);
     len = strlen(idbuf);
     if (write(idfd, idbuf, len) != len) {
-        unlink(SHMID_FILENAME);
-        perror("shmoverride writing " SHMID_FILENAME);
+        unlink(shmid_filename);
+        fprintf(stderr, "shmoverride writing %s: %s\n",
+            shmid_filename, strerror(errno));
         exit(1);
     }
     if (close(idfd) < 0) {
-        unlink(SHMID_FILENAME);
-        perror("shmoverride closing " SHMID_FILENAME);
+        unlink(shmid_filename);
+        fprintf(stderr, "shmoverride closing %s: %s\n",
+            shmid_filename, strerror(errno));
         exit(1);
     }
     cmd_pages = real_shmat(local_shmid, 0, 0);
     if (!cmd_pages) {
-        unlink(SHMID_FILENAME);
+        unlink(shmid_filename);
         perror("real_shmat");
         exit(1);
     }
@@ -182,7 +189,8 @@ int __attribute__ ((destructor)) descfunc()
     if (cmd_pages) {
         real_shmdt(cmd_pages);
         real_shmctl(local_shmid, IPC_RMID, 0);
-        unlink(SHMID_FILENAME);
+        if (shmid_filename != NULL)
+            unlink(shmid_filename);
     }
     return 0;
 }

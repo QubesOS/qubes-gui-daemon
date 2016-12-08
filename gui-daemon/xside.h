@@ -30,7 +30,6 @@
 #define QREXEC_POLICY_PATH "/usr/lib/qubes/qrexec-policy"
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
-#define GUID_SHMID_FILE "/var/run/qubes/shm.id"
 /* this makes any X11 error fatal (i.e. cause exit(1)). This behavior was the
  * case for a long time before introducing this option, so nothing really have
  * changed  */

@@ -56,6 +56,7 @@
 #include "error.h"
 #include "png.h"
 #include "trayicon.h"
+#include "shmid.h"
 
 /* some configuration */
 
@@ -3146,6 +3147,7 @@ int main(int argc, char **argv)
 	int pipe_notify[2];
 	char dbg_log[256];
 	char dbg_log_old[256];
+	char shmid_filename[SHMID_FILENAME_LEN];
 	int logfd;
 	char cmd_tmp[256];
 	struct stat stat_buf;
@@ -3179,11 +3181,12 @@ int main(int argc, char **argv)
 
 	// inside the daemonized process...
 	if (!ghandles.invisible) {
-		f = fopen(GUID_SHMID_FILE, "r");
+		snprintf(shmid_filename, SHMID_FILENAME_LEN, SHMID_FILENAME);
+		f = fopen(shmid_filename, "r");
 		if (!f) {
 			fprintf(stderr,
 					"Missing %s; run X with preloaded shmoverride\n",
-					GUID_SHMID_FILE);
+					shmid_filename);
 			exit(1);
 		}
 		fscanf(f, "%d", &ghandles.cmd_shmid);
@@ -3193,7 +3196,7 @@ int main(int argc, char **argv)
 			fprintf(stderr,
 					"Invalid or stale shm id 0x%x in %s\n",
 					ghandles.cmd_shmid,
-					GUID_SHMID_FILE);
+					shmid_filename);
 			exit(1);
 		}
 	}
