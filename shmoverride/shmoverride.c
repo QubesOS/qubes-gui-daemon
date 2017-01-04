@@ -55,6 +55,7 @@ static int xc_hnd;
 static int list_len;
 static char __shmid_filename[SHMID_FILENAME_LEN];
 static char *shmid_filename = NULL;
+static char display_str[SHMID_DISPLAY_MAXLEN+1] = "";
 
 void *shmat(int shmid, const void *shmaddr, int shmflg)
 {
@@ -119,6 +120,59 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
     return 0;
 }
 
+void get_display()
+{
+    int fd;
+    ssize_t res;
+    char ch;
+    int in_arg = -1;
+
+    fd = open("/proc/self/cmdline", O_RDONLY);
+    if (fd < 0) {
+        perror("cmdline open");
+        exit(1);
+    }
+
+    while(1) {
+        res = read(fd, &ch, 1);
+        if (res < 0) {
+            perror("cmdline read");
+            exit(1);
+        }
+        if (res == 0)
+            break;
+
+        if (in_arg == 0 && ch != ':')
+            in_arg = -1;
+        if (ch == '\0') {
+            in_arg = 0;
+        } else if (in_arg >= 0) {
+            if (in_arg >= SHMID_DISPLAY_MAXLEN)
+                break;
+            if (in_arg > 0 && (ch < '0' || ch > '9')) {
+                if (in_arg == 1) {
+                    fprintf(stderr, "cmdline DISPLAY parsing failed\n");
+                    exit(1);
+                }
+                in_arg = -1;
+                continue;
+            }
+            display_str[in_arg++] = ch;
+            display_str[in_arg] = '\0';
+        }
+    }
+    close(fd);
+
+    if (display_str[0] != ':') {
+        display_str[0] = ':';
+        display_str[1] = '0';
+        display_str[2] = '\0';
+    } else if (display_str[1] == '\0') {
+        fprintf(stderr, "cmdline DISPLAY parsing failed\n");
+        exit(1);
+    }
+}
+
 int __attribute__ ((constructor)) initfunc()
 {
     int idfd, len;
@@ -143,7 +197,10 @@ int __attribute__ ((constructor)) initfunc()
         perror("shmoverride xc_interface_open");
         return 0;	//allow it to run when not under Xen
     }
-    snprintf(__shmid_filename, SHMID_FILENAME_LEN, SHMID_FILENAME);
+
+    get_display();
+    snprintf(__shmid_filename, SHMID_FILENAME_LEN,
+        SHMID_FILENAME_PREFIX "%s", display_str);
     shmid_filename = __shmid_filename;
     idfd = open(shmid_filename, O_WRONLY | O_CREAT | O_EXCL, 0600);
     if (idfd < 0) {

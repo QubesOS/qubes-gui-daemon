@@ -3151,6 +3151,7 @@ int main(int argc, char **argv)
 	int logfd;
 	char cmd_tmp[256];
 	struct stat stat_buf;
+	char *display_str;
 
 	load_default_config_values(&ghandles);
 	/* get the VM name to read the right section in config file */
@@ -3181,7 +3182,13 @@ int main(int argc, char **argv)
 
 	// inside the daemonized process...
 	if (!ghandles.invisible) {
-		snprintf(shmid_filename, SHMID_FILENAME_LEN, SHMID_FILENAME);
+		display_str = getenv("DISPLAY");
+		if (display_str == NULL) {
+			fprintf(stderr, "No DISPLAY in environment\n");
+			exit(1);
+		}
+		snprintf(shmid_filename, SHMID_FILENAME_LEN,
+			 SHMID_FILENAME_PREFIX "%s", display_str);
 		f = fopen(shmid_filename, "r");
 		if (!f) {
 			fprintf(stderr,

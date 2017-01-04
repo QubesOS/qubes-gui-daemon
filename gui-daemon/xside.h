@@ -131,7 +131,7 @@ struct _global_handles {
 	Atom frame_extents; /* Atom: _NET_FRAME_EXTENTS */
 	/* shared memory handling */
 	struct shm_cmd *shmcmd;	/* shared memory with Xorg */
-	uint32_t cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id file */
+	uint32_t cmd_shmid;		/* shared memory id - received from shmoverride.so through shm.id.$DISPLAY file */
 	int inter_appviewer_lock_fd; /* FD of lock file used to synchronize shared memory access */
 	/* Client VM parameters */
 	libvchan_t *vchan;
