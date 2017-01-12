@@ -89,6 +89,10 @@ struct windowdata {
 	int image_height;	/* size of window content, not always the same as window in dom0! */
 	int image_width;
 	int have_queued_configure;	/* have configure request been sent to VM - waiting for confirmation */
+	int fullscreen_maximize_requested; /* window have requested fullscreen,
+                                          which was converted to maximize
+                                          request - translate it back when WM
+                                          acknowledge maximize */
 	uint32_t flags_set;	/* window flags acked to gui-agent */
 };
 

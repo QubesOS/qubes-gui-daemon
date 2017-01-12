@@ -1510,6 +1510,7 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev
 	Atom *state_list;
 	unsigned long nitems, bytesleft, i;
 	int ret, act_fmt;
+	int maximize_flags_seen;
 	uint32_t flags;
 	struct msg_hdr hdr;
 	struct msg_window_flags msg;
@@ -1535,8 +1536,30 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev
 				}
 			}
 			flags = 0;
+			/* check if both VERT and HORZ states are set */
+			maximize_flags_seen = 0;
 			for (i = 0; i < nitems; i++) {
 				flags |= flags_from_atom(g, state_list[i]);
+				if (state_list[i] == g->wm_state_maximized_vert)
+					maximize_flags_seen |= 1;
+				if (state_list[i] == g->wm_state_maximized_horz)
+					maximize_flags_seen |= 2;
+			}
+			if (flags & WINDOW_FLAG_FULLSCREEN) {
+				/* if user triggered real fullscreen, forget about the fake
+				 * one, otherwise application will not be notified when going
+				 * back from fullscreen to maximize ("fake fullscreen") */
+				vm_window->fullscreen_maximize_requested = 0;
+			}
+			if (vm_window->fullscreen_maximize_requested) {
+				if (maximize_flags_seen == 3) {
+					/* if fullscreen request was converted to maximize request,
+					 * then convert maximize ack to fullscreen ack */
+					flags |= WINDOW_FLAG_FULLSCREEN;
+				} else {
+					/* going out of emulated fullscreen mode */
+					vm_window->fullscreen_maximize_requested = 0;
+				}
 			}
 			XFree(state_list);
 		} else { /* PropertyDelete */
@@ -2058,8 +2081,14 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 				/* if fullscreen not allowed, substitute request with maximize */
 				state_list[i++] = g->wm_state_maximized_vert;
 				state_list[i++] = g->wm_state_maximized_horz;
+				/* and note that maximize WM ack should be converted back to
+				 * fullscreen ack for VM; otherwise some applications (Firefox)
+				 * behaves badly when fullscreen request isn't acknowledged at
+				 * all */
+				vm_window->fullscreen_maximize_requested = 1;
 			}
-		}
+		} else
+			vm_window->fullscreen_maximize_requested = 0;
 		if (msg.flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) {
 			vm_window->flags_set |= WINDOW_FLAG_DEMANDS_ATTENTION;
 			state_list[i++] = g->wm_state_demands_attention;
@@ -2101,12 +2130,23 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 		if (flags_all & WINDOW_FLAG_FULLSCREEN) {
 			ev.data.l[0] = (msg.flags_set & WINDOW_FLAG_FULLSCREEN) ? 1 : 0;
 			if (g->allow_fullscreen) {
+				/* allow entering fullscreen only if g->allow_fullscreen */
+				ev.data.l[1] = g->wm_state_fullscreen;
+				ev.data.l[2] = 0;
+			} else if (!ev.data.l[0] && !vm_window->fullscreen_maximize_requested) {
+				/* allow exiting fullscreen even if entering wasn't allowed
+				 * (this means it was triggered by the user with WM action);
+				 * but only it if wasn't "fake fullscreen" (maximized window in
+				 * practice) - otherwise still convert to unmaximize request */
 				ev.data.l[1] = g->wm_state_fullscreen;
 				ev.data.l[2] = 0;
 			} else {
 				/* convert request to maximize/unmaximize */
 				ev.data.l[1] = g->wm_state_maximized_vert;
 				ev.data.l[2] = g->wm_state_maximized_horz;
+				/* and note that maximize WM ack should be converted back to
+				 * fullscreen ack for VM */
+				vm_window->fullscreen_maximize_requested = ev.data.l[0];
 			}
 			XSendEvent(g->display, g->root_win, False,
 					(SubstructureNotifyMask|SubstructureRedirectMask),
