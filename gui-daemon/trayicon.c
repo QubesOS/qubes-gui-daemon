@@ -30,10 +30,10 @@
 /* initialization required for TRAY_BACKGROUND mode */
 void init_tray_bg(Ghandles *g) {
     /* prepare graphic context for tray background */
-	XGCValues values;
-	values.foreground = WhitePixel(g->display, g->screen);
-	g->tray_gc =
-	    XCreateGC(g->display, g->root_win, GCForeground, &values);
+    XGCValues values;
+    values.foreground = WhitePixel(g->display, g->screen);
+    g->tray_gc =
+        XCreateGC(g->display, g->root_win, GCForeground, &values);
 }
 
 /* Color tray icon background (use top-left corner as a "transparent" base),
@@ -146,7 +146,7 @@ static inline double min3(double a, double b, double c) {
 }
 
 static void rgb_to_hls(uint32_t rgb, double *out_h, double *out_l, double *out_s) {
-	double r, g, b;
+    double r, g, b;
     double maxc, minc, l, h, s, rc, gc, bc;
 
     r = ((rgb >> 16) & 0xff) * 1.0 / 255.0;

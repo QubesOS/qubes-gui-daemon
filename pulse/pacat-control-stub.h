@@ -4,7 +4,7 @@
 #ifndef __dbus_glib_marshal_pacat_control_MARSHAL_H__
 #define __dbus_glib_marshal_pacat_control_MARSHAL_H__
 
-#include	<glib-object.h>
+#include    <glib-object.h>
 
 G_BEGIN_DECLS
 
