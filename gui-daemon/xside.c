@@ -395,6 +395,8 @@ static void mkghandles(Ghandles * g)
 	g->wm_state_demands_attention = XInternAtom(g->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
 	g->wm_state_hidden = XInternAtom(g->display, "_NET_WM_STATE_HIDDEN", False);
 	g->frame_extents = XInternAtom(g->display, "_NET_FRAME_EXTENTS", False);
+	g->wm_state_maximized_vert = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+	g->wm_state_maximized_horz = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
 	/* create graphical contexts */
 	get_frame_gc(g, g->cmdline_color ? : "red");
 	if (g->trayicon_mode == TRAY_BACKGROUND)
@@ -2055,8 +2057,8 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 				state_list[i++] = g->wm_state_fullscreen;
 			} else {
 				/* if fullscreen not allowed, substitute request with maximize */
-				state_list[i++] = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
-				state_list[i++] = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+				state_list[i++] = g->wm_state_maximized_vert;
+				state_list[i++] = g->wm_state_maximized_horz;
 			}
 		}
 		if (msg.flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) {
@@ -2103,8 +2105,9 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 				ev.data.l[1] = g->wm_state_fullscreen;
 				ev.data.l[2] = 0;
 			} else {
-				ev.data.l[1] = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
-				ev.data.l[2] = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+				/* convert request to maximize/unmaximize */
+				ev.data.l[1] = g->wm_state_maximized_vert;
+				ev.data.l[2] = g->wm_state_maximized_horz;
 			}
 			XSendEvent(g->display, g->root_win, False,
 					(SubstructureNotifyMask|SubstructureRedirectMask),
