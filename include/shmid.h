@@ -19,6 +19,6 @@
  *
  */
 
-#define SHMID_DISPLAY_MAXLEN	20
-#define SHMID_FILENAME_PREFIX	"/var/run/qubes/shm.id."
-#define SHMID_FILENAME_LEN	(sizeof(SHMID_FILENAME_PREFIX) + SHMID_DISPLAY_MAXLEN)
+#define SHMID_DISPLAY_MAXLEN    20
+#define SHMID_FILENAME_PREFIX    "/var/run/qubes/shm.id."
+#define SHMID_FILENAME_LEN    (sizeof(SHMID_FILENAME_PREFIX) + SHMID_DISPLAY_MAXLEN)

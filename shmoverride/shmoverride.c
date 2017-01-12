@@ -195,7 +195,7 @@ int __attribute__ ((constructor)) initfunc()
     if (xc_hnd < 0) {
 #endif
         perror("shmoverride xc_interface_open");
-        return 0;	//allow it to run when not under Xen
+        return 0;  //allow it to run when not under Xen
     }
 
     get_display();
