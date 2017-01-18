@@ -171,6 +171,11 @@ void get_display()
         fprintf(stderr, "cmdline DISPLAY parsing failed\n");
         exit(1);
     }
+
+    /* post-processing: drop leading ':' */
+    res = strlen(display_str);
+    for (in_arg = 0; in_arg < res; in_arg++)
+        display_str[in_arg] = display_str[in_arg+1];
 }
 
 int __attribute__ ((constructor)) initfunc()

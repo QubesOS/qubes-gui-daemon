@@ -3195,6 +3195,7 @@ int main(int argc, char **argv)
     char cmd_tmp[256];
     struct stat stat_buf;
     char *display_str;
+    int display_num;
 
     load_default_config_values(&ghandles);
     /* get the VM name to read the right section in config file */
@@ -3230,8 +3231,13 @@ int main(int argc, char **argv)
             fprintf(stderr, "No DISPLAY in environment\n");
             exit(1);
         }
+        if (sscanf(display_str, ":%d.%*d", &display_num) != 1 &&
+                sscanf(display_str, ":%d", &display_num) != 1) {
+            fprintf(stderr, "DISPLAY parse error, expected format like :0 or :0.0\n");
+            exit(1);
+        }
         snprintf(shmid_filename, SHMID_FILENAME_LEN,
-             SHMID_FILENAME_PREFIX "%s", display_str);
+             SHMID_FILENAME_PREFIX "%d", display_num);
         f = fopen(shmid_filename, "r");
         if (!f) {
             fprintf(stderr,
