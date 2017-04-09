@@ -54,6 +54,7 @@ BuildRequires:	libXrandr-devel
 BuildRequires:	libconfig-devel
 BuildRequires:	libpng-devel
 BuildRequires:	libnotify-devel
+BuildRequires:	xen-devel
 BuildRequires:	dbus-glib-devel
 BuildRequires:	help2man
 BuildRequires:	gcc
