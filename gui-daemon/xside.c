@@ -3038,6 +3038,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
          config_setting_get_member(group, "trayicon_mode"))) {
         parse_trayicon_mode(g, config_setting_get_string(setting));
     }
+
+    if ((setting =
+         config_setting_get_member(group, "startup_timeout"))) {
+        g->startup_timeout = config_setting_get_int(setting);
+    }
 }
 
 static void parse_config(Ghandles * g)
