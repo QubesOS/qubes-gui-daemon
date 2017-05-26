@@ -27,7 +27,7 @@
 #define BORDER_WIDTH 2
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes-clipboard.bin"
 #define QREXEC_CLIENT_PATH "/usr/lib/qubes/qrexec-client"
-#define QREXEC_POLICY_PATH "/usr/lib/qubes/qrexec-policy"
+#define QREXEC_POLICY_PATH "/usr/bin/qrexec-policy"
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
 /* this makes any X11 error fatal (i.e. cause exit(1)). This behavior was the
