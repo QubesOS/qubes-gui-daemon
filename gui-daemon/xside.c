@@ -3335,6 +3335,9 @@ int main(int argc, char **argv)
     set_alive_flag(ghandles.domid);
     atexit(unset_alive_flag);
 
+    // let write return -EPIPE, instead of delivering a signal
+    signal(SIGPIPE, SIG_IGN);
+
     if (!ghandles.nofork) {
         write(pipe_notify[1], "Q", 1);    // let the parent know we connected sucessfully
         close (pipe_notify[1]);
