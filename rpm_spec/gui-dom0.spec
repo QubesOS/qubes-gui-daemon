@@ -47,6 +47,10 @@ Requires:	libconfig
 Requires:	qubes-libvchan-%{backend_vmm}
 Requires:   python-xpyb
 Requires:   qubes-utils >= 3.1.0
+Requires:   python3-pydbus
+Requires:   python3-setuptools
+
+BuildRequires:  python3-devel
 BuildRequires:	pulseaudio-libs-devel
 BuildRequires:	libXt-devel
 BuildRequires:	libXext-devel
@@ -79,6 +83,9 @@ ln -sf . %{name}-%{version}
 make clean
 make dom0
 
+%py3_build
+
+
 %pre
 
 %install
@@ -97,6 +104,7 @@ install -D screen-layout-handler/watch-screen-layout-changes $RPM_BUILD_ROOT/usr
 install -D screen-layout-handler/qubes-screen-layout-watches.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/qubes-screen-layout-watches.desktop
 make -C window-icon-updater DESTDIR=$RPM_BUILD_ROOT install
 
+%py3_install
 
 %triggerin -- xorg-x11-server-Xorg
 ln -sf /usr/bin/X-wrapper-qubes /usr/bin/X
@@ -128,3 +136,5 @@ rm -f %{name}-%{version}
 /usr/lib/qubes/icon-receiver
 %config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.WindowIconUpdater
 %config %{_sysconfdir}/qubes-rpc/qubes.WindowIconUpdater
+%{python3_sitelib}/qubesguidaemon-*.egg-info
+%{python3_sitelib}/qubesguidaemon
