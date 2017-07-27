@@ -3,7 +3,7 @@
 "-//freedesktop//DTD D-Bus Object Introspection 1.0//EN"
 "http://standards.freedesktop.org/dbus/1.0/introspect.dtd">
 <node>
-    <interface name="org.QubesOS.Audio">
+    <interface name="org.qubesos.Audio">
         <!-- Method definitions -->
         <!-- Signal definitions -->
         <signal name="RecAllowedChanged">

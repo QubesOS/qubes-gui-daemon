@@ -86,7 +86,8 @@ rm -rf $RPM_BUILD_ROOT
 install -D gui-daemon/qubes-guid $RPM_BUILD_ROOT/usr/bin/qubes-guid
 install -m 0644 -D gui-daemon/qubes-guid.1 $RPM_BUILD_ROOT%{_mandir}/man1/qubes-guid.1
 install -D pulse/pacat-simple-vchan $RPM_BUILD_ROOT/usr/bin/pacat-simple-vchan
-install -D pulse/pacat-control-api.xml $RPM_BUILD_ROOT/usr/share/dbus-1/interfaces/org.QubesOS.Audio.xml
+install -D pulse/pacat-control-api.xml $RPM_BUILD_ROOT/usr/share/dbus-1/interfaces/org.qubesos.Audio.xml
+install -D -m 0644 pulse/org.qubesos.Audio.conf $RPM_BUILD_ROOT/etc/dbus-1/system.d/org.qubesos.Audio.conf
 install -D shmoverride/X-wrapper-qubes $RPM_BUILD_ROOT/usr/bin/X-wrapper-qubes
 install -D shmoverride/shmoverride.so $RPM_BUILD_ROOT/%{_libdir}/shmoverride.so
 install -D gui-daemon/guid.conf $RPM_BUILD_ROOT/%{_sysconfdir}/qubes/guid.conf
@@ -95,6 +96,7 @@ install -D gui-daemon/qubes.ClipboardPaste.policy $RPM_BUILD_ROOT%{_sysconfdir}/
 install -D screen-layout-handler/watch-screen-layout-changes $RPM_BUILD_ROOT/usr/libexec/qubes/watch-screen-layout-changes
 install -D screen-layout-handler/qubes-screen-layout-watches.desktop $RPM_BUILD_ROOT/etc/xdg/autostart/qubes-screen-layout-watches.desktop
 make -C window-icon-updater DESTDIR=$RPM_BUILD_ROOT install
+
 
 %triggerin -- xorg-x11-server-Xorg
 ln -sf /usr/bin/X-wrapper-qubes /usr/bin/X
@@ -120,7 +122,8 @@ rm -f %{name}-%{version}
 %config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.ClipboardPaste
 /etc/xdg/autostart/qubes-screen-layout-watches.desktop
 /etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
-/usr/share/dbus-1/interfaces/org.QubesOS.Audio.xml
+/usr/share/dbus-1/interfaces/org.qubesos.Audio.xml
+%config(noreplace) /etc/dbus-1/system.d/org.qubesos.Audio.conf
 /usr/libexec/qubes/watch-screen-layout-changes
 /usr/lib/qubes/icon-receiver
 %config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.WindowIconUpdater

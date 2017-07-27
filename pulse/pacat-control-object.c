@@ -139,7 +139,7 @@ int dbus_init(struct userdata *u) {
     dbus_g_thread_init ();
     error = NULL;
 
-    if (!(u->dbus = dbus_g_bus_get (DBUS_BUS_SESSION, &error))) {
+    if (!(u->dbus = dbus_g_bus_get (DBUS_BUS_SYSTEM, &error))) {
         goto fail;
     }
 
@@ -161,7 +161,7 @@ int dbus_init(struct userdata *u) {
         or 4 (we were already the owner of the name)
 
         The function will return FALSE if it sets the GError. */
-    if (snprintf(obj_path, sizeof(obj_path), "org.QubesOS.Audio.%s", u->name) >= (int)sizeof(obj_path)) {
+    if (snprintf(obj_path, sizeof(obj_path), "org.qubesos.Audio.%s", u->name) >= (int)sizeof(obj_path)) {
         pacat_log("VM name too long");
         goto fail;
     }
