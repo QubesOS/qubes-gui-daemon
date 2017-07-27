@@ -3344,6 +3344,7 @@ int main(int argc, char **argv)
     }
 
     signal(SIGTERM, dummy_signal_handler);
+    signal(SIGUSR1, dummy_signal_handler);
     signal(SIGHUP, sighup_signal_handler);
     atexit(release_all_mapped_mfns);
 
