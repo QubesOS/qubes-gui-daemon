@@ -2714,7 +2714,8 @@ static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
 {
     int opt;
     optind = 1;
-
+    g->vmname[0] = '\0';
+    
     while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
         if (opt == 'N') {
             strncpy(g->vmname, optarg, sizeof(g->vmname));
@@ -2930,7 +2931,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
     /* default target_domid to domid */
     if (!g->target_domid)
         g->target_domid = g->domid;
-    if (!g->vmname) {
+    if (g->vmname[0]=='\0') {
         fprintf(stderr, "domain name?");
         exit(1);
     }
