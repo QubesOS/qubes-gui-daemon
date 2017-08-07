@@ -30,7 +30,8 @@ from qubesimgconverter import ICON_MAXSIZE, Image
 import xcb
 import xcb.xcb
 import xcb.xproto
-from qubes.qubes import QubesVmCollection, QubesException
+from qubesadmin import Qubes
+from qubesadmin.exc import QubesException
 
 BYTES_PER_PIXEL = 4
 BITS_PER_PIXEL = 32
@@ -103,18 +104,15 @@ class IconReceiver(object):
         self.local2remote_window_map = {}
 
         # Load the VM properties - we need this only to get VM color
-        qc = QubesVmCollection()
-        qc.lock_db_for_reading()
-        qc.load()
-        qc.unlock_db()
+        app = Qubes()
 
-        vm = qc.get_vm_by_name(self.domain)
+        vm = app.domains[self.domain]
         if vm is None:
             raise QubesException("VM '{}' doesn't exist in qubes.xml".format(
                 self.domain))
         self.color = vm.label.color
         del vm
-        del qc
+        del app
 
     @staticmethod
     def _unpack_int32_array(data):
