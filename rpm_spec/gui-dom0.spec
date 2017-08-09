@@ -45,7 +45,7 @@ Requires:	service(graphical-login)
 Requires:	pulseaudio
 Requires:	libconfig
 Requires:	qubes-libvchan-%{backend_vmm}
-Requires:   python-xpyb
+Requires:   python3-xcffib
 Requires:   qubes-utils >= 3.1.0
 Requires:   python3-pydbus
 Requires:   python3-setuptools

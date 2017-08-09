@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 #
 # The Qubes OS Project, http://www.qubes-os.org
@@ -24,13 +24,12 @@
 import os
 import struct
 import sys
-import fcntl
 from qubesimgconverter import ICON_MAXSIZE, Image
 
-import xcb
-import xcb.xcb
-import xcb.xproto
-from qubes.qubes import QubesVmCollection, QubesException
+import xcffib as xcb
+import xcffib.xproto as xproto
+from qubesadmin import Qubes
+from qubesadmin.exc import QubesException
 
 BYTES_PER_PIXEL = 4
 BITS_PER_PIXEL = 32
@@ -43,9 +42,9 @@ MAX_HEADER_LENGTH = 2 * len(str(2 << 32)) + 1 + 1
 #: max size expected in _QUBES_VMNAME property
 MAX_VMNAME_LENGTH = 32
 
-#: how much window try to retrieve from _NET_CLIENT_LIST property in first try
+#: how many windows try to retrieve from _NET_CLIENT_LIST property in first try
 #: this is just arbitrary number, trying to estimate maximum windows count;
-#: if there are more windows, will be retrieved in second call
+#: if there are more windows, will be retrieved in a second call
 INITIAL_CLIENT_LIST_RETRIEVAL_COUNT = 512
 
 # Property format (not type!) used to store strings and other byte streams
@@ -69,7 +68,7 @@ class IconReceiver(object):
     """
     def __init__(self):
         # Connect to local X server and get basic properties
-        self.conn = xcb.xcb.connect()
+        self.conn = xcb.connect()
         self.setup = self.conn.get_setup()
         self.root = self.setup.roots[0].root
         try:
@@ -103,18 +102,15 @@ class IconReceiver(object):
         self.local2remote_window_map = {}
 
         # Load the VM properties - we need this only to get VM color
-        qc = QubesVmCollection()
-        qc.lock_db_for_reading()
-        qc.load()
-        qc.unlock_db()
+        app = Qubes()
 
-        vm = qc.get_vm_by_name(self.domain)
+        vm = app.domains[self.domain]
         if vm is None:
             raise QubesException("VM '{}' doesn't exist in qubes.xml".format(
                 self.domain))
         self.color = vm.label.color
         del vm
-        del qc
+        del app
 
     @staticmethod
     def _unpack_int32_array(data):
@@ -134,8 +130,8 @@ class IconReceiver(object):
     def watch_window(self, w):
         self.conn.core.ChangeWindowAttributesChecked(
             w,
-            xcb.xproto.CW.EventMask,
-            [xcb.xproto.EventMask.StructureNotify]
+            xproto.CW.EventMask,
+            [xproto.EventMask.StructureNotify]
         )
 
     def refresh_windows_mapping(self):
@@ -156,7 +152,7 @@ class IconReceiver(object):
             False,  # do not delete property
             self.root,  # window
             self.atom_net_client_list,  # property
-            xcb.xproto.Atom.WINDOW,  # type
+            xproto.Atom.WINDOW,  # type
             0,  # offset
             INITIAL_CLIENT_LIST_RETRIEVAL_COUNT)  # length
         client_list_reply = cookie.reply()
@@ -166,7 +162,7 @@ class IconReceiver(object):
                 False,  # do not delete property
                 self.root,  # window
                 self.atom_net_client_list,  # property
-                xcb.xproto.Atom.WINDOW,  # type
+                xproto.Atom.WINDOW,  # type
                 client_list_reply.value_len,  # offset
                 client_list_reply.bytes_after)  # length
             client_list_reply = cookie.reply()
@@ -189,7 +185,7 @@ class IconReceiver(object):
                                         False,  # delete
                                         w,  # window
                                         self.atom_vmname,  # property
-                                        xcb.xproto.Atom.STRING,  # type
+                                        xproto.Atom.STRING,  # type
                                         0,  # long_offset
                                         MAX_VMNAME_LENGTH  # long_length
                                         )
@@ -197,7 +193,7 @@ class IconReceiver(object):
                                         False,  # delete
                                         w,  # window
                                         self.atom_remote_id,  # property
-                                        xcb.xproto.Atom.WINDOW,  # type
+                                        xproto.Atom.WINDOW,  # type
                                         0,  # long_offset
                                         1   # long_length
                                         )
@@ -207,7 +203,7 @@ class IconReceiver(object):
             vmname = name_queries[w].reply()
             remote_id_reply = remote_id_queries[w].reply()
             if vmname.format == X_FORMAT_STRING:
-                if str(vmname.value.buf()) == self.domain:
+                if vmname.value.buf().decode() == self.domain:
                     # if _QUBES_VMREMOTEID is set, store it in the map,
                     # otherwise simply ignore the window - most likely it was
                     #  just created and don't have that property yet
@@ -245,7 +241,7 @@ class IconReceiver(object):
         :return:
         """
         for ev in iter(self.conn.poll_for_event, None):
-            if isinstance(ev, xcb.xproto.DestroyNotifyEvent):
+            if isinstance(ev, xproto.DestroyNotifyEvent):
                 remote_id = self.local2remote_window_map.pop(ev.window, None)
                 if remote_id is not None:
                     self.remote2local_window_map.pop(remote_id)
@@ -258,7 +254,7 @@ class IconReceiver(object):
         :param rgba_image: pixel array coded as 32bit RGBA number
         :return: pixel array coded as 32bit ARGB number
         """
-        pixel_count = len(rgba_image) / BYTES_PER_PIXEL
+        pixel_count = len(rgba_image) // BYTES_PER_PIXEL
         return struct.pack(
             "%dI" % pixel_count,
             # move the lowest byte to be the highest
@@ -269,7 +265,8 @@ class IconReceiver(object):
         # intentionally don't catch exceptions here
         # the Image.get_from_stream method receives UNTRUSTED data
         # from given stream (stdin), sanitize it and store in Image() object
-        icon = Image.get_from_stream(sys.stdin, ICON_MAXSIZE, ICON_MAXSIZE)
+        icon = Image.get_from_stream(sys.stdin.buffer,
+            ICON_MAXSIZE, ICON_MAXSIZE)
         # now we can tint the icon to the VM color
         icon_tinted = icon.tint(self.color)
         # conver RGBA (Image.data) -> ARGB (X11)
@@ -279,17 +276,18 @@ class IconReceiver(object):
         # being A, low byte being B. The first two cardinals are width, height.
         # Data is in rows, left to right and top to bottom."
         # http://standards.freedesktop.org/wm-spec/1.4/ar01s05.html
-        icon_property_data = struct.pack("II", icon_tinted.width,
-                                          icon_tinted.height)
+        icon_property_data = struct.pack(
+            "II", icon_tinted.width, icon_tinted.height)
         # and then append the actual icon
         icon_property_data += icon_tinted_data
-        self.conn.core.ChangeProperty(xcb.xproto.PropMode.Replace,
-                                      window,
-                                      self.atom_net_wm_icon,  # property
-                                      xcb.xproto.Atom.CARDINAL,  # type
-                                      BITS_PER_PIXEL,  # format
-                                      len(icon_property_data) / BYTES_PER_PIXEL,
-                                      icon_property_data)
+        self.conn.core.ChangeProperty(
+            xproto.PropMode.Replace,
+            window,
+            self.atom_net_wm_icon,  # property
+            xproto.Atom.CARDINAL,  # type
+            BITS_PER_PIXEL,  # format
+            len(icon_property_data) // BYTES_PER_PIXEL,
+            icon_property_data)
         self.conn.flush()
 
     @staticmethod
@@ -298,15 +296,15 @@ class IconReceiver(object):
         Ignore icon stream sent by VM
         :return: None
         """
-        untrusted_header = sys.stdin.readline(64)
+        untrusted_header = sys.stdin.buffer.readline(64)
         (untrusted_width, untrusted_height) = [int(i) for i in
-                                               untrusted_header.split(' ')]
+                                               untrusted_header.split(b' ')]
         if untrusted_width < 0 or untrusted_width > ICON_MAXSIZE:
             raise ValueError("Invalid image width")
         if untrusted_height < 0 or untrusted_height > ICON_MAXSIZE:
             raise ValueError("Invalid image width")
         width, height = untrusted_width, untrusted_height
-        sys.stdin.read(width * height * 4) # RGBA
+        sys.stdin.buffer.read(width * height * 4)  # RGBA
 
     def handle_input(self):
         """
@@ -315,7 +313,7 @@ class IconReceiver(object):
         ignore and wait for another one
         :return: None
         """
-        for untrusted_w in iter(lambda: sys.stdin.readline(32), ""):
+        for untrusted_w in iter(lambda: sys.stdin.buffer.readline(32), b""):
             remote_winid = int(untrusted_w)
             try:
                 local_winid = self.search_for_window(remote_winid)
