@@ -1379,8 +1379,6 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
                    vm_window->height);
         return;
     }
-    if (!vm_window->image && !(g->screen_window && g->screen_window->image))
-        return;
     /* force frame to be visible: */
     /*   * left */
     delta = border_width - x;
@@ -1430,11 +1428,12 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
             XShmPutImage(g->display, vm_window->local_winid,
                     g->context, vm_window->image, x,
                     y, x, y, w, h, 0);
-        } else {
+        } else if (g->screen_window && g->screen_window->image) {
             XShmPutImage(g->display, vm_window->local_winid,
                     g->context, g->screen_window->image, vm_window->x+x,
                     vm_window->y+y, x, y, w, h, 0);
         }
+        /* else no window content to update, but still draw a frame (if needed) */
     }
     if (!do_border)
         return;
@@ -2197,6 +2196,11 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
     if (vm_window->override_redirect
         && force_on_screen(g, vm_window, 0, "handle_map"))
         moveresize_vm_window(g, vm_window);
+    if (vm_window->override_redirect) {
+        /* force window update to draw colorful frame, even when VM have not
+         * sent any content yet */
+        do_shm_update(g, vm_window, 0, 0, vm_window->width, vm_window->height);
+    }
 
     (void) XMapWindow(g->display, vm_window->local_winid);
 }
