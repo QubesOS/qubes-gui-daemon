@@ -230,6 +230,11 @@ void tint_tray_and_update(Ghandles *g, struct windowdata *vm_window,
     int yp, xp;
     uint32_t pixel;
     double h_ignore, l, s_ignore;
+
+    if (!vm_window->image) {
+        /* TODO: implement screen_window handling */
+        return;
+    }
     /* Create local pixmap, put vmside image to it
      * then get local image of the copy.
      * This is needed because XGetPixel does not seem to work
