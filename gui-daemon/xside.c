@@ -129,7 +129,7 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
             "and is attempting to compromise the GUI daemon (Dom0 domain). In "
             "rare cases, however, it might be possible that a legitimate "
             "application trigger such condition (check the guid logs for more "
-            "information). <br/><br/>"
+            "information). \n\n"
             "Click \"Terminate\" to terminate this domain immediately, or "
             "\"Ignore\" to ignore this condition check and allow the GUI request "
             "to proceed.",
@@ -141,7 +141,7 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
             "and is attempting to compromise the GUI daemon (Dom0 domain). In "
             "rare cases, however, it might be possible that a legitimate "
             "application trigger such condition (check the guid logs for more "
-            "information). <br/><br/>"
+            "information). \n\n"
             "Do you allow this VM to continue running?",
          g->vmname);
 #endif
