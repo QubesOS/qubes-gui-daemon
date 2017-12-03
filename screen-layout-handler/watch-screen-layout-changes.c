@@ -49,6 +49,7 @@ int main(int argc, char **argv) {
     XFlush(d);
     x11_fd = ConnectionNumber(d);
     for (;;) {
+        int layout_changed;
         XEvent ev;
         fd_set in_fds;
         FD_ZERO(&in_fds);
@@ -65,15 +66,17 @@ int main(int argc, char **argv) {
             break;
         }
 
+        layout_changed = 0;
         while (XPending(d)) {
             XNextEvent(d, &ev);
             XRRUpdateConfiguration(&ev);
 
-            if (ev.type != xrr_event_base + RRScreenChangeNotify) {
-                /* skip other events (this shouldn't happen) */
-                continue;
-            }
+            /* This should be the only event we get, but check regardless. */
+            if (ev.type == xrr_event_base + RRScreenChangeNotify)
+                layout_changed = 1;
+        }
 
+        if (layout_changed) {
             fprintf(stderr, "Screen layout change event received\n");
             switch (fork()) {
                 case 0:
