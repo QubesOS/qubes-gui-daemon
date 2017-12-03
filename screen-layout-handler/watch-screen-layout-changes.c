@@ -1,5 +1,6 @@
 #include <sys/signalfd.h>
 
+#include <err.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -21,33 +22,28 @@ int main(int argc, char **argv) {
 
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <script> [args ...]\n", argv[0]);
-        exit(1);
+        exit(2);
     }
 
     signal(SIGCHLD, SIG_IGN);
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGTERM);
-    if (sigprocmask(SIG_BLOCK, &sigmask, NULL) == -1) {
-        perror("Couldn't block signals for graceful signal recovery");
-        exit(1);
-    }
+    if (sigprocmask(SIG_BLOCK, &sigmask, NULL) == -1)
+        err(1, "Couldn't block signals for graceful signal recovery");
+
     sigfd = signalfd(-1, &sigmask, SFD_CLOEXEC);
-    if (sigfd == -1) {
-        perror("Couldn't create signalfd for graceful signal recovery");
-        exit(1);
-    }
+    if (sigfd == -1)
+        err(1, "Couldn't create signalfd for graceful signal recovery");
 
     d = XOpenDisplay(NULL);
-    if (!d) {
-        fprintf(stderr, "Failed to open display\n");
-        exit(1);
-    }
+    if (!d)
+        errx(1, "Failed to open display");
+
     root_win = DefaultRootWindow(d);
 
-    if (!XRRQueryExtension(d, &xrr_event_base, &xrr_error_base)) {
-        fprintf(stderr, "RandR extension missing\n");
-        exit(1);
-    }
+    if (!XRRQueryExtension(d, &xrr_event_base, &xrr_error_base))
+        errx(1, "RandR extension missing");
+
     XRRSelectInput(d, root_win, RRScreenChangeNotifyMask);
 
     XFlush(d);
@@ -59,15 +55,14 @@ int main(int argc, char **argv) {
         FD_SET(sigfd, &in_fds);
         FD_SET(x11_fd, &in_fds);
 
-        if (select(FD_SETSIZE, &in_fds, NULL, NULL, NULL) < 0) {
+        if (select(FD_SETSIZE, &in_fds, NULL, NULL, NULL) == -1) {
             XCloseDisplay(d);
-            exit(2);
+            err(1, "select");
         }
 
         if (FD_ISSET(sigfd, &in_fds)) {
             /* This must be SIGTERM as we are not listening on anything else */
-            XCloseDisplay(d);
-            exit(0);
+            break;
         }
 
         while (XPending(d)) {
@@ -84,15 +79,17 @@ int main(int argc, char **argv) {
                 case 0:
                     close(ConnectionNumber(d));
                     execvp(argv[1], &argv[1]);
-                    perror("Failed to execute script");
-                    exit(1);
+                    err(1, "exec");
+
                 case -1:
-                    perror("fork");
+                    warn("fork");
                     break;
+
                 default:
                     break;
             }
         }
     }
+    XCloseDisplay(d);
     return 0;
 }
