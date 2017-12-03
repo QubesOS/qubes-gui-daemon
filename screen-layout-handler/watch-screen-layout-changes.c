@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
                     exit(1);
                 case -1:
                     perror("fork");
-                    exit(1);
+                    break;
                 default:
                     break;
             }
