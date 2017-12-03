@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
 
     XFlush(d);
     x11_fd = ConnectionNumber(d);
-    while (42) {
+    for (;;) {
         XEvent ev;
         fd_set in_fds;
         FD_ZERO(&in_fds);
