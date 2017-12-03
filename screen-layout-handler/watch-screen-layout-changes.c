@@ -1,11 +1,11 @@
+#include <sys/signalfd.h>
+
+#include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
-#include <unistd.h>
-#include <errno.h>
 #include <string.h>
-
-#include <sys/signalfd.h>
+#include <unistd.h>
 
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
