@@ -10,12 +10,6 @@
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
 
-int signal_received = 0;
-
-void sigterm_handler(int sig) {
-    signal_received = 1;
-}
-
 int main(int argc, char **argv) {
     sigset_t sigmask;
     int sigfd;
