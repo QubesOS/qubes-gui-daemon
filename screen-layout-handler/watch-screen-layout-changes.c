@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
     int x11_fd;
 
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <script>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <script> [args ...]\n", argv[0]);
         exit(1);
     }
 
