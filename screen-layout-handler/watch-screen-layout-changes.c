@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Screen layout change event received\n");
             switch (fork()) {
                 case 0:
-                    close(ConnectionNumber(d));
+                    close(x11_fd);
                     execvp(argv[1], &argv[1]);
                     err(1, "exec");
 
