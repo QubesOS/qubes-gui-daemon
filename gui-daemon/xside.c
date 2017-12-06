@@ -179,8 +179,8 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
     case 0:    /* YES */
         return 0;
     case 1:    /* NO */
-        execl("/usr/sbin/xl", "xl", "destroy", g->vmname, (char*)NULL);
-        perror("Problems executing xl");
+        execl("/usr/bin/qvm-kill", "qvm-kill", g->vmname, (char*)NULL);
+        perror("Problems executing qvm-kill");
         exit(1);
     default:
         fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
