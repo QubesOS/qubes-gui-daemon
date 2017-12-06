@@ -179,7 +179,7 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
     case 0:    /* YES */
         return 0;
     case 1:    /* NO */
-        execl("/usr/bin/qvm-kill", "qvm-kill", g->vmname, (char*)NULL);
+        execl(QVM_KILL_PATH, "qvm-kill", g->vmname, (char*)NULL);
         perror("Problems executing qvm-kill");
         exit(1);
     default:

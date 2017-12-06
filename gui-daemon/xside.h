@@ -29,6 +29,7 @@
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes-clipboard.bin"
 #define QREXEC_CLIENT_PATH "/usr/lib/qubes/qrexec-client"
 #define QREXEC_POLICY_PATH "/usr/bin/qrexec-policy"
+#define QVM_KILL_PATH "/usr/bin/qvm-kill"
 #define KDIALOG_PATH "/usr/bin/kdialog"
 #define ZENITY_PATH "/usr/bin/zenity"
 
