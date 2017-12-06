@@ -2,6 +2,6 @@
 Name=Qubes screen layout watcher
 Comment=Notifies Qubes VMs about screen layout changes
 Icon=qubes
-Exec=/usr/libexec/qubes/watch-screen-layout-changes qubes-monitor-layout-notify
+Exec=/usr/libexec/qubes/watch-screen-layout-changes qvm-start-gui --notify-monitor-layout --all
 Terminal=false
 Type=Application
