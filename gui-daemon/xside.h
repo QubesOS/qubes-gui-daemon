@@ -23,13 +23,19 @@
  *
  */
 
-/* default width of forced colorful border */
-#define BORDER_WIDTH 2
+/* various file paths */
+#define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
+#define GUID_CONFIG_DIR "/etc/qubes"
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes-clipboard.bin"
 #define QREXEC_CLIENT_PATH "/usr/lib/qubes/qrexec-client"
 #define QREXEC_POLICY_PATH "/usr/bin/qrexec-policy"
-#define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
-#define GUID_CONFIG_DIR "/etc/qubes"
+#define QVM_KILL_PATH "/usr/bin/qvm-kill"
+#define KDIALOG_PATH "/usr/bin/kdialog"
+#define ZENITY_PATH "/usr/bin/zenity"
+
+/* default width of forced colorful border */
+#define BORDER_WIDTH 2
+
 /* this makes any X11 error fatal (i.e. cause exit(1)). This behavior was the
  * case for a long time before introducing this option, so nothing really have
  * changed  */
@@ -48,9 +54,6 @@
 #else
 #  define UNUSED(x) UNUSED_ ## x
 #endif
-
-#define KDIALOG_PATH "/usr/bin/kdialog"
-#define ZENITY_PATH "/usr/bin/zenity"
 
 #include <stdint.h>
 #include <stdbool.h>
