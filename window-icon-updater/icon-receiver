@@ -22,6 +22,7 @@
 #
 #
 import os
+import select
 import struct
 import sys
 from qubesimgconverter import ICON_MAXSIZE, Image
@@ -94,12 +95,23 @@ class IconReceiver(object):
         self.atom_net_wm_icon = self.conn.core.InternAtom(False,
             len("_NET_WM_ICON"), "_NET_WM_ICON").reply().atom
 
+        self.conn.core.ChangeWindowAttributesChecked(
+            self.root, xproto.CW.EventMask,
+            [xproto.EventMask.SubstructureNotify])
+        self.conn.flush()
+
         #: Cache for remote->local window ID mapping
         self.remote2local_window_map = {}
         #: Cache for local->remote window ID mapping. Additionally for each
         #: local window belonging to other VM store None, to not check it
         #: every time
         self.local2remote_window_map = {}
+
+        #: cache of icons received for not (yet) created windows
+        #: each element is a tuple of (winid, icon_data), where icon_data is
+        #: already tinted and serialized for window property.
+        #: at most 5 elements are stored
+        self.icon_cache = []
 
         # Load the VM properties - we need this only to get VM color
         app = Qubes()
@@ -173,7 +185,7 @@ class IconReceiver(object):
             root_tree = cookie.reply()
             client_list = root_tree.children
 
-        # Now interate over all application windows. For performance reasons
+        # Now iterate over all application windows. For performance reasons
         # (according to XCB manual), do this in two runs:
         # First issue GetProperty commands (recording "cookies") ...
         for w in client_list:
@@ -236,15 +248,27 @@ class IconReceiver(object):
 
     def handle_events(self):
         """
-        Handle X11 events - for DestroyNotifyEvent remove the event window
-        from local windows map
+        Handle X11 events
+        - DestroyNotifyEvent:remove the event window from local windows map
+        - CreateNotifyEvent: check if any cached icon applies to it
         :return:
         """
         for ev in iter(self.conn.poll_for_event, None):
             if isinstance(ev, xproto.DestroyNotifyEvent):
-                remote_id = self.local2remote_window_map.pop(ev.window, None)
-                if remote_id is not None:
-                    self.remote2local_window_map.pop(remote_id)
+                try:
+                    remote_id = self.local2remote_window_map.pop(ev.window, None)
+                    if remote_id is not None:
+                        self.remote2local_window_map.pop(remote_id)
+                except KeyError:
+                    pass
+            elif isinstance(ev, xproto.CreateNotifyEvent):
+                for remote_winid, icon_property_data in list(self.icon_cache):
+                    try:
+                        local_winid = self.search_for_window(remote_winid)
+                        self.set_icon_for_window(local_winid, icon_property_data)
+                        self.icon_cache.remove((remote_winid, icon_property_data))
+                    except KeyError:
+                        pass
 
     @staticmethod
     def _convert_rgba_to_argb(rgba_image):
@@ -261,7 +285,7 @@ class IconReceiver(object):
             *[(p >> 8) | ((p & 0xff) << 24) for p in
               struct.unpack(">%dI" % pixel_count, rgba_image)])
 
-    def handle_icon_for_window(self, window):
+    def retrieve_icon_for_window(self):
         # intentionally don't catch exceptions here
         # the Image.get_from_stream method receives UNTRUSTED data
         # from given stream (stdin), sanitize it and store in Image() object
@@ -280,6 +304,9 @@ class IconReceiver(object):
             "II", icon_tinted.width, icon_tinted.height)
         # and then append the actual icon
         icon_property_data += icon_tinted_data
+        return icon_property_data
+
+    def set_icon_for_window(self, window, icon_property_data):
         self.conn.core.ChangeProperty(
             xproto.PropMode.Replace,
             window,
@@ -290,21 +317,16 @@ class IconReceiver(object):
             icon_property_data)
         self.conn.flush()
 
-    @staticmethod
-    def ignore_icon():
+    def cache_icon(self, remote_winid, icon_property_data):
         """
-        Ignore icon stream sent by VM
+        Cache icon
         :return: None
         """
-        untrusted_header = sys.stdin.buffer.readline(64)
-        (untrusted_width, untrusted_height) = [int(i) for i in
-                                               untrusted_header.split(b' ')]
-        if untrusted_width < 0 or untrusted_width > ICON_MAXSIZE:
-            raise ValueError("Invalid image width")
-        if untrusted_height < 0 or untrusted_height > ICON_MAXSIZE:
-            raise ValueError("Invalid image width")
-        width, height = untrusted_width, untrusted_height
-        sys.stdin.buffer.read(width * height * 4)  # RGBA
+        cache_dict = dict(self.icon_cache)
+        if remote_winid in cache_dict:
+            self.icon_cache.remove((remote_winid, cache_dict[remote_winid]))
+        self.icon_cache.insert(0, (remote_winid, icon_property_data))
+        self.icon_cache = self.icon_cache[:5]
 
     def handle_input(self):
         """
@@ -313,14 +335,24 @@ class IconReceiver(object):
         ignore and wait for another one
         :return: None
         """
-        for untrusted_w in iter(lambda: sys.stdin.buffer.readline(32), b""):
-            remote_winid = int(untrusted_w)
-            try:
-                local_winid = self.search_for_window(remote_winid)
-                self.handle_icon_for_window(local_winid)
-            except KeyError:
-                self.ignore_icon()
 
+        x_fd = self.conn.get_file_descriptor()
+        remote_fd = sys.stdin.fileno()
+        while True:
+            read_fds, _, _ = select.select([x_fd, remote_fd], [], [])
+            if x_fd in read_fds:
+                self.handle_events()
+            if remote_fd in read_fds:
+                untrusted_w = sys.stdin.buffer.readline(32)
+                if untrusted_w == b'':
+                    break
+                remote_winid = int(untrusted_w)
+                icon_property_data = self.retrieve_icon_for_window()
+                try:
+                    local_winid = self.search_for_window(remote_winid)
+                    self.set_icon_for_window(local_winid, icon_property_data)
+                except KeyError:
+                    self.cache_icon(remote_winid, icon_property_data)
 
 if __name__ == '__main__':
     rcvd = IconReceiver()
