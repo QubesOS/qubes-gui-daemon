@@ -23,12 +23,10 @@
 #
 
 
-%{!?version: %define version %(cat version)}
-%{!?backend_vmm: %define backend_vmm %(echo $BACKEND_VMM)}
 %{!?python_sitearch: %define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
 
 Name:		qubes-gui-dom0	
-Version:	%{version}
+Version:	@VERSION@
 Release:	1%{dist}
 Summary:	The Qubes GUI virtualization (Dom0 side) 
 
@@ -37,14 +35,12 @@ Vendor:		Invisible Things Lab
 License:	GPL
 URL:		http://www.qubes-os.org
 
-Source:		.
-
 Requires:	qubes-core-dom0 >= 1.3.14
 Requires:	xorg-x11-server-Xorg pulseaudio-libs
 Requires:	service(graphical-login)
 Requires:	pulseaudio
 Requires:	libconfig
-Requires:	qubes-libvchan-%{backend_vmm}
+Requires:	qubes-libvchan-@BACKEND_VMM@
 Requires:   python3-xcffib
 Requires:   qubes-utils >= 3.1.0
 Requires:   python3-pydbus
@@ -65,19 +61,15 @@ BuildRequires:	gcc
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
 BuildRequires:	qubes-core-libs
 BuildRequires:	qubes-gui-common-devel >= 3.2.0
-BuildRequires:	qubes-libvchan-%{backend_vmm}-devel
+BuildRequires:	qubes-libvchan-@BACKEND_VMM@-devel
 
-%define _builddir %(pwd)
+Source0: %{name}-%{version}.tar.gz
 
 %description
 The Qubes GUI virtualization infrastructure that needs to be installed in Dom0.
 
 %prep
-# we operate on the current directory, so no need to unpack anything
-# symlink is to generate useful debuginfo packages
-rm -f %{name}-%{version}
-ln -sf . %{name}-%{version}
-%setup -T -D
+%setup -q
 
 %build
 make clean
