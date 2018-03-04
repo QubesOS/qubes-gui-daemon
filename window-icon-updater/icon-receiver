@@ -212,8 +212,11 @@ class IconReceiver(object):
 
         # ... then retrieve results
         for w in name_queries.keys():
-            vmname = name_queries[w].reply()
-            remote_id_reply = remote_id_queries[w].reply()
+            try:
+                vmname = name_queries[w].reply()
+                remote_id_reply = remote_id_queries[w].reply()
+            except xproto.WindowError:
+                continue
             if vmname.format == X_FORMAT_STRING:
                 if vmname.value.buf().decode() == self.domain:
                     # if _QUBES_VMREMOTEID is set, store it in the map,
@@ -267,7 +270,7 @@ class IconReceiver(object):
                         local_winid = self.search_for_window(remote_winid)
                         self.set_icon_for_window(local_winid, icon_property_data)
                         self.icon_cache.remove((remote_winid, icon_property_data))
-                    except KeyError:
+                    except (KeyError, ValueError):
                         pass
 
     @staticmethod
