@@ -130,3 +130,6 @@ rm -f %{name}-%{version}
 %config %{_sysconfdir}/qubes-rpc/qubes.WindowIconUpdater
 %{python3_sitelib}/qubesguidaemon-*.egg-info
 %{python3_sitelib}/qubesguidaemon
+
+%changelog
+@CHANGELOG@
