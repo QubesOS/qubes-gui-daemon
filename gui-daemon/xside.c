@@ -1350,8 +1350,13 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         y = min(untrusted_y, g->screen_window->image_height - vm_window->y);
         w = min(max(untrusted_w, 0), g->screen_window->image_width - vm_window->x - x);
         h = min(max(untrusted_h, 0), g->screen_window->image_height - vm_window->y - y);
+    } else {
+        /* no image to update, will return after possibly drawing a frame */
+        x = min(untrusted_x, (int)vm_window->width);
+        y = min(untrusted_y, (int)vm_window->height);
+        w = min(max(untrusted_w, 0), (int)vm_window->width - x);
+        h = min(max(untrusted_h, 0), (int)vm_window->height - y);
     }
-    /* else: no image to update, will return after possibly drawing a frame */
 
     /* sanitize end */
 
