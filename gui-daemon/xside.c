@@ -1342,9 +1342,9 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         if (vm_window->x >= g->screen_window->image_width ||
                 vm_window->y >= g->screen_window->image_height)
             return;
-        if (vm_window->x+untrusted_x < 0)
+        if (vm_window->x < 0 && vm_window->x+untrusted_x < 0)
             untrusted_x = -vm_window->x;
-        if (vm_window->y+untrusted_y < 0)
+        if (vm_window->y < 0 && vm_window->y+untrusted_y < 0)
             untrusted_y = -vm_window->y;
         x = min(untrusted_x, g->screen_window->image_width - vm_window->x);
         y = min(untrusted_y, g->screen_window->image_height - vm_window->y);
