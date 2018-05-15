@@ -32,12 +32,13 @@
 #include <string.h>
 #include <malloc.h>
 #include <xenctrl.h>
+#include <xengnttab.h>
 #include <sys/mman.h>
 #include <alloca.h>
 #include <errno.h>
 #include <unistd.h>
 #include "list.h"
-#include "shmid.h"
+#include "shm-args.h"
 #include <qubes-gui-protocol.h>
 
 static void *(*real_shmat) (int shmid, const void *shmaddr, int shmflg);
@@ -45,78 +46,198 @@ static int (*real_shmdt) (const void *shmaddr);
 static int (*real_shmctl) (int shmid, int cmd, struct shmid_ds * buf);
 
 static int local_shmid = 0xabcdef;
-static struct shm_cmd *cmd_pages = NULL;
+static struct shm_args_hdr *shm_args = NULL;
 static struct genlist *addr_list;
 #ifdef XENCTRL_HAS_XC_INTERFACE
 static xc_interface *xc_hnd;
 #else
 static int xc_hnd;
 #endif
+static xengnttab_handle *xgt;
 static int list_len;
 static char __shmid_filename[SHMID_FILENAME_LEN];
 static char *shmid_filename = NULL;
 static char display_str[SHMID_DISPLAY_MAXLEN+1] = "";
 
+struct mfns_info {
+    uint32_t count;
+    uint32_t off;
+};
+
+struct grant_refs_info {
+    uint32_t count;
+    bool is_dummy;
+};
+
+struct info {
+    uint32_t type;
+    union {
+        struct mfns_info mfns;
+        struct grant_refs_info grant;
+    } u;
+};
+
+static uint8_t *shmat_mfns(struct shm_args_hdr *shm_args, struct info *info) {
+    uint8_t *map;
+    xen_pfn_t *pfntable;
+    uint32_t i;
+    struct shm_args_mfns *shm_args_mfns = (struct shm_args_mfns *) (
+            ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
+
+    pfntable = alloca(sizeof(xen_pfn_t) * shm_args_mfns->count);
+    for (i = 0; i < shm_args_mfns->count; i++)
+        pfntable[i] = shm_args_mfns->mfns[i];
+
+    info->u.mfns.count = shm_args_mfns->count;
+    info->u.mfns.off = shm_args_mfns->off;
+
+    map = xc_map_foreign_pages(xc_hnd, shm_args->domid, PROT_READ,
+                                pfntable, shm_args_mfns->count);
+    if (map == NULL)
+        return NULL;
+
+    map += shm_args_mfns->off;
+
+    return map;
+}
+
+static uint8_t *shmat_grant_refs(struct shm_args_hdr *shm_args,
+                                 struct info *info) {
+    uint8_t *map;
+    struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
+            ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
+
+    info->u.grant.count = shm_args_grant->count;
+
+    map = xengnttab_map_domain_grant_refs(xgt,
+            shm_args_grant->count,
+            shm_args->domid,
+            &shm_args_grant->refs[0],
+            PROT_READ);
+
+    if (map != NULL)
+        return map;
+
+    // Something failed. Most likely the other domain already destroyed the
+    // buffer and thereby invalidated the refs. So create a dummy buffer. This
+    // mapping will probably be unmapped very soon anyway.
+
+    map = calloc(1, info->u.mfns.count * XC_PAGE_SIZE);
+    info->u.grant.is_dummy = true;
+    return map;
+}
+
 void *shmat(int shmid, const void *shmaddr, int shmflg)
 {
-    unsigned int i;
-    xen_pfn_t *pfntable;
-    char *fakeaddr;
-    long fakesize;
-    if (!cmd_pages || (uint32_t)shmid != cmd_pages->shmid)
+    uint8_t *fakeaddr = NULL;
+    struct info *info;
+
+    if (!shm_args || (uint32_t)shmid != shm_args->shmid)
         return real_shmat(shmid, shmaddr, shmflg);
-    if (cmd_pages->off >= 4096 || cmd_pages->num_mfn > MAX_MFN_COUNT
-            || cmd_pages->num_mfn == 0) {
+
+    info = calloc(1, sizeof(struct info));
+    if (info == NULL)
+        return MAP_FAILED;
+
+    switch (shm_args->type) {
+    case SHM_ARGS_TYPE_MFNS:
+        fakeaddr = shmat_mfns(shm_args, info);
+        break;
+    case SHM_ARGS_TYPE_GRANT_REFS:
+        fakeaddr = shmat_grant_refs(shm_args, info);
+        break;
+    default:
         errno = EINVAL;
+    }
+    info->type = shm_args->type;
+
+    if (fakeaddr == NULL) {
+        free(info);
+        // errno set by shmat_*
         return MAP_FAILED;
     }
-    pfntable = alloca(sizeof(xen_pfn_t) * cmd_pages->num_mfn);
-#ifdef DEBUG
-    fprintf(stderr, "size=%d table=%p\n", cmd_pages->num_mfn,
-            pfntable);
-#endif
-    for (i = 0; i < cmd_pages->num_mfn; i++)
-        pfntable[i] = cmd_pages->mfns[i];
-#ifdef BACKEND_VMM_xen
-    fakeaddr =
-        xc_map_foreign_pages(xc_hnd, cmd_pages->domid, PROT_READ,
-                pfntable, cmd_pages->num_mfn);
-#else
-#error "shmoverride implemented only for Xen"
-#endif
-    fakesize = 4096 * cmd_pages->num_mfn;
-#ifdef DEBUG
-    fprintf(stderr, "num=%d, addr=%p, len=%d\n",
-            cmd_pages->num_mfn, fakeaddr, list_len);
-#endif
-    if (fakeaddr && fakeaddr != MAP_FAILED) {
-        list_insert(addr_list, (long) fakeaddr, (void *) fakesize);
-        list_len++;
-        return fakeaddr + cmd_pages->off;
-    } else {
-        errno = ENOMEM;
-        return MAP_FAILED;
+
+    list_insert(addr_list, (long) fakeaddr, info);
+    list_len++;
+    return fakeaddr;
+}
+
+static int shmdt_mfns(void *map, struct info *info) {
+    return munmap(map - info->u.mfns.off, info->u.mfns.count * XC_PAGE_SIZE);
+}
+
+static int shmdt_grant_refs(void *map, struct info *info) {
+    if (info->u.grant.is_dummy) {
+        free(map);
+        return 0;
     }
+
+    return xengnttab_unmap(xgt, map, info->u.grant.count);
 }
 
 int shmdt(const void *shmaddr)
 {
-    unsigned long addr = ((long) shmaddr) & (-4096UL);
-    struct genlist *item = list_lookup(addr_list, addr);
+    void *addr = (void *) shmaddr; // drop const qualifier
+    struct genlist *item = list_lookup(addr_list, (long) addr);
+    struct info *info;
+    int rc;
     if (!item)
         return real_shmdt(shmaddr);
-    munmap((void *) addr, (long) item->data);
+
+    info = item->data;
+    switch (info->type) {
+    case SHM_ARGS_TYPE_MFNS:
+        rc = shmdt_mfns(addr, info);
+        break;
+    case SHM_ARGS_TYPE_GRANT_REFS:
+        rc = shmdt_grant_refs(addr, info);
+        break;
+    default:
+        errno = EINVAL;
+        rc = -1;
+    }
+
     list_remove(item);
     list_len--;
-    return 0;
+    return rc;
+}
+
+static size_t shm_segsz_mfns(struct shm_args_hdr *shm_args) {
+    struct shm_args_mfns *shm_args_mfns = (struct shm_args_mfns *) (
+            ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
+
+    return shm_args_mfns->count * XC_PAGE_SIZE - shm_args_mfns->off;
+}
+
+static size_t shm_segsz_grant_refs(struct shm_args_hdr *shm_args) {
+    struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
+            ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
+
+    return shm_args_grant->count * XC_PAGE_SIZE;
 }
 
 int shmctl(int shmid, int cmd, struct shmid_ds *buf)
 {
-    if (!cmd_pages || (uint32_t)shmid != cmd_pages->shmid || cmd != IPC_STAT)
+    size_t segsz = 0;
+
+    if (!shm_args || (uint32_t)shmid != shm_args->shmid || cmd != IPC_STAT)
         return real_shmctl(shmid, cmd, buf);
+
+    switch (shm_args->type) {
+    case SHM_ARGS_TYPE_MFNS:
+        segsz = shm_segsz_mfns(shm_args);
+        break;
+    case SHM_ARGS_TYPE_GRANT_REFS:
+        segsz = shm_segsz_grant_refs(shm_args);
+        break;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+
     memset(&buf->shm_perm, 0, sizeof(buf->shm_perm));
-    buf->shm_segsz = cmd_pages->num_mfn * 4096 - cmd_pages->off;
+    buf->shm_segsz = segsz;
+
     return 0;
 }
 
@@ -203,6 +324,12 @@ int __attribute__ ((constructor)) initfunc()
         return 0;  //allow it to run when not under Xen
     }
 
+    xgt = xengnttab_open(NULL, 0);
+    if (xgt == NULL) {
+        perror("shmoverride: xengnttab_open failed");
+        return 0; // Allow it to run when not under Xen.
+    }
+
     get_display();
     snprintf(__shmid_filename, SHMID_FILENAME_LEN,
         SHMID_FILENAME_PREFIX "%s", display_str);
@@ -215,7 +342,7 @@ int __attribute__ ((constructor)) initfunc()
         return 0;
     }
     local_shmid =
-        shmget(IPC_PRIVATE, SHM_CMD_NUM_PAGES * 4096,
+        shmget(IPC_PRIVATE, SHM_ARGS_SIZE,
                 IPC_CREAT | 0700);
     if (local_shmid == -1) {
         unlink(shmid_filename);
@@ -236,23 +363,27 @@ int __attribute__ ((constructor)) initfunc()
             shmid_filename, strerror(errno));
         exit(1);
     }
-    cmd_pages = real_shmat(local_shmid, 0, 0);
-    if (!cmd_pages) {
+    shm_args = real_shmat(local_shmid, 0, 0);
+    if (!shm_args) {
         unlink(shmid_filename);
         perror("real_shmat");
         exit(1);
     }
-    cmd_pages->shmid = local_shmid;
+    shm_args->shmid = local_shmid;
     return 0;
 }
 
 int __attribute__ ((destructor)) descfunc()
 {
-    if (cmd_pages) {
-        real_shmdt(cmd_pages);
+    if (shm_args) {
+        real_shmdt(shm_args);
         real_shmctl(local_shmid, IPC_RMID, 0);
         if (shmid_filename != NULL)
             unlink(shmid_filename);
     }
+
+    if (xgt != NULL)
+        xengnttab_close(xgt);
+
     return 0;
 }
