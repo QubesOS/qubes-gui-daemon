@@ -18,7 +18,9 @@ and from which domain.
 	Somewhat unfortunately, the Xorg server tracks the already attached shmids.
 Therefore, it is not possible to pass the same "magic" value of synth_shmid
 to XShmAttach(...synth_shmid...). Before each XShmAttach, qubes_guid creates
-a temporary ("real") shared memory segment, sets cmd_pages->shmid to it, and
-then executes XShmAttach. This temporary segment is destroyed after
-XShmAttach completes.
-  
+a corresponding real shared memory segment, sets cmd_pages->shmid to it, and
+then executes XShmAttach. This segment is destroyed when the corresponding
+backing memory for the composition buffer is released, such as when the window
+is resized or closed. Keeping this additional otherwise-unused segment around
+for the whole life of the actual inter-domain shared-memory being used is
+necessary in order to prevent X from getting confused by shmid reuse.
