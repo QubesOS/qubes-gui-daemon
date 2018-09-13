@@ -101,6 +101,10 @@ class MicDeviceExtension(qubes.ext.Extension):
             mic_obj = self.bus.get('org.qubesos.Audio.' + vm.name,
                 '/org/qubesos/audio')
         except GLib.Error as err:
+            if 'org.freedesktop.DBus.Error.ServiceUnknown' in err.message:
+                raise qubes.exc.QubesVMError(vm,
+                    'Failed to attach microphone: '
+                    'pulseaudio agent not running in {}'.format(vm.name))
             # no user session bus, or can't access pacat-simple-vchan
             raise qubes.exc.QubesException(
                 'Failed to attach microphone: {}'.format(err))
