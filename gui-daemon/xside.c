@@ -2455,6 +2455,13 @@ static void handle_message(Ghandles * g)
 /* signal handler - connected to SIGTERM */
 static void dummy_signal_handler(int UNUSED(x))
 {
+    /* The exit(0) below will call release_all_mapped_mfns (registerd with
+     * atexit(3)), which would try to release window images with XShmDetach. We
+     * can't send X11 requests if one is currently being handled. Since signals
+     * are asynchronous, we don't know that. Clean window images
+     * without calling to X11. And hope that X server will call XShmDetach
+     * internally when cleaning windows of disconnected client */
+    release_all_shm_no_x11_calls();
     exit(0);
 }
 
