@@ -73,7 +73,7 @@ The Qubes GUI virtualization infrastructure that needs to be installed in Dom0.
 
 %build
 make clean
-make dom0
+make dom0 BACKEND_VMM=@BACKEND_VMM@
 
 %py3_build
 
