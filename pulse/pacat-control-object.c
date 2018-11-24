@@ -101,8 +101,10 @@ static void pacat_control_class_init (PacatControlClass *p_class)
     dbus_g_object_type_install_info (PACAT_CONTROL_TYPE,
             &dbus_glib_pacat_control_object_info);
 
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
     /* pointer to userdata struct */
     g_type_class_add_private(p_class, sizeof(void*));
+G_GNUC_END_IGNORE_DEPRECATIONS
 
     gobject_class->finalize = pacat_control_finalize;
     gobject_class->set_property = pacat_control_set_property;
