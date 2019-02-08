@@ -66,7 +66,6 @@ struct mfns_info {
 
 struct grant_refs_info {
     uint32_t count;
-    bool is_dummy;
 };
 
 struct info {
@@ -115,15 +114,6 @@ static uint8_t *shmat_grant_refs(struct shm_args_hdr *shm_args,
             &shm_args_grant->refs[0],
             PROT_READ);
 
-    if (map != NULL)
-        return map;
-
-    // Something failed. Most likely the other domain already destroyed the
-    // buffer and thereby invalidated the refs. So create a dummy buffer. This
-    // mapping will probably be unmapped very soon anyway.
-
-    map = calloc(1, info->u.mfns.count * XC_PAGE_SIZE);
-    info->u.grant.is_dummy = true;
     return map;
 }
 
@@ -167,11 +157,6 @@ static int shmdt_mfns(void *map, struct info *info) {
 }
 
 static int shmdt_grant_refs(void *map, struct info *info) {
-    if (info->u.grant.is_dummy) {
-        free(map);
-        return 0;
-    }
-
     return xengnttab_unmap(xgt, map, info->u.grant.count);
 }
 

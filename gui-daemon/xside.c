@@ -2542,16 +2542,22 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     }
     vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
     vm_window->shminfo.readOnly = True;
+    shm_attach_failed = false;
+    if (!XShmAttach(g->display, &vm_window->shminfo))
+        shm_attach_failed = true;
+    /* shm_attach_failed can be also set by the X11 error handler */
     XSync(g->display, False);
-    if (!XShmAttach(g->display, &vm_window->shminfo)) {
+    g->shm_args->shmid = g->cmd_shmid;
+    inter_appviewer_lock(g, 0);
+    if (shm_attach_failed) {
         fprintf(stderr,
             "XShmAttach failed for window 0x%lx(remote 0x%lx)\n",
             vm_window->local_winid,
             vm_window->remote_winid);
+        XDestroyImage(vm_window->image);
+        vm_window->image = NULL;
+        shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
     }
-    XSync(g->display, False);
-    g->shm_args->shmid = g->cmd_shmid;
-    inter_appviewer_lock(g, 0);
     free(shm_args);
 }
 
