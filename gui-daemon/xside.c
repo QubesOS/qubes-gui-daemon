@@ -42,6 +42,7 @@
 #include <X11/Intrinsic.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
+#include <X11/extensions/shmproto.h>
 #include <X11/Xatom.h>
 #include <libconfig.h>
 #include <libnotify/notify.h>
@@ -84,6 +85,12 @@ static Ghandles ghandles;
 #ifndef max
 #define max(x,y) ((x)<(y)?(y):(x))
 #endif
+
+/* XShmAttach return value inform only about successful queueing the operation,
+ * not its execution. Errors during XShmAttach are reported asynchronously with
+ * registered X11 error handler.
+ */
+static bool shm_attach_failed = false;
 
 static void inter_appviewer_lock(Ghandles *g, int mode);
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
@@ -219,6 +226,14 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
     if ((ev->request_code == X_DestroyWindow || ev->request_code == X_UnmapWindow)
             && ev->error_code == BadWindow) {
         fprintf(stderr, "  someone else already destroyed this window, ignoring\n");
+        return 0;
+    }
+    if (ev->request_code == ghandles.shm_major_opcode
+            && ev->minor_code == X_ShmAttach
+            && ev->error_code == BadAccess) {
+        shm_attach_failed = true;
+        /* shmoverride failed to attach memory region,
+         * handled in handle_mfndump/handle_window_dump */
         return 0;
     }
 #ifdef MAKE_X11_ERRORS_FATAL
@@ -366,7 +381,9 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 static void mkghandles(Ghandles * g)
 {
     char tray_sel_atom_name[64];
+    int ev_base, err_base; /* ignore */
     XWindowAttributes attr;
+
     g->display = XOpenDisplay(NULL);
     if (!g->display) {
         perror("XOpenDisplay");
@@ -397,6 +414,9 @@ static void mkghandles(Ghandles * g)
     g->frame_extents = XInternAtom(g->display, "_NET_FRAME_EXTENTS", False);
     g->wm_state_maximized_vert = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
     g->wm_state_maximized_horz = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    if (!XQueryExtension(g->display, "MIT-SHM",
+                &g->shm_major_opcode, &ev_base, &err_base))
+        fprintf(stderr, "MIT-SHM X extension missing!\n");
     /* create graphical contexts */
     get_frame_gc(g, g->cmdline_color ? : "red");
     if (g->trayicon_mode == TRAY_BACKGROUND)
@@ -2355,16 +2375,22 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
     }
     vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
     vm_window->shminfo.readOnly = True;
-    XSync(g->display, False);
-    if (!XShmAttach(g->display, &vm_window->shminfo)) {
-        fprintf(stderr,
-            "XShmAttach failed for window 0x%x(remote 0x%x)\n",
-            (int) vm_window->local_winid,
-            (int) vm_window->remote_winid);
-    }
+    shm_attach_failed = false;
+    if (!XShmAttach(g->display, &vm_window->shminfo))
+        shm_attach_failed = true;
+    /* shm_attach_failed can be also set by the X11 error handler */
     XSync(g->display, False);
     g->shmcmd->shmid = g->cmd_shmid;
     inter_appviewer_lock(g, 0);
+    if (shm_attach_failed) {
+        fprintf(stderr,
+            "XShmAttach failed for window 0x%lx(remote 0x%lx)\n",
+            vm_window->local_winid,
+            vm_window->remote_winid);
+        XDestroyImage(vm_window->image);
+        vm_window->image = NULL;
+        shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
+    }
 }
 
 /* VM message dispatcher */
