@@ -139,7 +139,7 @@ struct _global_handles {
     Atom wm_state_maximized_vert; /* Atom: _NET_WM_STATE_MAXIMIZED_VERT */
     Atom wm_state_maximized_horz; /* Atom: _NET_WM_STATE_MAXIMIZED_HORZ */
     /* shared memory handling */
-    struct shm_cmd *shmcmd;    /* shared memory with Xorg */
+    struct shm_args_hdr *shm_args;    /* shared memory with Xorg */
     uint32_t cmd_shmid;        /* shared memory id - received from shmoverride.so through shm.id.$DISPLAY file */
     int inter_appviewer_lock_fd; /* FD of lock file used to synchronize shared memory access */
     /* Client VM parameters */

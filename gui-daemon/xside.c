@@ -56,7 +56,7 @@
 #include "error.h"
 #include "png.h"
 #include "trayicon.h"
-#include "shmid.h"
+#include "shm-args.h"
 
 /* some configuration */
 
@@ -2267,7 +2267,7 @@ static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
     if (g->invisible)
         return;
     inter_appviewer_lock(g, 1);
-    g->shmcmd->shmid = vm_window->shminfo.shmid;
+    g->shm_args->shmid = vm_window->shminfo.shmid;
     XShmDetach(g->display, &vm_window->shminfo);
     XDestroyImage(vm_window->image);
     XSync(g->display, False);
@@ -2281,39 +2281,54 @@ static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
  */
 static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 {
-    char untrusted_shmcmd_data_from_remote[4096 * SHM_CMD_NUM_PAGES];
-    struct shm_cmd *untrusted_shmcmd =
-        (struct shm_cmd *) untrusted_shmcmd_data_from_remote;
+    struct shm_cmd untrusted_shmcmd;
     unsigned num_mfn, off;
     static char dummybuf[100];
+    size_t shm_args_len;
+    struct shm_args_hdr *shm_args;
+    struct shm_args_mfns *shm_args_mfns;
+    size_t mfns_len;
 
     if (vm_window->image)
         release_mapped_mfns(g, vm_window);
-    read_data(g->vchan, untrusted_shmcmd_data_from_remote,
-          sizeof(struct shm_cmd));
+    read_struct(g->vchan, untrusted_shmcmd);
 
     if (g->log_level > 1)
         fprintf(stderr, "MSG_MFNDUMP for 0x%x(0x%x): %dx%d, num_mfn 0x%x off 0x%x\n",
                 (int) vm_window->local_winid, (int) vm_window->remote_winid,
-                untrusted_shmcmd->width, untrusted_shmcmd->height,
-                untrusted_shmcmd->num_mfn, untrusted_shmcmd->off);
+                untrusted_shmcmd.width, untrusted_shmcmd.height,
+                untrusted_shmcmd.num_mfn, untrusted_shmcmd.off);
     /* sanitize start */
-    VERIFY(untrusted_shmcmd->num_mfn <= (unsigned)MAX_MFN_COUNT);
-    num_mfn = untrusted_shmcmd->num_mfn;
-    VERIFY((int) untrusted_shmcmd->width >= 0
-           && (int) untrusted_shmcmd->height >= 0);
-    VERIFY((int) untrusted_shmcmd->width <= MAX_WINDOW_WIDTH
-           && (int) untrusted_shmcmd->height <= MAX_WINDOW_HEIGHT);
-    VERIFY(untrusted_shmcmd->off < 4096);
-    off = untrusted_shmcmd->off;
-    /* unused for now: VERIFY(untrusted_shmcmd->bpp == 24); */
+    VERIFY(untrusted_shmcmd.num_mfn <= (unsigned)MAX_MFN_COUNT);
+    num_mfn = untrusted_shmcmd.num_mfn;
+    VERIFY((int) untrusted_shmcmd.width >= 0
+           && (int) untrusted_shmcmd.height >= 0);
+    VERIFY((int) untrusted_shmcmd.width <= MAX_WINDOW_WIDTH
+           && (int) untrusted_shmcmd.height <= MAX_WINDOW_HEIGHT);
+    VERIFY(untrusted_shmcmd.off < 4096);
+    off = untrusted_shmcmd.off;
+    /* unused for now: VERIFY(untrusted_shmcmd.bpp == 24); */
     /* sanitize end */
-    vm_window->image_width = untrusted_shmcmd->width;
-    vm_window->image_height = untrusted_shmcmd->height;    /* sanitized above */
-    read_data(g->vchan, (char *) untrusted_shmcmd->mfns,
-          SIZEOF_SHARED_MFN * num_mfn);
+    vm_window->image_width = untrusted_shmcmd.width;
+    vm_window->image_height = untrusted_shmcmd.height;    /* sanitized above */
+
+    mfns_len = num_mfn * SIZEOF_SHARED_MFN;
+    shm_args_len = sizeof(struct shm_args_hdr) + sizeof(struct shm_args_mfns) +
+                   mfns_len;
+    shm_args = calloc(1, shm_args_len);
+    if (shm_args == NULL) {
+        perror("malloc failed");
+        exit(1);
+    }
+    shm_args_mfns = (struct shm_args_mfns *) (((uint8_t *) shm_args) +
+                                              sizeof(struct shm_args_hdr));
+    shm_args->type = SHM_ARGS_TYPE_MFNS;
+    shm_args_mfns->count = num_mfn;
+    shm_args_mfns->off = off;
+
+    read_data(g->vchan, (char *) &shm_args_mfns->mfns[0], mfns_len);
     if (g->invisible)
-        return;
+        goto out_free_shm_args;
     vm_window->image =
         XShmCreateImage(g->display,
                 DefaultVisual(g->display, g->screen), 24,
@@ -2342,16 +2357,13 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
         perror("shmget");
         exit(1);
     }
-    /* ensure that _every_ not sanitized field is overrided by some trusted
-     * value */
-    untrusted_shmcmd->shmid = vm_window->shminfo.shmid;
-    untrusted_shmcmd->domid = g->domid;
+    shm_args->shmid = vm_window->shminfo.shmid;
+    shm_args->domid = g->domid;
     inter_appviewer_lock(g, 1);
-    memcpy(g->shmcmd, untrusted_shmcmd_data_from_remote,
-           sizeof(struct shm_cmd) + SIZEOF_SHARED_MFN * num_mfn);
-    if (SIZEOF_SHARED_MFN * num_mfn + sizeof (struct shm_cmd) < 4096 * SHM_CMD_NUM_PAGES) {
-      memset((char*)g->shmcmd->mfns + SIZEOF_SHARED_MFN * num_mfn, 0,
-             4096 * SHM_CMD_NUM_PAGES - (SIZEOF_SHARED_MFN * num_mfn + sizeof (struct shm_cmd)));
+    memcpy(g->shm_args, shm_args, shm_args_len);
+    if (shm_args_len < SHM_ARGS_SIZE) {
+        memset(((uint8_t *) g->shm_args) + shm_args_len, 0,
+               SHM_ARGS_SIZE - shm_args_len);
     }
     vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
     vm_window->shminfo.readOnly = True;
@@ -2363,8 +2375,158 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
             (int) vm_window->remote_winid);
     }
     XSync(g->display, False);
-    g->shmcmd->shmid = g->cmd_shmid;
+    g->shm_args->shmid = g->cmd_shmid;
     inter_appviewer_lock(g, 0);
+
+out_free_shm_args:
+    free(shm_args);
+}
+
+static void handle_window_dump_body_grant_refs(Ghandles *g,
+         size_t untrusted_wd_body_len, size_t *img_data_size, struct
+         shm_args_hdr **shm_args, size_t *shm_args_len) {
+    size_t refs_len;
+    struct shm_args_grant_refs *shm_args_grant;
+
+    // We don't have any custom arguments except the variable length refs list.
+    assert(sizeof(struct msg_window_dump_grant_refs) == 0);
+
+    if (untrusted_wd_body_len > MAX_GRANT_REFS_COUNT * SIZEOF_GRANT_REF ||
+        untrusted_wd_body_len % SIZEOF_GRANT_REF != 0) {
+        fprintf(stderr, "handle_msg_window_dump_grant_refs: "
+                "invalid body size(%zu)\n",
+                untrusted_wd_body_len);
+        exit(1);
+    }
+    refs_len = untrusted_wd_body_len;
+
+    *shm_args_len = sizeof(struct shm_args_hdr) +
+                    sizeof(struct shm_args_grant_refs) +
+                    refs_len;
+    *shm_args = calloc(1, *shm_args_len);
+    if (*shm_args == NULL) {
+        perror("malloc failed");
+        exit(1);
+    }
+    shm_args_grant = (struct shm_args_grant_refs *) (
+            ((uint8_t *) *shm_args) + sizeof(struct shm_args_hdr));
+    (*shm_args)->type = SHM_ARGS_TYPE_GRANT_REFS;
+    shm_args_grant->count = refs_len / SIZEOF_GRANT_REF;
+    *img_data_size = shm_args_grant->count * 4096;
+
+    read_data(g->vchan, (char *) &shm_args_grant->refs[0], refs_len);
+}
+
+static void handle_window_dump_body(Ghandles *g, uint32_t wd_type, size_t
+        untrusted_wd_body_len, size_t *img_data_size, struct shm_args_hdr
+        **shm_args, size_t *shm_args_len) {
+    switch (wd_type) {
+        case WINDOW_DUMP_TYPE_GRANT_REFS:
+            handle_window_dump_body_grant_refs(g, untrusted_wd_body_len,
+                    img_data_size, shm_args, shm_args_len);
+            break;
+        default:
+            // not reachable
+            assert(false);
+    }
+}
+
+
+static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
+                               uint32_t untrusted_len) {
+    struct msg_window_dump_hdr untrusted_wd_hdr;
+    size_t untrusted_wd_body_len;
+    uint32_t wd_type;
+    static char dummybuf[100];
+    size_t img_data_size = 0;
+    struct shm_args_hdr *shm_args = NULL;
+    size_t shm_args_len = 0;
+
+    if (vm_window->image)
+        release_mapped_mfns(g, vm_window);
+
+    VERIFY(untrusted_len >= MSG_WINDOW_DUMP_HDR_LEN);
+    read_struct(g->vchan, untrusted_wd_hdr);
+    untrusted_wd_body_len = untrusted_len - MSG_WINDOW_DUMP_HDR_LEN;
+
+    if (g->log_level > 1)
+        fprintf(stderr, "MSG_WINDOW_DUMP for 0x%lx(0x%lx): %ux%u, type = %u\n",
+                vm_window->local_winid, vm_window->remote_winid,
+                untrusted_wd_hdr.width, untrusted_wd_hdr.height,
+                untrusted_wd_hdr.type);
+
+    switch (untrusted_wd_hdr.type) {
+    case WINDOW_DUMP_TYPE_GRANT_REFS:
+        break;
+    default:
+        fprintf(stderr, "unknown window dump type %u\n",
+                untrusted_wd_hdr.type);
+        exit(1);
+    }
+    wd_type = untrusted_wd_hdr.type;
+    VERIFY((int) untrusted_wd_hdr.width >= 0
+           && (int) untrusted_wd_hdr.height >= 0);
+    VERIFY((int) untrusted_wd_hdr.width <= MAX_WINDOW_WIDTH
+           && (int) untrusted_wd_hdr.height <= MAX_WINDOW_HEIGHT);
+    vm_window->image_width = untrusted_wd_hdr.width;
+    vm_window->image_height = untrusted_wd_hdr.height;
+    //VERIFY(untrusted_wd_hdr.bpp == 24);
+
+    handle_window_dump_body(g, wd_type, untrusted_wd_body_len, &img_data_size,
+                            &shm_args, &shm_args_len);
+
+    if (g->invisible)
+        return;
+
+    // temporary shmid; see shmoverride/README
+    vm_window->shminfo.shmid =
+        shmget(IPC_PRIVATE, 1, IPC_CREAT | 0700);
+    if (vm_window->shminfo.shmid < 0) {
+        perror("shmget failed");
+        exit(1);
+    }
+
+    vm_window->image =
+        XShmCreateImage(g->display,
+                DefaultVisual(g->display, g->screen), 24,
+                ZPixmap, NULL, &vm_window->shminfo,
+                vm_window->image_width,
+                vm_window->image_height);
+    if (!vm_window->image) {
+        perror("XShmCreateImage");
+        exit(1);
+    }
+    /* the below sanity check must be AFTER XShmCreateImage, it uses vm_window->image */
+    if (img_data_size < (size_t) (vm_window->image->bytes_per_line *
+                                  vm_window->image->height)) {
+        fprintf(stderr,
+            "handle_window_dump: got too small image data size (%zu)"
+            " for window 0x%lx (remote 0x%lx)\n",
+            img_data_size, vm_window->local_winid, vm_window->remote_winid);
+        exit(1);
+    }
+
+    shm_args->domid = g->domid;
+    shm_args->shmid = vm_window->shminfo.shmid;
+    inter_appviewer_lock(g, 1);
+    memcpy(g->shm_args, shm_args, shm_args_len);
+    if (shm_args_len < SHM_ARGS_SIZE) {
+        memset(((uint8_t *) g->shm_args) + shm_args_len, 0,
+               SHM_ARGS_SIZE - shm_args_len);
+    }
+    vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
+    vm_window->shminfo.readOnly = True;
+    XSync(g->display, False);
+    if (!XShmAttach(g->display, &vm_window->shminfo)) {
+        fprintf(stderr,
+            "XShmAttach failed for window 0x%lx(remote 0x%lx)\n",
+            vm_window->local_winid,
+            vm_window->remote_winid);
+    }
+    XSync(g->display, False);
+    g->shm_args->shmid = g->cmd_shmid;
+    inter_appviewer_lock(g, 0);
+    free(shm_args);
 }
 
 /* VM message dispatcher */
@@ -2445,6 +2607,9 @@ static void handle_message(Ghandles * g)
         break;
     case MSG_WINDOW_FLAGS:
         handle_wmflags(g, vm_window);
+        break;
+    case MSG_WINDOW_DUMP:
+        handle_window_dump(g, vm_window, untrusted_hdr.untrusted_len);
         break;
     default:
         fprintf(stderr, "got unknown msg type %d\n", type);
@@ -3269,8 +3434,8 @@ int main(int argc, char **argv)
         }
         fscanf(f, "%d", &ghandles.cmd_shmid);
         fclose(f);
-        ghandles.shmcmd = shmat(ghandles.cmd_shmid, NULL, 0);
-        if (ghandles.shmcmd == (void *) (-1UL)) {
+        ghandles.shm_args = shmat(ghandles.cmd_shmid, NULL, 0);
+        if (ghandles.shm_args == (void *) (-1UL)) {
             fprintf(stderr,
                     "Invalid or stale shm id 0x%x in %s\n",
                     ghandles.cmd_shmid,
