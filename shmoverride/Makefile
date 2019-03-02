@@ -27,7 +27,8 @@ CC=gcc
 all: shmoverride.so X-wrapper-qubes
 
 shmoverride.so: shmoverride.o list.o
-	gcc -shared -o shmoverride.so shmoverride.o list.o -ldl -lxenctrl
+	gcc -shared -o shmoverride.so \
+		shmoverride.o list.o -ldl -lxenctrl -lxengnttab
 
 list.o: ../common/list.c
 	$(CC) $(CFLAGS) -shared -c -o list.o ../common/list.c
