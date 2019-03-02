@@ -19,27 +19,17 @@
 #
 #
 
-RPMS_DIR=rpm/
-VERSION := $(shell cat version)
 MANDIR ?= /usr/share/man
 LIBDIR ?= /usr/lib64
 
-DIST_DOM0 ?= fc13
-
 help:
 	@echo "Qubes GUI main Makefile:" ;\
-	    echo "make rpms                 <--- make all rpms and sign them";\
-	    echo "make rpms-dom0            <--- create binary rpms for dom0"; \
-	    echo "make rpms-vm              <--- create binary rpms for appvm"; \
-	    echo; \
+	    echo "make all                  <--- build binaries";\
+	    echo "make all                  <--- install files into \$$DESTDIR";\
 	    echo "make clean                <--- clean all the binary files";\
-	    echo "make update-repo-current  <-- copy newly generated rpms to qubes yum repo";\
-	    echo "make update-repo-current-testing <-- same, but for -current-testing repo";\
-	    echo "make update-repo-unstable <-- same, but to -testing repo";\
-	    echo "make update-repo-installer -- copy dom0 rpms to installer repo"
 	    @exit 0;
 
-dom0: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X-wrapper-qubes \
+all: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X-wrapper-qubes \
 		pulse/pacat-simple-vchan screen-layout-handler/watch-screen-layout-changes
 
 gui-daemon/qubes-guid:
@@ -71,16 +61,6 @@ install:
 	install -D screen-layout-handler/watch-screen-layout-changes $(DESTDIR)/usr/libexec/qubes/watch-screen-layout-changes
 	install -D screen-layout-handler/qubes-screen-layout-watches.desktop $(DESTDIR)/etc/xdg/autostart/qubes-screen-layout-watches.desktop
 	$(MAKE) -C window-icon-updater install
-
-rpms: rpms-dom0 rpms-vm
-	rpm --addsign rpm/x86_64/*$(VERSION)*.rpm
-	(if [ -d rpm/i686 ] ; then rpm --addsign rpm/i686/*$(VERSION)*.rpm; fi)
-
-rpms-vm:
-	rpmbuild --define "_rpmdir rpm/" -bb rpm_spec/gui-vm.spec
-
-rpms-dom0:
-	rpmbuild --define "_rpmdir rpm/" -bb rpm_spec/gui-dom0.spec
 
 tar:
 	git archive --format=tar --prefix=qubes-gui/ HEAD -o qubes-gui.tar
