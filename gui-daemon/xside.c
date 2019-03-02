@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <err.h>
 #include <sys/shm.h>
 #include <sys/file.h>
 #include <sys/stat.h>
@@ -85,6 +86,8 @@ static Ghandles ghandles;
 #ifndef max
 #define max(x,y) ((x)<(y)?(y):(x))
 #endif
+
+#define ignore_result(x) { __typeof__(x) __attribute__((unused)) _ignore=(x);}
 
 /* XShmAttach return value inform only about successful queueing the operation,
  * not its execution. Errors during XShmAttach are reported asynchronously with
@@ -492,7 +495,10 @@ static Time get_clipboard_file_xevent_timestamp() {
         perror("open " QUBES_CLIPBOARD_FILENAME ".xevent");
         return 0;
     }
-    fscanf(file, "%lu", &timestamp);
+    if (fscanf(file, "%lu", &timestamp) < 1) {
+        fprintf(stderr, "Failed to load " QUBES_CLIPBOARD_FILENAME " file (empty?)\n");
+        timestamp = 0;
+    }
     fclose(file);
     return timestamp;
 }
@@ -576,7 +582,10 @@ static void get_qubes_clipboard(Ghandles *g, char **data, int *len)
     }
 close_done:
     fclose(file);
-    truncate(QUBES_CLIPBOARD_FILENAME, 0);
+    if (truncate(QUBES_CLIPBOARD_FILENAME, 0)) {
+        perror("failed to truncate " QUBES_CLIPBOARD_FILENAME ", trying unlink instead\n");
+        unlink(QUBES_CLIPBOARD_FILENAME);
+    }
     save_clipboard_source_vmname("");
 }
 
@@ -655,7 +664,10 @@ static int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
         save_clipboard_source_vmname(g->vmname);
         save_clipboard_file_xevent_timestamp(g->clipboard_xevent_time);
     } else {
-        truncate(QUBES_CLIPBOARD_FILENAME, 0);
+        if (truncate(QUBES_CLIPBOARD_FILENAME, 0)) {
+            perror("failed to truncate " QUBES_CLIPBOARD_FILENAME ", trying unlink instead\n");
+            unlink(QUBES_CLIPBOARD_FILENAME);
+        }
         save_clipboard_source_vmname("");
     }
 
@@ -669,7 +681,10 @@ static int paste_qubes_clipboard_using_qrexec(Ghandles * g) {
 
     ret = run_clipboard_rpc(g, CLIPBOARD_PASTE);
     if (ret) {
-        truncate(QUBES_CLIPBOARD_FILENAME, 0);
+        if (truncate(QUBES_CLIPBOARD_FILENAME, 0)) {
+            perror("failed to truncate " QUBES_CLIPBOARD_FILENAME ", trying unlink instead\n");
+            unlink(QUBES_CLIPBOARD_FILENAME);
+        }
         save_clipboard_source_vmname("");
     }
 
@@ -2802,7 +2817,7 @@ static void get_protocol_version(Ghandles * g)
                 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
                 g->use_kdialog ? "--sorry" : "--error --text ",
                 version_major, version_minor, g->vmname);
-    system(message);
+    ignore_result(system(message));
     exit(1);
 }
 
@@ -3325,11 +3340,12 @@ static void set_alive_flag(int domid)
     int fd = open(guid_fs_flag("running", domid),
               O_WRONLY | O_CREAT | O_NOFOLLOW, 0600);
     snprintf(pid_buf, sizeof(pid_buf), "%d\n", getpid());
-    write(fd, pid_buf, strlen(pid_buf));
+    if (write(fd, pid_buf, strlen(pid_buf)) < (int)strlen(pid_buf)) {
+        warn("failed to write pid file %s", guid_fs_flag("running", domid));
+    }
     close(fd);
     unlink(guid_fs_flag("booting", domid));
     close(guid_boot_lock);
-
 }
 
 /* remove guid_running file at exit */
@@ -3464,7 +3480,12 @@ int main(int argc, char **argv)
                     shmid_filename);
             exit(1);
         }
-        fscanf(f, "%d", &ghandles.cmd_shmid);
+        if (fscanf(f, "%d", &ghandles.cmd_shmid) < 1) {
+            fprintf(stderr,
+                    "Failed to load %s; run X with preloaded shmoverride\n",
+                    shmid_filename);
+            exit(1);
+        }
         fclose(f);
         ghandles.shm_args = shmat(ghandles.cmd_shmid, NULL, 0);
         if (ghandles.shm_args == (void *) (-1UL)) {
@@ -3519,7 +3540,10 @@ int main(int argc, char **argv)
             close(logfd);
     }
 
-    chdir("/var/run/qubes");
+    if (chdir("/var/run/qubes")) {
+        perror("chdir /var/run/qubes");
+        exit(1);
+    }
     errno = 0;
     if (!ghandles.nofork && setsid() < 0) {
         perror("setsid()");
@@ -3553,7 +3577,8 @@ int main(int argc, char **argv)
     signal(SIGPIPE, SIG_IGN);
 
     if (!ghandles.nofork) {
-        write(pipe_notify[1], "Q", 1);    // let the parent know we connected sucessfully
+        // let the parent know we connected sucessfully
+        ignore_result(write(pipe_notify[1], "Q", 1));
         close (pipe_notify[1]);
     }
 
@@ -3577,7 +3602,7 @@ int main(int argc, char **argv)
              ghandles.vmname) < sizeof(cmd_tmp)) {
         /* intentionally ignore return value - don't fail gui-daemon if only
          * keyboard layout fails */
-        system(cmd_tmp);
+        ignore_result(system(cmd_tmp));
     }
     vchan_register_at_eof(restart_guid);
 
