@@ -1,0 +1,3 @@
+usr/bin/pacat-simple-vchan
+usr/share/dbus-1/interfaces/org.qubesos.Audio.xml
+etc/dbus-1/system.d/org.qubesos.Audio.conf

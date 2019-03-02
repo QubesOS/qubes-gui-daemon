@@ -1,0 +1,5 @@
+qubes-gui-daemon (4.1.0-1) unstable; urgency=medium
+
+  * Initial packaging
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Sat, 02 Mar 2019 14:57:16 +0100
