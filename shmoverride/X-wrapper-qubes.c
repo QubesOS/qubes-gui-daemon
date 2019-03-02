@@ -24,7 +24,9 @@
 #include <unistd.h>
 #include <stdio.h>
 
+#ifndef SHMOVERRIDE_LIB_PATH
 #define SHMOVERRIDE_LIB_PATH "shmoverride.so"
+#endif
 #define XORG_PATH "/usr/bin/Xorg"
 #define XORG_PATH_NEW "/usr/libexec/Xorg.bin"
 #define XORG_PATH_NEWER "/usr/libexec/Xorg" /* Fedora 23 */

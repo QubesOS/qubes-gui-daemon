@@ -54,7 +54,7 @@ install:
 	install -D -m 0644 pulse/pacat-control-api.xml $(DESTDIR)/usr/share/dbus-1/interfaces/org.qubesos.Audio.xml
 	install -D -m 0644 pulse/org.qubesos.Audio.conf $(DESTDIR)/etc/dbus-1/system.d/org.qubesos.Audio.conf
 	install -D shmoverride/X-wrapper-qubes $(DESTDIR)/usr/bin/X-wrapper-qubes
-	install -D shmoverride/shmoverride.so $(DESTDIR)$(LIBDIR)/shmoverride.so
+	install -D shmoverride/shmoverride.so $(DESTDIR)$(LIBDIR)/qubes-gui-daemon/shmoverride.so
 	install -D -m 0644 gui-daemon/guid.conf $(DESTDIR)/etc/qubes/guid.conf
 	install -D gui-daemon/qubes-localgroup.sh $(DESTDIR)/etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
 	install -D -m 0644 gui-daemon/qubes.ClipboardPaste.policy $(DESTDIR)/etc/qubes-rpc/policy/qubes.ClipboardPaste

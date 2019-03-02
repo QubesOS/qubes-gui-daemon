@@ -114,7 +114,7 @@ rm -f %{name}-%{version}
 %{_mandir}/man1/qubes-guid.1.gz
 /usr/bin/pacat-simple-vchan
 /usr/bin/X-wrapper-qubes
-%{_libdir}/shmoverride.so
+%{_libdir}/qubes-gui-daemon/shmoverride.so
 %config(noreplace) %{_sysconfdir}/qubes/guid.conf
 /etc/xdg/autostart/qubes-screen-layout-watches.desktop
 /etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
