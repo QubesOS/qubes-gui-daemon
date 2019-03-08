@@ -859,9 +859,9 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
                 fprintf(stderr, "secure paste\n");
             get_qubes_clipboard(g, &data, &len);
             if (len > 0) {
-                /* MSG_CLIPBOARD_DATA uses the window field to pass the length
-                   of the blob */
-                hdr.window = len;
+                /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
+                   of the blob, be aware when working with old implementations. */
+                hdr.window = remote_winid;
                 hdr.untrusted_len = len;
                 real_write_message(g->vchan, (char *) &hdr, sizeof(hdr),
                         data, len);
@@ -2591,8 +2591,7 @@ static void handle_message(Ghandles * g)
     /* sanitized msg type */
     type = untrusted_hdr.type;
     if (type == MSG_CLIPBOARD_DATA) {
-        /* window field has special meaning here */
-        handle_clipboard_data(g, untrusted_hdr.window);
+        handle_clipboard_data(g, untrusted_hdr.untrusted_len);
         return;
     }
     l = list_lookup(g->remote2local, untrusted_hdr.window);
