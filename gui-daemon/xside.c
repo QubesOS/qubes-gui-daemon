@@ -861,7 +861,10 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
             if (len > 0) {
                 /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
                    of the blob, be aware when working with old implementations. */
-                hdr.window = remote_winid;
+                if (g->agent_version < 0x00010002)
+                    hdr.window = len;
+                else
+                    hdr.window = remote_winid;
                 hdr.untrusted_len = len;
                 real_write_message(g->vchan, (char *) &hdr, sizeof(hdr),
                         data, len);
