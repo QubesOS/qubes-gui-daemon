@@ -2799,8 +2799,10 @@ static void get_protocol_version(Ghandles * g)
     version_minor = untrusted_version & 0xffff;
 
     if (version_major == QUBES_GUID_PROTOCOL_VERSION_MAJOR &&
-            version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
+            version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR) {
+        g->agent_version = version_major << 16 | version_minor;
         return;
+    }
     if (version_major < QUBES_GUID_PROTOCOL_VERSION_MAJOR)
         snprintf(message, sizeof message, "%s %s \""
                 "The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"

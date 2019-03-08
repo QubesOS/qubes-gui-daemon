@@ -148,6 +148,7 @@ struct _global_handles {
     char vmname[32];    /* name of VM */
     int domid;        /* Xen domain id (GUI) */
     int target_domid;        /* Xen domain id (VM) - can differ from domid when GUI is stubdom */
+    uint32_t agent_version;  /* gui-agent (protocol) version */
     char *cmdline_color;    /* color of frame */
     uint32_t label_color_rgb; /* color of the frame in RGB */
     char *cmdline_icon;    /* icon hint for WM */
