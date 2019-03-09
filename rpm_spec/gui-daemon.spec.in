@@ -22,9 +22,6 @@
 #
 #
 
-
-%{!?python_sitearch: %define python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)")}
-
 Name:		qubes-gui-daemon
 Version:	@VERSION@
 Release:	1%{dist}
@@ -40,11 +37,11 @@ Requires:	service(graphical-login)
 Requires:	pulseaudio
 Requires:	libconfig
 Requires:	qubes-libvchan-@BACKEND_VMM@
-Requires:   python3-xcffib
+Requires:   python%{python3_pkgversion}-xcffib
 Requires:   qubes-utils >= 3.1.0
-Requires:   python3-pydbus
+Requires:   python%{python3_pkgversion}-pydbus
 
-BuildRequires:  python3-devel
+BuildRequires:  python%{python3_pkgversion}-devel
 BuildRequires:	pulseaudio-libs-devel
 BuildRequires:	libXt-devel
 BuildRequires:	libXext-devel
@@ -72,7 +69,7 @@ Summary:    Dom0 part of Qubes GUI
 # dependency should be dropped
 Requires:   qubes-gui-daemon
 Requires:	qubes-core-dom0 >= 1.3.14
-Requires:   python3-setuptools
+Requires:   python%{python3_pkgversion}-setuptools
 
 
 %description -n qubes-gui-dom0
