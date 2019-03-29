@@ -1,3 +1,17 @@
+qubes-gui-daemon (4.1.1-1) unstable; urgency=medium
+
+  [ Marek Marczykowski-Górecki ]
+  * xside: save agent protocol version
+
+  [ Your Name ]
+  * CLIPBOARD_DATA: fix sending of window id when pasting to messages.
+
+  [ Marek Marczykowski-Górecki ]
+  * xside: send old MSG_CLIPBOARD_DATA if agent is old
+  * rpm: use %{python3_pkgversion} to make it CentOS compatible
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 29 Mar 2019 01:00:07 +0100
+
 qubes-gui-daemon (4.1.0-1) unstable; urgency=medium
 
   * Initial packaging
