@@ -21,6 +21,7 @@
 
 MANDIR ?= /usr/share/man
 LIBDIR ?= /usr/lib64
+export LIBDIR
 
 help:
 	@echo "Qubes GUI main Makefile:" ;\
