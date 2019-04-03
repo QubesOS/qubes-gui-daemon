@@ -16,7 +16,7 @@ Build-Depends:
  libconfig-dev,
  libpng-dev,
  libnotify-dev,
- libdbus-glib-1-dev,
+ qubesdb-dev,
  help2man
 Standards-Version: 4.1.3
 Homepage: https://qubes-os.org/

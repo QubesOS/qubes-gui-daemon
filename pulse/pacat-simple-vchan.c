@@ -38,6 +38,7 @@
  *
  */
 
+#define _GNU_SOURCE
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -54,6 +55,8 @@
 #include <assert.h>
 #include <sys/time.h>
 #include <sys/file.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include <pulse/pulseaudio.h>
 #include <pulse/error.h>
@@ -63,7 +66,6 @@
 
 #include "pacat-simple-vchan.h"
 #include "qubes-vchan-sink.h"
-#include "pacat-control-object.h"
 
 #define CLEAR_LINE "\x1B[K"
 #ifdef __GNUC__
@@ -652,6 +654,153 @@ static void check_vchan_eof_timer(pa_mainloop_api*a, pa_time_event* e,
     a->time_restart(e, &restart_tv);
 }
 
+static void control_socket_callback(pa_mainloop_api *UNUSED(a),
+        pa_io_event *UNUSED(e), int fd, pa_io_event_flags_t f,
+        void *userdata) {
+    struct userdata *u = userdata;
+    int client_fd;
+    char command_buffer[32];
+    size_t command_len = 0;
+    int ret;
+    int new_rec_allowed = -1;
+
+    if (!(f & PA_IO_EVENT_INPUT))
+        return;
+
+    client_fd = accept(fd, NULL, NULL);
+    if (client_fd < 0) {
+        pacat_log("Accept control connection failed: %s", strerror(errno));
+        return;
+    }
+
+    /* read until either:
+     *  - end of command (\n) is found
+     *  - EOF
+     */
+    do {
+        ret = read(client_fd, command_buffer+command_len, sizeof(command_buffer)-command_len);
+        if (ret < 0) {
+            pacat_log("Control client read failed: %s", strerror(errno));
+        }
+        command_len += ret;
+        if (ret == 0)
+            break;
+    } while (!memchr(command_buffer, '\n', command_len));
+
+    if (strncmp(command_buffer, "audio-input 0\n", command_len) == 0) {
+        new_rec_allowed = 0;
+    } else if (strncmp(command_buffer, "audio-input 1\n", command_len) == 0) {
+        new_rec_allowed = 1;
+    }
+    if (new_rec_allowed != -1) {
+        g_mutex_lock(&u->prop_mutex);
+        u->rec_allowed = new_rec_allowed;
+        pacat_log("Setting audio-input to %s", u->rec_allowed ? "enabled" : "disabled");
+        if (u->rec_allowed && u->rec_requested) {
+            pacat_log("Recording start");
+            pa_stream_cork(u->rec_stream, 0, NULL, NULL);
+        } else if (!u->rec_allowed &&
+                (u->rec_requested || !pa_stream_is_corked(u->rec_stream))) {
+            pacat_log("Recording stop");
+            pa_stream_cork(u->rec_stream, 1, NULL, NULL);
+        }
+        g_mutex_unlock(&u->prop_mutex);
+        if (!qdb_write(u->qdb, u->qdb_path, new_rec_allowed ? "1" : "0", 1)) {
+            pacat_log("Failed to write QubesDB %s: %s", u->qdb_path, strerror(errno));
+        }
+    }
+    /* accept only one command per connection */
+    close(client_fd);
+}
+
+static int setup_control(struct userdata *u) {
+    int socket_fd = -1;
+    struct sockaddr_un addr;
+
+    socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (socket_fd == -1) {
+        pacat_log("socket failed: %s", strerror(errno));
+        goto fail;
+    }
+
+    if (snprintf(addr.sun_path, sizeof(addr.sun_path),
+                "/var/run/qubes/audio-control.%s", u->name)
+            >= (int)sizeof(addr.sun_path)) {
+        pacat_log("VM name too long");
+        goto fail;
+    }
+
+    /* ignore result */
+    unlink(addr.sun_path);
+
+    if (bind(socket_fd, &addr, sizeof(addr)) == -1) {
+        pacat_log("bind to %s failed: %s", addr.sun_path, strerror(errno));
+        goto fail;
+    }
+
+    if (listen(socket_fd, 5) == -1) {
+        pacat_log("listen on %s failed: %s", addr.sun_path, strerror(errno));
+        goto fail;
+    }
+
+    u->control_socket_event = u->mainloop_api->io_new(u->mainloop_api,
+            socket_fd, PA_IO_EVENT_INPUT, control_socket_callback, u);
+    if (!u->control_socket_event) {
+        pacat_log("io_new control failed");
+        goto fail;
+    }
+
+    u->qdb = qdb_open(NULL);
+    if (!u->qdb) {
+        pacat_log("qdb_open failed: %s", strerror(errno));
+        goto fail;
+    }
+
+    if (asprintf(&u->qdb_path, "/audio-input/%s", u->name) < 0) {
+        pacat_log("QubesDB path setup failed: %s", strerror(errno));
+        u->qdb_path = NULL;
+        goto fail;
+    }
+
+    if (!qdb_write(u->qdb, u->qdb_path, "0", 1)) {
+        pacat_log("qdb_write failed: %s", strerror(errno));
+        goto fail;
+    }
+
+    u->control_socket_fd = socket_fd;
+
+    return 0;
+
+fail:
+    if (u->qdb_path)
+        free(u->qdb_path);
+    u->qdb_path = NULL;
+    if (u->qdb)
+        qdb_close(u->qdb);
+    u->qdb = NULL;
+    if (u->control_socket_event)
+        u->mainloop_api->io_free(u->control_socket_event);
+    u->control_socket_event = NULL;
+    if (socket_fd >= 0)
+        close(socket_fd);
+
+    return 1;
+}
+
+static void control_cleanup(struct userdata *u) {
+
+    if (u->control_socket_event)
+        u->mainloop_api->io_free(u->control_socket_event);
+    if (u->control_socket_fd > 0)
+        close(u->control_socket_fd);
+    if (u->qdb && u->qdb_path)
+        qdb_rm(u->qdb, u->qdb_path);
+    if (u->qdb_path)
+        free(u->qdb_path);
+    if (u->qdb)
+        qdb_close(u->qdb);
+}
+
 int main(int argc, char *argv[])
 {
     struct timeval tv;
@@ -776,8 +925,8 @@ int main(int argc, char *argv[])
         goto quit;
     }
 
-    if (dbus_init(&u) < 0) {
-        pacat_log("dbus initialization failed");
+    if (setup_control(&u) < 0) {
+        pacat_log("control socket initialization failed");
         goto quit;
     }
 
@@ -787,14 +936,9 @@ int main(int argc, char *argv[])
     g_main_loop_run (u.loop);
 
 quit:
-    if (u.pacat_control) {
-        assert(u.dbus);
-        dbus_g_connection_unregister_g_object(u.dbus, u.pacat_control);
-        g_object_unref(u.pacat_control);
+    if (u.control_socket_event) {
+        control_cleanup(&u);
     }
-
-    if (u.dbus)
-        dbus_g_connection_unref(u.dbus);
 
     if (u.play_stream)
         pa_stream_unref(u.play_stream);

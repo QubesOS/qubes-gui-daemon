@@ -3,8 +3,8 @@
 
 #include <pulse/pulseaudio.h>
 #include <glib.h>
-#include <dbus/dbus-glib-bindings.h>
 #include <libvchan.h>
+#include <qubesdb-client.h>
 
 #define PACAT_PIDFILE_PATH_TPL "/var/run/qubes/pacat.%d"
 
@@ -29,9 +29,11 @@ struct userdata {
 
     int rec_allowed;
     int rec_requested;
-    DBusGConnection *dbus;
-    GObject *pacat_control;
     GMutex prop_mutex;
+    qdb_handle_t qdb;
+    char *qdb_path;
+    int control_socket_fd;
+    pa_io_event* control_socket_event;
 };
 
 void pacat_log(const char *fmt, ...);

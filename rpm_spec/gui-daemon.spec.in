@@ -51,7 +51,7 @@ BuildRequires:	libconfig-devel
 BuildRequires:	libpng-devel
 BuildRequires:	libnotify-devel
 BuildRequires:	xen-devel
-BuildRequires:	dbus-glib-devel
+BuildRequires:	qubes-db-devel
 BuildRequires:	help2man
 BuildRequires:	gcc
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
