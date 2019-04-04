@@ -52,6 +52,8 @@ install:
 	install -D gui-daemon/qubes-guid $(DESTDIR)/usr/bin/qubes-guid
 	install -m 0644 -D gui-daemon/qubes-guid.1 $(DESTDIR)$(MANDIR)/man1/qubes-guid.1
 	install -D pulse/pacat-simple-vchan $(DESTDIR)/usr/bin/pacat-simple-vchan
+	install -D pulse/qubes.AudioInputEnable $(DESTDIR)/etc/qubes-rpc/qubes.AudioInputEnable
+	install -D pulse/qubes.AudioInputDisable $(DESTDIR)/etc/qubes-rpc/qubes.AudioInputDisable
 	install -D shmoverride/X-wrapper-qubes $(DESTDIR)/usr/bin/X-wrapper-qubes
 	install -D shmoverride/shmoverride.so $(DESTDIR)$(LIBDIR)/qubes-gui-daemon/shmoverride.so
 	install -D -m 0644 gui-daemon/guid.conf $(DESTDIR)/etc/qubes/guid.conf

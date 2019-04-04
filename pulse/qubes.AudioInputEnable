@@ -1,0 +1,4 @@
+#!/bin/sh
+[ -n "$1" ] || exit 1
+control_socket="/var/run/qubes/audio-control.$1"
+echo "audio-input 1" | socat -u - "UNIX-CONNECT:$control_socket"

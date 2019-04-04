@@ -1,1 +1,3 @@
 usr/bin/pacat-simple-vchan
+etc/qubes-rpc/qubes.AudioInputEnable
+etc/qubes-rpc/qubes.AudioInputDisable
