@@ -20,8 +20,8 @@
 
 '''Microphone control extension'''
 
-import pydbus
-from gi.repository import GLib
+import asyncio
+import subprocess
 
 import qubes.devices
 import qubes.ext
@@ -38,7 +38,6 @@ class MicDeviceExtension(qubes.ext.Extension):
 
     def __init__(self):
         super(MicDeviceExtension, self).__init__()
-        self.bus = pydbus.SystemBus()
 
     def get_device(self, app):
         return MicDevice(app.domains[0], 'mic', 'Microphone')
@@ -76,18 +75,19 @@ class MicDeviceExtension(qubes.ext.Extension):
         if persistent is True:
             return
 
-        try:
-            mic_obj = self.bus.get('org.qubesos.Audio.' + vm.name,
-                '/org/qubesos/audio')
-        except GLib.Error:
-            # no user session bus, or can't access pacat-simple-vchan
+        audiovm = getattr(vm, 'audiovm', None)
+
+        if audiovm is None or not audiovm.is_running():
             return
 
-        if mic_obj.RecAllowed:
+        untrusted_audio_input = audiovm.untrusted_qdb.read(
+            '/audio-input/{}'.format(vm.name))
+        if untrusted_audio_input == b'1':
             # (device, options)
             yield (self.get_device(vm.app), {})
 
     @qubes.ext.handler('device-pre-attach:mic')
+    @asyncio.coroutine
     def on_device_pre_attach_mic(self, vm, event, device, options):
         '''Attach microphone to the VM'''
 
@@ -97,33 +97,44 @@ class MicDeviceExtension(qubes.ext.Extension):
             raise qubes.exc.QubesException(
                 'mic device does not support options')
 
-        try:
-            mic_obj = self.bus.get('org.qubesos.Audio.' + vm.name,
-                '/org/qubesos/audio')
-        except GLib.Error as err:
-            if 'org.freedesktop.DBus.Error.ServiceUnknown' in err.message:
-                raise qubes.exc.QubesVMError(vm,
-                    'Failed to attach microphone: '
-                    'pulseaudio agent not running in {}'.format(vm.name))
-            # no user session bus, or can't access pacat-simple-vchan
-            raise qubes.exc.QubesException(
-                'Failed to attach microphone: {}'.format(err))
+        audiovm = getattr(vm, 'audiovm', None)
 
-        mic_obj.RecAllowed = True
+        if audiovm is None:
+            raise qubes.exc.QubesException(
+                "VM {} has no AudioVM set".format(vm))
+            
+        if not audiovm.is_running():
+            raise qubes.exc.QubesVMNotRunningError(audiovm,
+                "Audio VM {} isn't running".format(audiovm))
+        try:
+            yield from audiovm.run_service_for_stdio(
+                'qubes.AudioInputEnable+{}'.format(vm.name))
+        except subprocess.CalledProcessError as e:
+            raise qubes.exc.QubesVMError(vm,
+                'Failed to attach audio input from {!s} to {!s}: '
+                'pulseaudio agent not running'.format(audiovm, vm))
 
     @qubes.ext.handler('device-pre-detach:mic')
+    @asyncio.coroutine
     def on_device_pre_detach_mic(self, vm, event, device):
-        '''Attach microphone to the VM'''
+        '''Detach microphone from the VM'''
 
         # there is only one microphone
         assert device == self.get_device(vm.app)
 
-        try:
-            mic_obj = self.bus.get('org.qubesos.Audio.' + vm.name,
-                '/org/qubesos/audio')
-        except GLib.Error as err:
-            # no user session bus, or can't access pacat-simple-vchan
-            raise qubes.exc.QubesException(
-                'Failed to attach microphone: {}'.format(err))
+        audiovm = getattr(vm, 'audiovm', None)
 
-        mic_obj.RecAllowed = False
+        if audiovm is None:
+            raise qubes.exc.QubesException(
+                "VM {} has no AudioVM set".format(vm))
+
+        if not audiovm.is_running():
+            raise qubes.exc.QubesVMNotRunningError(audiovm,
+                    "Audio VM {} isn't running".format(audiovm))
+        try:
+            yield from audiovm.run_service_for_stdio(
+                'qubes.AudioInputDisable+{}'.format(vm.name))
+        except subprocess.CalledProcessError as e:
+            raise qubes.exc.QubesVMError(vm,
+                'Failed to detach audio input from {!s} to {!s}: '
+                'pulseaudio agent not running'.format(audiovm, vm))

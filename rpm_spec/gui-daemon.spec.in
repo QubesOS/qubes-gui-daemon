@@ -38,7 +38,6 @@ Requires:	libconfig
 Requires:	qubes-libvchan-@BACKEND_VMM@
 Requires:   python%{python3_pkgversion}-xcffib
 Requires:   qubes-utils >= 3.1.0
-Requires:   python%{python3_pkgversion}-pydbus
 Requires:   qubes-core-qrexec >= 4.1.5
 Requires:   qubes-utils >= 4.1.4
 Requires:   socat
