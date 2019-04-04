@@ -105,6 +105,7 @@ policy files etc.
 %setup -q
 
 %build
+%{?set_build_flags}
 make clean
 make all BACKEND_VMM=@BACKEND_VMM@
 
