@@ -72,6 +72,7 @@ The Qubes GUI virtualization infrastructure that needs to be installed in Dom0.
 %setup -q
 
 %build
+%{?set_build_flags}
 make clean
 make all BACKEND_VMM=@BACKEND_VMM@
 
