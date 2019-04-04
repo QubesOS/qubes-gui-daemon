@@ -72,7 +72,7 @@ Requires:   qubes-gui-daemon
 # Pull also audio packages for easier upgrade
 Requires:   qubes-audio-daemon
 Requires:   qubes-audio-dom0
-Requires:	qubes-core-dom0 >= 1.3.14
+Requires:	qubes-core-dom0 >= 4.1.1
 Requires:   python%{python3_pkgversion}-setuptools
 
 %description -n qubes-gui-dom0
