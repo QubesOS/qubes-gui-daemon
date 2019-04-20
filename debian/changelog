@@ -1,3 +1,9 @@
+qubes-gui-daemon (4.1.2-1) wheezy; urgency=medium
+
+  * Fix setting shmoverride.so localtion
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Sat, 20 Apr 2019 18:16:14 +0200
+
 qubes-gui-daemon (4.1.1-1) unstable; urgency=medium
 
   [ Marek Marczykowski-Górecki ]
