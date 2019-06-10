@@ -613,7 +613,7 @@ int main(int argc, char *argv[])
                 domname = argv[i];
         }
     }
-    if (domid <= 0) { /* not-a-number returns 0 */
+    if (domid < 0) { /* not-a-number returns 0 */
         fprintf(stderr, "invalid domid\n");
         exit(1);
     }
