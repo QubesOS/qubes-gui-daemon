@@ -12,7 +12,7 @@ most OS from Linux/Xorg, Windows and MAcs.
 The config is defined by guid.conf. You can find information about GUI protocol
 [here](https://www.qubes-os.org/doc/gui/).
 
-![](./assets/qubes-components.png)
+![](https://www.qubes-os.org/attachment/wiki/posts/qubes-components.png)
 
 ## Building qubes-gui-daemon
 
