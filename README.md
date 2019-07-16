@@ -16,7 +16,9 @@ The config is defined by guid.conf. You can find information about GUI protocol
 
 ## Building qubes-gui-daemon
 
-make `gui-daemon`
+From `qubes-builder` run `make gui-daemon` for building the gui-daemon
+component. Alternatively you can `make all BACKEND_VMM=xen`, you should be
+installing dependecies manually in this case.
 
 ## What GUI Daemon has
 
