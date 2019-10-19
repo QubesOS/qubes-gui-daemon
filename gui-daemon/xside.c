@@ -3431,7 +3431,6 @@ int main(int argc, char **argv)
     char dbg_log_old[256];
     char shmid_filename[SHMID_FILENAME_LEN];
     int logfd;
-    char cmd_tmp[256];
     struct stat stat_buf;
     char *display_str;
     int display_num;
@@ -3597,19 +3596,7 @@ int main(int argc, char **argv)
 
 
     xfd = ConnectionNumber(ghandles.display);
-
-    /* provide keyboard map before VM Xserver starts */
-
-    /* cast return value to unsigned, so (unsigned)-1 > sizeof(cmd_tmp) */
-    if ((unsigned)snprintf(cmd_tmp, sizeof(cmd_tmp), "/usr/bin/qubesdb-write -d %s "
-             "/qubes-keyboard \"`/usr/bin/setxkbmap -print`\"",
-             ghandles.vmname) < sizeof(cmd_tmp)) {
-        /* intentionally ignore return value - don't fail gui-daemon if only
-         * keyboard layout fails */
-        ignore_result(system(cmd_tmp));
-    }
     vchan_register_at_eof(restart_guid);
-
     get_protocol_version(&ghandles);
     send_xconf(&ghandles);
 
