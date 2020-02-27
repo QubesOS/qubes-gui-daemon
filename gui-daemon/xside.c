@@ -2837,60 +2837,6 @@ static void release_all_mapped_mfns(void)
     }
 }
 
-/* start pulseaudio Dom0 proxy */
-static void exec_pacat(Ghandles * g)
-{
-    int i, fd, maxfiles;
-    pid_t pid;
-    char domid_txt[20];
-    char logname[80];
-    char old_logname[80];
-    struct rlimit rl;
-    struct stat stat_buf;
-    snprintf(domid_txt, sizeof domid_txt, "%d", g->domid);
-    snprintf(logname, sizeof logname, "/var/log/qubes/pacat.%s.log",
-         g->vmname);
-    snprintf(old_logname, sizeof old_logname, "/var/log/qubes/pacat.%s.log.old",
-         g->vmname);
-    if (stat(logname, &stat_buf) == 0) {
-       if (rename(logname, old_logname) < 0) {
-           perror("Old logfile rename");
-       }
-    }
-    switch (pid=fork()) {
-    case -1:
-        perror("fork pacat");
-        exit(1);
-    case 0:
-        maxfiles = getdtablesize();
-        if (maxfiles < 0) {
-            if (getrlimit(RLIMIT_NOFILE, &rl) == 0)
-                maxfiles = rl.rlim_cur;
-            else
-                maxfiles = 256;
-        }
-        for (i = 0; i < maxfiles; i++)
-            close(i);
-        fd = open("/dev/null", O_RDWR); /* stdin */
-        dup2(fd, 1); /* stdout */
-        umask(0007);
-        fd = open(logname, O_WRONLY | O_CREAT | O_TRUNC, 0640); /* stderr */
-        umask(0077);
-        if (g->audio_low_latency) {
-            execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
-                    "-l", domid_txt, g->vmname, NULL);
-        } else {
-            execl("/usr/bin/pacat-simple-vchan", "pacat-simple-vchan",
-                    domid_txt, g->vmname, NULL);
-        }
-        perror("execl");
-        _exit(1);
-    default:
-        g->pulseaudio_pid = pid;
-    }
-}
-
-/* send configuration parameters of X server to VM */
 static void send_xconf(Ghandles * g)
 {
     struct msg_xconf xconf;
@@ -3005,7 +2951,6 @@ struct option longopts[] = {
     { "background", no_argument, NULL, 'n' },
     { "invisible", no_argument, NULL, 'I' },
     { "qrexec-for-clipboard", no_argument, NULL, 'Q' },
-    { "audio-low-latency", no_argument, NULL, 'a' },
     { "foreground", no_argument, NULL, 'f' },
     { "kill-on-connect", required_argument, NULL, 'K' },
     { "prop", required_argument, NULL, 'p' },
@@ -3032,7 +2977,6 @@ static void usage(FILE *stream)
     fprintf(stream, " --icon=ICON, -i ICON\tIcon name (without suffix), or full icon path\n");
     fprintf(stream, " --qrexec-for-clipboard, -Q\tforce usage of Qrexec for clipboard operations\n");
     fprintf(stream, " --background, -n\tdo not wait for agent connection\n");
-    fprintf(stream, " --audio-low-latency, -a\tlow-latency audio mode\n");
     fprintf(stream, " --foreground, -f\tdo not fork into background\n");
     fprintf(stream, " --invisible, -I\trun in \"invisible\" mode - do not show any VM window\n");
     fprintf(stream, " --kill-on-connect=PID, -K PID\twhen established connection to VM agent, send SIGUSR1 to given pid (ignored when -f set)\n");
@@ -3202,9 +3146,6 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 
     while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
         switch (opt) {
-        case 'a':
-            g->audio_low_latency = 1;
-            break;
         case 'd':
             g->domid = atoi(optarg);
             break;
@@ -3297,7 +3238,6 @@ static void load_default_config_values(Ghandles * g)
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
     g->startup_timeout = 45;
-    g->audio_low_latency = 1;
     g->trayicon_mode = TRAY_TINT;
     g->trayicon_border = 0;
     g->trayicon_tint_reduce_saturation = 0;
@@ -3383,11 +3323,6 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
     if ((setting =
          config_setting_get_member(group, "override_redirect_protection"))) {
         g->override_redirect_protection = config_setting_get_bool(setting);
-    }
-
-    if ((setting =
-         config_setting_get_member(group, "audio_low_latency"))) {
-        g->audio_low_latency = config_setting_get_bool(setting);
     }
 
     if ((setting =
@@ -3481,26 +3416,6 @@ static void unset_alive_flag(void)
     unlink(guid_fs_flag("running", ghandles.domid));
 }
 
-static void kill_pacat(void) {
-    pid_t pid = ghandles.pulseaudio_pid;
-    if (pid > 0) {
-        kill(pid, SIGTERM);
-    }
-}
-
-static void wait_for_pacat(int UNUSED(signum)) {
-    int status;
-
-    if (ghandles.pulseaudio_pid > 0) {
-        if (waitpid(ghandles.pulseaudio_pid, &status, WNOHANG) > 0) {
-            ghandles.pulseaudio_pid = -1;
-            if (status != 0 && ghandles.log_level > 0) {
-                fprintf(stderr, "pacat exited with %d status\n", status);
-            }
-        }
-    }
-}
-
 void vchan_close()
 {
     libvchan_close(ghandles.vchan);
@@ -3531,8 +3446,6 @@ static void get_boot_lock(int domid)
 static void cleanup() {
     release_all_mapped_mfns();
     XCloseDisplay(ghandles.display);
-    kill_pacat();
-    wait_for_pacat(SIGCHLD);
     unset_alive_flag();
     close(ghandles.inter_appviewer_lock_fd);
 }
@@ -3685,9 +3598,6 @@ int main(int argc, char **argv)
         exit(1);
     }
     atexit(vchan_close);
-    signal(SIGCHLD, wait_for_pacat);
-    exec_pacat(&ghandles);
-    atexit(kill_pacat);
     /* drop root privileges */
     if (setgid(getgid()) < 0) {
         perror("setgid()");
