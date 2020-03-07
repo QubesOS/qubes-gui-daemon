@@ -269,7 +269,7 @@ void tint_tray_and_update(Ghandles *g, struct windowdata *vm_window,
         }
     }
     XPutImage(g->display, vm_window->local_winid,
-            g->context, image, x, x, x, x, w, h);
+            g->context, image, 0, 0, x, y, w, h);
     XDestroyImage(image);
     XFreePixmap(g->display, pixmap);
 }
