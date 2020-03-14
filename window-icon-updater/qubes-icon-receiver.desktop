@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Qubes window icon receiver
+Comment=Receives and updates Qubes window icons
+Icon=qubes
+Exec=/usr/lib/qubes/icon-receiver
+Terminal=false
+Type=Application

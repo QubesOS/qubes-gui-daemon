@@ -22,9 +22,10 @@
 #
 #
 import os
-import select
 import struct
 import sys
+import asyncio
+import argparse
 from qubesimgconverter import ICON_MAXSIZE, Image
 
 import xcffib as xcb
@@ -56,6 +57,9 @@ X_FORMAT_STRING = X_FORMAT_8
 X_FORMAT_32 = 32
 X_FORMAT_WINDOWID = X_FORMAT_32
 
+SOCKET_PATH = '/var/run/qubes/icon-receiver.sock'
+
+
 class IconReceiver(object):
     """
     This class is responsible for handling windows icons updates sent from
@@ -72,11 +76,6 @@ class IconReceiver(object):
         self.conn = xcb.connect()
         self.setup = self.conn.get_setup()
         self.root = self.setup.roots[0].root
-        try:
-            self.domain = os.environ["QREXEC_REMOTE_DOMAIN"]
-        except KeyError:
-            raise Exception("This service needs to be called from qrexec ("
-                            "QREXEC_REMOTE_DOMAIN missing)")
 
         # Properties set by gui-daemon on each VM-originated window; we use
         # this to identify which window corresponds to requested VM window
@@ -102,9 +101,7 @@ class IconReceiver(object):
 
         #: Cache for remote->local window ID mapping
         self.remote2local_window_map = {}
-        #: Cache for local->remote window ID mapping. Additionally for each
-        #: local window belonging to other VM store None, to not check it
-        #: every time
+        #: Cache for local->remote window ID mapping
         self.local2remote_window_map = {}
 
         #: cache of icons received for not (yet) created windows
@@ -113,16 +110,15 @@ class IconReceiver(object):
         #: at most 5 elements are stored
         self.icon_cache = []
 
-        # Load the VM properties - we need this only to get VM color
-        app = Qubes()
+        self.app = Qubes()
 
-        vm = app.domains[self.domain]
+    def get_color(self, domain):
+        # Load the VM properties - we need this only to get VM color
+        vm = self.app.domains[domain]
         if vm is None:
             raise QubesException("VM '{}' doesn't exist in qubes.xml".format(
-                self.domain))
-        self.color = vm.label.color
-        del vm
-        del app
+                domain))
+        return vm.label.color
 
     @staticmethod
     def _unpack_int32_array(data):
@@ -148,7 +144,7 @@ class IconReceiver(object):
 
     def refresh_windows_mapping(self):
         """
-        Enumerate windows and record those of "our" VM.
+        Enumerate windows and record them.
         This function updates self.local2remote_window_map and
         self.remote2local_window_map. Each time a window is added there,
         additionally its watched for StructureNotify to receive event when
@@ -218,21 +214,16 @@ class IconReceiver(object):
             except xproto.WindowError:
                 continue
             if vmname.format == X_FORMAT_STRING:
-                if vmname.value.buf().decode() == self.domain:
-                    # if _QUBES_VMREMOTEID is set, store it in the map,
-                    # otherwise simply ignore the window - most likely it was
-                    #  just created and don't have that property yet
-                    if remote_id_reply.format == X_FORMAT_WINDOWID and \
-                            remote_id_reply.value_len:
-                        win_remote_id = self._unpack_int32_array(
-                            remote_id_reply)[0]
-                        self.remote2local_window_map[win_remote_id] = w
-                        self.local2remote_window_map[w] = win_remote_id
-                        self.watch_window(w)
-                else:
-                    # if window is known to be of other domain - cache that
-                    # knowledge to not check that every time
-                    self.local2remote_window_map[w] = None
+                domain = vmname.value.buf().decode()
+                # if _QUBES_VMREMOTEID is set, store it in the map,
+                # otherwise simply ignore the window - most likely it was
+                #  just created and don't have that property yet
+                if remote_id_reply.format == X_FORMAT_WINDOWID and \
+                   remote_id_reply.value_len:
+                    win_remote_id = (domain, self._unpack_int32_array(
+                        remote_id_reply)[0])
+                    self.remote2local_window_map[win_remote_id] = w
+                    self.local2remote_window_map[w] = win_remote_id
                     self.watch_window(w)
 
     def search_for_window(self, remote_id):
@@ -243,13 +234,17 @@ class IconReceiver(object):
         :return: local window ID
         """
         # first handle events - remove outdated IDs
-        self.handle_events()
+        self.handle_pending_events()
         if remote_id not in self.remote2local_window_map:
             self.refresh_windows_mapping()
         # may raise KeyError
         return self.remote2local_window_map[remote_id]
 
-    def handle_events(self):
+    async def handle_events(self):
+        asyncio.get_event_loop().add_reader(
+            self.conn.get_file_descriptor(), self.handle_pending_events)
+
+    def handle_pending_events(self):
         """
         Handle X11 events
         - DestroyNotifyEvent:remove the event window from local windows map
@@ -288,14 +283,14 @@ class IconReceiver(object):
             *[(p >> 8) | ((p & 0xff) << 24) for p in
               struct.unpack(">%dI" % pixel_count, rgba_image)])
 
-    def retrieve_icon_for_window(self):
+    async def retrieve_icon_for_window(self, reader, color):
         # intentionally don't catch exceptions here
         # the Image.get_from_stream method receives UNTRUSTED data
         # from given stream (stdin), sanitize it and store in Image() object
-        icon = Image.get_from_stream(sys.stdin.buffer,
+        icon = await Image.get_from_stream_async(reader,
             ICON_MAXSIZE, ICON_MAXSIZE)
         # now we can tint the icon to the VM color
-        icon_tinted = icon.tint(self.color)
+        icon_tinted = icon.tint(color)
         # conver RGBA (Image.data) -> ARGB (X11)
         icon_tinted_data = self._convert_rgba_to_argb(icon_tinted.data)
         # prepare icon header according to X11 _NET_WM_ICON format:
@@ -331,32 +326,80 @@ class IconReceiver(object):
         self.icon_cache.insert(0, (remote_winid, icon_property_data))
         self.icon_cache = self.icon_cache[:5]
 
-    def handle_input(self):
-        """
-        Main loop function. For each received window ID, check if there is
-        corresponding local window; if there is, handle its icon, otherwise
-        ignore and wait for another one
-        :return: None
-        """
+    async def handle_clients(self, socket_path=SOCKET_PATH):
+        if os.path.exists(socket_path):
+            os.unlink(socket_path)
+        server = await asyncio.start_unix_server(
+            self.handle_client, socket_path)
+        await server.serve_forever()
 
-        x_fd = self.conn.get_file_descriptor()
-        remote_fd = sys.stdin.fileno()
-        while True:
-            read_fds, _, _ = select.select([x_fd, remote_fd], [], [])
-            if x_fd in read_fds:
-                self.handle_events()
-            if remote_fd in read_fds:
-                untrusted_w = sys.stdin.buffer.readline(32)
+    async def handle_client(self, reader, writer):
+        try:
+            # Parse header from qrexec
+            header = await reader.readuntil(b'\0')
+            header_parts = header.decode('ascii').split(' ')
+            assert len(header_parts) >= 2, header_parts
+
+            service_name = header_parts[0]
+            if '+' in service_name:
+                service_name, arg = service_name.split('+', 1)
+                assert arg == '', arg
+            assert service_name == 'qubes.WindowIconUpdater', service_name
+
+            domain = header_parts[1]
+            color = self.get_color(domain)
+
+            print('connected: {}'.format(domain), file=sys.stderr)
+
+            while True:
+                untrusted_w = await reader.readline()
                 if untrusted_w == b'':
                     break
-                remote_winid = int(untrusted_w)
-                icon_property_data = self.retrieve_icon_for_window()
+                if len(untrusted_w) > 32:
+                    raise ValueError("WindowID too long")
+                remote_winid = (domain, int(untrusted_w))
+                icon_property_data = await self.retrieve_icon_for_window(
+                    reader, color)
                 try:
                     local_winid = self.search_for_window(remote_winid)
                     self.set_icon_for_window(local_winid, icon_property_data)
                 except KeyError:
                     self.cache_icon(remote_winid, icon_property_data)
 
-if __name__ == '__main__':
+            print('disconnected: {}'.format(domain), file=sys.stderr)
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument(
+    '-f', '--force', action='store_true',
+    help='run even if not in GuiVM')
+
+
+def main():
+    args = parser.parse_args()
+
+    if not args.force:
+        if (not os.path.exists('/var/run/qubes-service/guivm-gui-agent') and
+            not os.path.exists('/etc/qubes-release')):
+
+            print('Not in GuiVM or dom0, exiting '
+                  '(run with --force to override)',
+                  file=sys.stderr)
+            return
+
     rcvd = IconReceiver()
-    rcvd.handle_input()
+
+    loop = asyncio.get_event_loop()
+    tasks = [
+        rcvd.handle_events(),
+        rcvd.handle_clients(),
+    ]
+    loop.run_until_complete(asyncio.gather(*tasks))
+
+
+if __name__ == '__main__':
+    main()
