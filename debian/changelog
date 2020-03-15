@@ -1,3 +1,15 @@
+qubes-gui-daemon (4.1.4-1) unstable; urgency=medium
+
+  [ Frédéric Pierret (fepitre) ]
+  * travis: switch to dom0 Fedora 31
+
+  [ Marek Marczykowski-Górecki ]
+  * Make files in qubes-rpc executable
+  * Make qubes.WindowIconUpdater a proper script
+  * Fix tray icon coloring code - do not crop/dislocate icon fragments
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Sun, 15 Mar 2020 03:00:41 +0100
+
 qubes-gui-daemon (4.1.3-1) unstable; urgency=medium
 
   [ xaki23 ]
