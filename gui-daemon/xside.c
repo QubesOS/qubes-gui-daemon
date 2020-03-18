@@ -2947,7 +2947,7 @@ static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
     int opt;
     optind = 1;
     g->vmname[0] = '\0';
-    
+
     while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
         if (opt == 'N') {
             strncpy(g->vmname, optarg, sizeof(g->vmname));
@@ -3435,7 +3435,7 @@ int main(int argc, char **argv)
     struct stat stat_buf;
     char *display_str;
     int display_num;
-
+    char* qubes_release = "/etc/qubes-release";
     load_default_config_values(&ghandles);
     /* get the VM name to read the right section in config file */
     parse_cmdline_vmname(&ghandles, argc, argv);
@@ -3600,13 +3600,15 @@ int main(int argc, char **argv)
 
     /* provide keyboard map before VM Xserver starts */
 
-    /* cast return value to unsigned, so (unsigned)-1 > sizeof(cmd_tmp) */
-    if ((unsigned)snprintf(cmd_tmp, sizeof(cmd_tmp), "/usr/bin/qubesdb-write -d %s "
-             "/qubes-keyboard \"`/usr/bin/setxkbmap -print`\"",
-             ghandles.vmname) < sizeof(cmd_tmp)) {
-        /* intentionally ignore return value - don't fail gui-daemon if only
-         * keyboard layout fails */
-        ignore_result(system(cmd_tmp));
+    if(access(qubes_release, F_OK) != -1) {
+        /* cast return value to unsigned, so (unsigned)-1 > sizeof(cmd_tmp) */
+        if ((unsigned)snprintf(cmd_tmp, sizeof(cmd_tmp), "/usr/bin/qubesdb-write -d %s "
+                 "/qubes-keyboard \"`/usr/bin/setxkbmap -print`\"",
+                 ghandles.vmname) < sizeof(cmd_tmp)) {
+            /* intentionally ignore return value - don't fail gui-daemon if only
+             * keyboard layout fails */
+            ignore_result(system(cmd_tmp));
+        }
     }
     vchan_register_at_eof(restart_guid);
 
