@@ -32,6 +32,7 @@
 #define QVM_KILL_PATH "/usr/bin/qvm-kill"
 #define KDIALOG_PATH "/usr/bin/kdialog"
 #define ZENITY_PATH "/usr/bin/zenity"
+#define QUBES_RELEASE "/etc/qubes-release"
 
 /* default width of forced colorful border */
 #define BORDER_WIDTH 2
