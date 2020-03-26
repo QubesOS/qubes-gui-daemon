@@ -45,6 +45,7 @@
 #include <X11/extensions/XShm.h>
 #include <X11/extensions/shmproto.h>
 #include <X11/Xatom.h>
+#include <X11/cursorfont.h>
 #include <libconfig.h>
 #include <libnotify/notify.h>
 #include <assert.h>
@@ -386,6 +387,7 @@ static void mkghandles(Ghandles * g)
     char tray_sel_atom_name[64];
     int ev_base, err_base; /* ignore */
     XWindowAttributes attr;
+    int i;
 
     g->display = XOpenDisplay(NULL);
     if (!g->display) {
@@ -459,6 +461,21 @@ static void mkghandles(Ghandles * g)
     }
     /* ignore possible errors */
     fchmod(g->inter_appviewer_lock_fd, 0666);
+
+    g->cursors = malloc(sizeof(Cursor) * XC_num_glyphs);
+    if (!g->cursors) {
+        perror("malloc");
+        exit(1);
+    }
+    for (i = 0; i < XC_num_glyphs; i++) {
+        /* X font cursors have even numbers from 0 up to XC_num_glyphs.
+         * Fill the rest with None.
+         */
+        if (i % 2 == 0)
+            g->cursors[i] = XCreateFontCursor(g->display, i);
+        else
+            g->cursors[i] = None;
+    }
 }
 
 /* reload X server parameters, especially after monitor/screen layout change */
@@ -796,6 +813,42 @@ static int evaluate_clipboard_policy(Ghandles * g) {
             waitpid(pid, &status, 0);
     }
     return WEXITSTATUS(status) == 0;
+}
+
+/* handle VM message: MSG_CURSOR */
+static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
+{
+    struct msg_cursor untrusted_msg;
+    int cursor_id;
+    Cursor cursor;
+
+    read_struct(g->vchan, untrusted_msg);
+    /* sanitize start */
+    if (untrusted_msg.cursor & CURSOR_X11) {
+        VERIFY(untrusted_msg.cursor < CURSOR_X11_MAX);
+        cursor_id = untrusted_msg.cursor & ~CURSOR_X11;
+    } else {
+        VERIFY(untrusted_msg.cursor == CURSOR_DEFAULT);
+        cursor_id = -1;
+    }
+    /* sanitize end */
+
+    if (g->log_level > 0)
+        fprintf(stderr, "handle_cursor, cursor = 0x%x\n",
+                untrusted_msg.cursor);
+
+    if (cursor_id < 0)
+        cursor = None;
+    else {
+        /*
+         * Should be true if CURSOR_X11_MAX == CURSOR_X11 + XC_num_glyphs,
+         * but we don't want a protocol constant to depend on X headers.
+         */
+        assert(cursor_id < XC_num_glyphs);
+
+        cursor = g->cursors[cursor_id];
+    }
+    XDefineCursor(g->display, vm_window->local_winid, cursor);
 }
 
 /* check and handle guid-special keys
@@ -2659,6 +2712,9 @@ static void handle_message(Ghandles * g)
         break;
     case MSG_WINDOW_DUMP:
         handle_window_dump(g, vm_window, untrusted_hdr.untrusted_len);
+        break;
+    case MSG_CURSOR:
+        handle_cursor(g, vm_window);
         break;
     default:
         fprintf(stderr, "got unknown msg type %d\n", type);
