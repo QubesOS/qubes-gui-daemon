@@ -36,6 +36,9 @@
 /* default width of forced colorful border */
 #define BORDER_WIDTH 2
 
+/* maximum percentage of the screen that an override_redirect window can cover */
+#define MAX_OVERRIDE_REDIRECT_PERCENTAGE 90
+
 /* this makes any X11 error fatal (i.e. cause exit(1)). This behavior was the
  * case for a long time before introducing this option, so nothing really have
  * changed  */
@@ -177,6 +180,8 @@ struct _global_handles {
     pid_t kill_on_connect;  /* pid to kill when connection to gui agent is established */
     int allow_utf8_titles;    /* allow UTF-8 chars in window title */
     int allow_fullscreen;   /* allow fullscreen windows without decoration */
+    int override_redirect_protection; /* disallow override_redirect windows to cover more than
+					 MAX_OVERRIDE_REDIRECT_PERCENTAGE percent of the screen */
     int copy_seq_mask;    /* modifiers mask for secure-copy key sequence */
     KeySym copy_seq_key;    /* key for secure-copy key sequence */
     int paste_seq_mask;    /* modifiers mask for secure-paste key sequence */
