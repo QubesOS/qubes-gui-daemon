@@ -37,6 +37,8 @@
 #include <alloca.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/file.h>
+#include <assert.h>
 #include "list.h"
 #include "shm-args.h"
 #include <qubes-gui-protocol.h>
@@ -57,6 +59,7 @@ static xengnttab_handle *xgt;
 static int list_len;
 static char __shmid_filename[SHMID_FILENAME_LEN];
 static char *shmid_filename = NULL;
+static int idfd = -1;
 static char display_str[SHMID_DISPLAY_MAXLEN+1] = "";
 
 struct mfns_info {
@@ -226,7 +229,7 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
     return 0;
 }
 
-void get_display()
+int get_display()
 {
     int fd;
     ssize_t res;
@@ -236,14 +239,14 @@ void get_display()
     fd = open("/proc/self/cmdline", O_RDONLY);
     if (fd < 0) {
         perror("cmdline open");
-        exit(1);
+        return -1;
     }
 
     while(1) {
         res = read(fd, &ch, 1);
         if (res < 0) {
             perror("cmdline read");
-            exit(1);
+            return -1;
         }
         if (res == 0)
             break;
@@ -258,7 +261,7 @@ void get_display()
             if (in_arg > 0 && (ch < '0' || ch > '9')) {
                 if (in_arg == 1) {
                     fprintf(stderr, "cmdline DISPLAY parsing failed\n");
-                    exit(1);
+                    return -1;
                 }
                 in_arg = -1;
                 continue;
@@ -275,18 +278,20 @@ void get_display()
         display_str[2] = '\0';
     } else if (display_str[1] == '\0') {
         fprintf(stderr, "cmdline DISPLAY parsing failed\n");
-        exit(1);
+        return -1;
     }
 
     /* post-processing: drop leading ':' */
     res = strlen(display_str);
     for (in_arg = 0; in_arg < res; in_arg++)
         display_str[in_arg] = display_str[in_arg+1];
+
+    return 0;
 }
 
 int __attribute__ ((constructor)) initfunc()
 {
-    int idfd, len;
+    int len;
     char idbuf[20];
     unsetenv("LD_PRELOAD");
     fprintf(stderr, "shmoverride constructor running\n");
@@ -295,7 +300,7 @@ int __attribute__ ((constructor)) initfunc()
     real_shmdt = dlsym(RTLD_NEXT, "shmdt");
     if (!real_shmat || !real_shmctl || !real_shmdt) {
         perror("shmoverride: missing shm API");
-        exit(1);
+        goto cleanup;
     }
     addr_list = list_new();
 #ifdef XENCTRL_HAS_XC_INTERFACE
@@ -306,65 +311,98 @@ int __attribute__ ((constructor)) initfunc()
     if (xc_hnd < 0) {
 #endif
         perror("shmoverride xc_interface_open");
-        return 0;  //allow it to run when not under Xen
+        goto cleanup;  //allow it to run when not under Xen
     }
 
     xgt = xengnttab_open(NULL, 0);
     if (xgt == NULL) {
         perror("shmoverride: xengnttab_open failed");
-        return 0; // Allow it to run when not under Xen.
+        goto cleanup; // Allow it to run when not under Xen.
     }
 
-    get_display();
+    if (get_display() < 0)
+        goto cleanup;
+
     snprintf(__shmid_filename, SHMID_FILENAME_LEN,
         SHMID_FILENAME_PREFIX "%s", display_str);
     shmid_filename = __shmid_filename;
-    idfd = open(shmid_filename, O_WRONLY | O_CREAT | O_EXCL, 0600);
+
+    /* Try to lock the shm.id file (don't rely on whether it exists, a previous
+     * process might have crashed).
+     */
+    idfd = open(shmid_filename, O_WRONLY | O_CREAT, 0600);
     if (idfd < 0) {
-        fprintf(stderr, "shmoverride creating %s: %s\n",
+        fprintf(stderr, "shmoverride opening %s: %s\n",
             shmid_filename, strerror(errno));
-        xc_interface_close(xc_hnd);
-        return 0;
+        goto cleanup;
+    }
+    if (flock(idfd, LOCK_EX | LOCK_NB) < 0) {
+        fprintf(stderr, "shmoverride flock %s: %s\n",
+                shmid_filename, strerror(errno));
+        /* There is probably an alive process holding the file, give up. */
+        goto cleanup;
+    }
+    if (ftruncate(idfd, 0) < 0) {
+        perror("shmoverride ftruncate");
+        goto cleanup;
     }
     local_shmid =
         shmget(IPC_PRIVATE, SHM_ARGS_SIZE,
                 IPC_CREAT | 0700);
     if (local_shmid == -1) {
-        unlink(shmid_filename);
         perror("shmoverride shmget");
-        exit(1);
+        goto cleanup;
     }
     sprintf(idbuf, "%d", local_shmid);
     len = strlen(idbuf);
     if (write(idfd, idbuf, len) != len) {
-        unlink(shmid_filename);
         fprintf(stderr, "shmoverride writing %s: %s\n",
             shmid_filename, strerror(errno));
-        exit(1);
-    }
-    if (close(idfd) < 0) {
-        unlink(shmid_filename);
-        fprintf(stderr, "shmoverride closing %s: %s\n",
-            shmid_filename, strerror(errno));
-        exit(1);
+        goto cleanup;
     }
     shm_args = real_shmat(local_shmid, 0, 0);
     if (!shm_args) {
-        unlink(shmid_filename);
         perror("real_shmat");
-        exit(1);
+        goto cleanup;
     }
     shm_args->shmid = local_shmid;
+    return 0;
+
+cleanup:
+    fprintf(stderr, "shmoverride: running without override");
+#ifdef XENCTRL_HAS_XC_INTERFACE
+    if (!xc_hnd) {
+        xc_interface_close(xc_hnd);
+        xc_hnd = NULL;
+    }
+#else
+    if (xc_hnd >= 0) {
+        xc_interface_close(xc_hnd);
+        xc_hnd = -1;
+    }
+#endif
+    if (idfd >= 0) {
+        close(idfd);
+        idfd = -1;
+    }
+    if (shmid_filename) {
+        unlink(shmid_filename);
+        shmid_filename = NULL;
+    }
+    shm_args = NULL;
     return 0;
 }
 
 int __attribute__ ((destructor)) descfunc()
 {
     if (shm_args) {
+        assert(shmid_filename);
+        assert(idfd >= 0);
+
         real_shmdt(shm_args);
         real_shmctl(local_shmid, IPC_RMID, 0);
-        if (shmid_filename != NULL)
-            unlink(shmid_filename);
+        close(idfd);
+        unlink(shmid_filename);
     }
 
     if (xgt != NULL)
