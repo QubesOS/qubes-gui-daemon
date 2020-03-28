@@ -121,6 +121,7 @@ rm -f %{name}-%{version}
 /usr/libexec/qubes/watch-screen-layout-changes
 /usr/lib/qubes/icon-receiver
 %config %{_sysconfdir}/qubes-rpc/qubes.WindowIconUpdater
+%config %{_sysconfdir}/qubes/rpc-config/qubes.WindowIconUpdater
 
 %files -n qubes-gui-dom0
 %config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.ClipboardPaste
