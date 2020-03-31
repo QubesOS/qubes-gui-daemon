@@ -117,8 +117,10 @@ class IconReceiver(object):
 
     def get_color(self, domain):
         # Load the VM properties - we need this only to get VM color
-        vm = self.app.domains[domain]
-        if vm is None:
+        self.app.domains.refresh_cache(force=True)
+        try:
+            vm = self.app.domains[domain]
+        except KeyError:
             raise QubesException("VM '{}' doesn't exist in qubes.xml".format(
                 domain))
         return vm.label.color
