@@ -27,11 +27,14 @@ import sys
 import asyncio
 import argparse
 from qubesimgconverter import ICON_MAXSIZE, Image
+import logging
 
 import xcffib as xcb
 import xcffib.xproto as xproto
 from qubesadmin import Qubes
 from qubesadmin.exc import QubesException
+
+log = logging.getLogger('icon-receiver')
 
 BYTES_PER_PIXEL = 4
 BITS_PER_PIXEL = 32
@@ -349,7 +352,7 @@ class IconReceiver(object):
             domain = header_parts[1]
             color = self.get_color(domain)
 
-            print('connected: {}'.format(domain), file=sys.stderr)
+            log.info('connected: %s', domain)
 
             while True:
                 untrusted_w = await reader.readline()
@@ -366,7 +369,7 @@ class IconReceiver(object):
                 except KeyError:
                     self.cache_icon(remote_winid, icon_property_data)
 
-            print('disconnected: {}'.format(domain), file=sys.stderr)
+            log.info('disconnected: %s', domain)
         finally:
             writer.close()
             await writer.wait_closed()
@@ -390,6 +393,10 @@ def main():
                   '(run with --force to override)',
                   file=sys.stderr)
             return
+
+    logging.basicConfig(
+        stream=sys.stderr, level=logging.INFO,
+        format='%(asctime)s %(name)s: %(message)s')
 
     rcvd = IconReceiver()
 
