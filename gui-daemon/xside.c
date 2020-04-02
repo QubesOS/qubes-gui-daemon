@@ -61,6 +61,17 @@
 #include "trayicon.h"
 #include "shm-args.h"
 
+/* Supported protocol version */
+
+#define PROTOCOL_VERSION_MAJOR 1
+#define PROTOCOL_VERSION_MINOR 3
+#define PROTOCOL_VERSION (PROTOCOL_VERSION_MAJOR << 16 | PROTOCOL_VERSION_MINOR)
+
+#if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
+      PROTOCOL_VERSION_MINOR <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
+#  error Incompatible qubes-gui-protocol.h.
+#endif
+
 /* some configuration */
 
 static Ghandles ghandles;
@@ -2856,12 +2867,14 @@ static void get_protocol_version(Ghandles * g)
     version_major = untrusted_version >> 16;
     version_minor = untrusted_version & 0xffff;
 
-    if (version_major == QUBES_GUID_PROTOCOL_VERSION_MAJOR &&
-            version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR) {
+    if (version_major == PROTOCOL_VERSION_MAJOR &&
+            version_minor <= PROTOCOL_VERSION_MINOR) {
+        /* agent is compatible */
         g->agent_version = version_major << 16 | version_minor;
         return;
     }
-    if (version_major < QUBES_GUID_PROTOCOL_VERSION_MAJOR)
+    if (version_major < PROTOCOL_VERSION_MAJOR)
+        /* agent is too old */
         snprintf(message, sizeof message, "%s %s \""
                 "The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
                 "To start and access the VM or template without GUI virtualization, use the following commands:\n"
@@ -2871,6 +2884,7 @@ static void get_protocol_version(Ghandles * g)
                 g->use_kdialog ? "--sorry" : "--error --text ",
                 g->vmname, version_major, version_minor);
     else
+        /* agent is too new */
         snprintf(message, sizeof message, "%s %s \""
                 "The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
                 "To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
