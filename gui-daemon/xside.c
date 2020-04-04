@@ -100,7 +100,8 @@ static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 static void print_backtrace(void);
 static void parse_cmdline_prop(Ghandles *g);
 
-static void show_error_message (Ghandles * g, const char *msg)
+static void show_message(Ghandles *g, const char *prefix, const char *msg,
+			 gint timeout)
 {
     char message[1024];
     NotifyNotification *notify;
@@ -110,8 +111,9 @@ static void show_error_message (Ghandles * g, const char *msg)
         fprintf(stderr, "Failed to init notification subsystem\n");
         return;
     }
-    snprintf(message, sizeof message, "ERROR(%s): %s", g->vmname, msg);
+    snprintf(message, sizeof message, "%s(%s): %s", prefix, g->vmname, msg);
     notify = notify_notification_new(message, NULL, g->cmdline_icon);
+    notify_notification_set_timeout(notify, timeout);
     if (!notify_notification_show(notify, NULL)) {
         fprintf(stderr, "Failed to send notification\n");
     }
@@ -120,6 +122,11 @@ static void show_error_message (Ghandles * g, const char *msg)
     // xfce4-notifyd) starts only on demand and connection reference become
     // stale after some idle period
     notify_uninit();
+}
+
+static void show_error_message(Ghandles *g, const char *msg)
+{
+	show_message(g, "ERROR", msg, NOTIFY_EXPIRES_DEFAULT);
 }
 
 /* ask user when VM sent invalid message */
@@ -1119,6 +1126,53 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
     return do_move;
 }
 
+static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
+				  int req_override_redirect)
+{
+	static int warning_shown;
+	uint64_t avail, desired;
+	const char * warning_msg = "This VM has attempted to create a very large window "
+		"in a manner that would have prevented you from closing it and regaining "
+		"the control of Qubes OS\'s graphical user interface.\n\n"
+		"As a protection measure, the \"override_redirect\" flag of the window "
+		"in question has been unset. If this creates unexpected issues in the "
+		"handling of this VM\'s windows, please set \"override_redirect_protection\" "
+		"to \"false\" for this VM in /etc/qubes/guid.conf to disable this protection "
+		"measure and restart the VM.\n\n"
+		"This message will only appear once per VM per session. Please click on this "
+		"notification to close it.";
+
+	req_override_redirect = !!req_override_redirect;
+
+	avail = (uint64_t) g->root_width * (uint64_t) g->root_height;
+	desired = (uint64_t) vm_window->width * (uint64_t) vm_window->height;
+
+	if (g->override_redirect_protection && req_override_redirect &&
+	    desired > ((avail * MAX_OVERRIDE_REDIRECT_PERCENTAGE) / 100)) {
+		req_override_redirect = 0;
+
+		if (g->log_level > 0)
+			fprintf(stderr,
+				"%s unset override_redirect for "
+				"local 0x%x remote 0x%x, "
+				"window w=%u h=%u, root w=%d h=%d\n",
+				__func__,
+				(unsigned) vm_window->local_winid,
+				(unsigned) vm_window->remote_winid,
+				vm_window->width, vm_window->height,
+				g->root_width, g->root_height);
+
+		/* Show a message to the user, but do this only once. */
+		if (!warning_shown) {
+			show_message(g, "WARNING", warning_msg,
+				     NOTIFY_EXPIRES_NEVER);
+			warning_shown = 1;
+		}
+	}
+
+	vm_window->override_redirect = req_override_redirect;
+}
+
 /* handle local Xserver event: XConfigureEvent
  * after some checks/fixes send to relevant window in VM */
 static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
@@ -1185,7 +1239,7 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
 {
     struct msg_configure untrusted_conf;
     int x, y;
-    unsigned width, height, override_redirect;
+    unsigned width, height;
     int conf_changed;
 
     read_struct(g->vchan, untrusted_conf);
@@ -1207,10 +1261,6 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
     width = untrusted_conf.width;
     height = untrusted_conf.height;
     VERIFY(width > 0 && height > 0);
-    if (untrusted_conf.override_redirect > 0)
-        override_redirect = 1;
-    else
-        override_redirect = 0;
     x = max(-MAX_WINDOW_WIDTH,
                 min((int) untrusted_conf.x, MAX_WINDOW_WIDTH));
     y = max(-MAX_WINDOW_HEIGHT,
@@ -1221,7 +1271,7 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
         conf_changed = 1;
     else
         conf_changed = 0;
-    vm_window->override_redirect = override_redirect;
+    set_override_redirect(g, vm_window, !!(untrusted_conf.override_redirect));
 
     /* We do not allow a docked window to change its size, period. */
     if (vm_window->is_docked) {
@@ -1779,10 +1829,7 @@ static void handle_create(Ghandles * g, XID window)
                            min((int) untrusted_crt.x, MAX_WINDOW_WIDTH));
     vm_window->y = max(-MAX_WINDOW_HEIGHT,
                            min((int) untrusted_crt.y, MAX_WINDOW_HEIGHT));
-    if (untrusted_crt.override_redirect)
-        vm_window->override_redirect = 1;
-    else
-        vm_window->override_redirect = 0;
+    set_override_redirect(g, vm_window, !!(untrusted_crt.override_redirect));
     parent = untrusted_crt.parent;
     /* sanitize end */
     vm_window->remote_winid = window;
@@ -2232,7 +2279,7 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
     } else
         vm_window->transient_for = NULL;
 
-    vm_window->override_redirect = !!(untrusted_txt.override_redirect);
+    set_override_redirect(g, vm_window, !!(untrusted_txt.override_redirect));
     attr.override_redirect = vm_window->override_redirect;
     XChangeWindowAttributes(g->display, vm_window->local_winid,
                             CWOverrideRedirect, &attr);
@@ -3178,6 +3225,7 @@ static void load_default_config_values(Ghandles * g)
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
     g->allow_fullscreen = 0;
+    g->override_redirect_protection = 1;
     g->startup_timeout = 45;
     g->audio_low_latency = 1;
     g->trayicon_mode = TRAY_TINT;
@@ -3260,6 +3308,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
     if ((setting =
          config_setting_get_member(group, "allow_fullscreen"))) {
         g->allow_fullscreen = config_setting_get_bool(setting);
+    }
+
+    if ((setting =
+         config_setting_get_member(group, "override_redirect_protection"))) {
+        g->override_redirect_protection = config_setting_get_bool(setting);
     }
 
     if ((setting =
