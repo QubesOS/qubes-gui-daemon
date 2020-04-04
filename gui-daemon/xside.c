@@ -45,6 +45,7 @@
 #include <X11/extensions/XShm.h>
 #include <X11/extensions/shmproto.h>
 #include <X11/Xatom.h>
+#include <X11/cursorfont.h>
 #include <libconfig.h>
 #include <libnotify/notify.h>
 #include <assert.h>
@@ -59,6 +60,17 @@
 #include "png.h"
 #include "trayicon.h"
 #include "shm-args.h"
+
+/* Supported protocol version */
+
+#define PROTOCOL_VERSION_MAJOR 1
+#define PROTOCOL_VERSION_MINOR 3
+#define PROTOCOL_VERSION (PROTOCOL_VERSION_MAJOR << 16 | PROTOCOL_VERSION_MINOR)
+
+#if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
+      PROTOCOL_VERSION_MINOR <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
+#  error Incompatible qubes-gui-protocol.h.
+#endif
 
 /* some configuration */
 
@@ -393,6 +405,7 @@ static void mkghandles(Ghandles * g)
     char tray_sel_atom_name[64];
     int ev_base, err_base; /* ignore */
     XWindowAttributes attr;
+    int i;
 
     g->display = XOpenDisplay(NULL);
     if (!g->display) {
@@ -466,6 +479,21 @@ static void mkghandles(Ghandles * g)
     }
     /* ignore possible errors */
     fchmod(g->inter_appviewer_lock_fd, 0666);
+
+    g->cursors = malloc(sizeof(Cursor) * XC_num_glyphs);
+    if (!g->cursors) {
+        perror("malloc");
+        exit(1);
+    }
+    for (i = 0; i < XC_num_glyphs; i++) {
+        /* X font cursors have even numbers from 0 up to XC_num_glyphs.
+         * Fill the rest with None.
+         */
+        if (i % 2 == 0)
+            g->cursors[i] = XCreateFontCursor(g->display, i);
+        else
+            g->cursors[i] = None;
+    }
 }
 
 /* reload X server parameters, especially after monitor/screen layout change */
@@ -803,6 +831,42 @@ static int evaluate_clipboard_policy(Ghandles * g) {
             waitpid(pid, &status, 0);
     }
     return WEXITSTATUS(status) == 0;
+}
+
+/* handle VM message: MSG_CURSOR */
+static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
+{
+    struct msg_cursor untrusted_msg;
+    int cursor_id;
+    Cursor cursor;
+
+    read_struct(g->vchan, untrusted_msg);
+    /* sanitize start */
+    if (untrusted_msg.cursor & CURSOR_X11) {
+        VERIFY(untrusted_msg.cursor < CURSOR_X11_MAX);
+        cursor_id = untrusted_msg.cursor & ~CURSOR_X11;
+    } else {
+        VERIFY(untrusted_msg.cursor == CURSOR_DEFAULT);
+        cursor_id = -1;
+    }
+    /* sanitize end */
+
+    if (g->log_level > 0)
+        fprintf(stderr, "handle_cursor, cursor = 0x%x\n",
+                untrusted_msg.cursor);
+
+    if (cursor_id < 0)
+        cursor = None;
+    else {
+        /*
+         * Should be true if CURSOR_X11_MAX == CURSOR_X11 + XC_num_glyphs,
+         * but we don't want a protocol constant to depend on X headers.
+         */
+        assert(cursor_id < XC_num_glyphs);
+
+        cursor = g->cursors[cursor_id];
+    }
+    XDefineCursor(g->display, vm_window->local_winid, cursor);
 }
 
 /* check and handle guid-special keys
@@ -2707,6 +2771,9 @@ static void handle_message(Ghandles * g)
     case MSG_WINDOW_DUMP:
         handle_window_dump(g, vm_window, untrusted_hdr.untrusted_len);
         break;
+    case MSG_CURSOR:
+        handle_cursor(g, vm_window);
+        break;
     default:
         fprintf(stderr, "got unknown msg type %d\n", type);
         exit(1);
@@ -2847,12 +2914,14 @@ static void get_protocol_version(Ghandles * g)
     version_major = untrusted_version >> 16;
     version_minor = untrusted_version & 0xffff;
 
-    if (version_major == QUBES_GUID_PROTOCOL_VERSION_MAJOR &&
-            version_minor <= QUBES_GUID_PROTOCOL_VERSION_MINOR) {
+    if (version_major == PROTOCOL_VERSION_MAJOR &&
+            version_minor <= PROTOCOL_VERSION_MINOR) {
+        /* agent is compatible */
         g->agent_version = version_major << 16 | version_minor;
         return;
     }
-    if (version_major < QUBES_GUID_PROTOCOL_VERSION_MAJOR)
+    if (version_major < PROTOCOL_VERSION_MAJOR)
+        /* agent is too old */
         snprintf(message, sizeof message, "%s %s \""
                 "The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
                 "To start and access the VM or template without GUI virtualization, use the following commands:\n"
@@ -2862,6 +2931,7 @@ static void get_protocol_version(Ghandles * g)
                 g->use_kdialog ? "--sorry" : "--error --text ",
                 g->vmname, version_major, version_minor);
     else
+        /* agent is too new */
         snprintf(message, sizeof message, "%s %s \""
                 "The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
                 "To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
