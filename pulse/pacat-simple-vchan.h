@@ -6,6 +6,8 @@
 #include <dbus/dbus-glib-bindings.h>
 #include <libvchan.h>
 
+#define PACAT_PIDFILE_PATH_TPL "/var/run/qubes/pacat.%d"
+
 struct userdata {
     pa_mainloop_api *mainloop_api;
     GMainLoop *loop;

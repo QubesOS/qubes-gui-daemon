@@ -42,6 +42,7 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
@@ -52,6 +53,7 @@
 #include <stdarg.h>
 #include <assert.h>
 #include <sys/time.h>
+#include <sys/file.h>
 
 #include <pulse/pulseaudio.h>
 #include <pulse/error.h>
@@ -580,6 +582,54 @@ fail:
 
 }
 
+/*
+ * domid: remote end domid (IN)
+ * pidfile_path: path to the created file (OUT)
+ * pidfile_fd: open FD of the pidfile, used also as a lockfile (OUT)
+ *
+ * Returns: 0 on success -1 otherwise
+ */
+static int create_pidfile(int domid, char **pidfile_path, int *pidfile_fd)
+{
+    int fd, ret;
+    char pid_s[16];
+
+    if (asprintf(pidfile_path, PACAT_PIDFILE_PATH_TPL, domid) < 0) {
+        pacat_log("Failed to construct pidfile path, out of memory?");
+        return -1;
+    }
+
+    fd = open(*pidfile_path, O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+    if (fd < 0) {
+        pacat_log("Failed to create pidfile %s: %s", *pidfile_path, strerror(errno));
+        return -1;
+    }
+
+    if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+        if (errno == EWOULDBLOCK) {
+            ret = read(fd, pid_s, sizeof(pid_s)-1);
+            if (ret <= 0) {
+                pacat_log("Another instance of pacat-simple-vchan is already running for this VM, but failed to get its PID");
+            } else {
+                pid_s[ret] = '\0';
+                if (pid_s[ret-1] == '\n')
+                    pid_s[ret-1] = '\0';
+                pacat_log("Another instance of pacat-simple-vchan is already running for this VM (PID: %s)", pid_s);
+            }
+        } else {
+            pacat_log("Failed to obtain a lock on the pid file: %s", pa_strerror(errno));
+        }
+        close(fd);
+        return -1;
+    }
+
+    ret = snprintf(pid_s, sizeof(pid_s), "%d\n", getpid());
+    write(fd, pid_s, ret);
+
+    *pidfile_fd = fd;
+    return 0;
+}
+
 static void check_vchan_eof_timer(pa_mainloop_api*a, pa_time_event* e,
                const struct timeval *UNUSED(tv), void *userdata)
 {
@@ -607,6 +657,8 @@ int main(int argc, char *argv[])
     char *server = NULL;
     char *domname = NULL;
     int domid = -1;
+    char *pidfile_path;
+    int pidfile_fd;
     int i;
 
     if (argc <= 2) {
@@ -639,6 +691,10 @@ int main(int argc, char *argv[])
         fprintf(stderr, "missing domname\n");
         exit(1);
     }
+
+    if (create_pidfile(domid, &pidfile_path, &pidfile_fd) < 0)
+        /* error already printed by create_pidfile() */
+        exit(1);
 
     memset(&u, 0, sizeof(u));
     u.ret = 1;
@@ -786,5 +842,8 @@ quit:
         pa_proplist_free(u.proplist);
 
     g_mutex_clear(&u.prop_mutex);
+
+    unlink(pidfile_path);
+    close(pidfile_fd);
     return u.ret;
 }
