@@ -580,6 +580,24 @@ fail:
 
 }
 
+static void check_vchan_eof_timer(pa_mainloop_api*a, pa_time_event* e,
+               const struct timeval *UNUSED(tv), void *userdata)
+{
+    struct userdata *u = userdata;
+    struct timeval restart_tv;
+    assert(u);
+
+    if (!libvchan_is_open(u->play_ctrl)) {
+        pacat_log("vchan_is_eof (timer)");
+        quit(u, 0);
+        return;
+    }
+
+    pa_gettimeofday(&restart_tv);
+    pa_timeval_add(&restart_tv, (pa_usec_t) 5 * 1000 * PA_USEC_PER_MSEC);
+    a->time_restart(e, &restart_tv);
+}
+
 int main(int argc, char *argv[])
 {
     struct timeval tv;
@@ -680,6 +698,12 @@ int main(int argc, char *argv[])
 
     pa_gettimeofday(&tv);
     pa_timeval_add(&tv, (pa_usec_t) 5 * 1000 * PA_USEC_PER_MSEC);
+    time_event = u.mainloop_api->time_new(u.mainloop_api, &tv, check_vchan_eof_timer, &u);
+    if (!time_event) {
+        pacat_log("time_event create failed");
+        goto quit;
+    }
+
     if (!(u.context = pa_context_new_with_proplist(u.mainloop_api, NULL, u.proplist))) {
         pacat_log("pa_context_new() failed.");
         goto quit;
