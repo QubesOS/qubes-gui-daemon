@@ -624,7 +624,11 @@ static int create_pidfile(int domid, char **pidfile_path, int *pidfile_fd)
     }
 
     ret = snprintf(pid_s, sizeof(pid_s), "%d\n", getpid());
-    write(fd, pid_s, ret);
+    if (write(fd, pid_s, ret) != ret) {
+        pacat_log("Failed to write a pid file: %s", pa_strerror(errno));
+        close(fd);
+        return -1;
+    }
 
     *pidfile_fd = fd;
     return 0;
