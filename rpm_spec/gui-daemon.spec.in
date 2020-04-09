@@ -69,6 +69,9 @@ Summary:    Dom0 part of Qubes GUI
 # For now require also gui-daemon in dom0, when dropping GUI in dom0, this
 # dependency should be dropped
 Requires:   qubes-gui-daemon
+# Pull also audio packages for easier upgrade
+Requires:   qubes-audio-daemon
+Requires:   qubes-audio-dom0
 Requires:	qubes-core-dom0 >= 1.3.14
 Requires:   python%{python3_pkgversion}-setuptools
 
