@@ -1,3 +1,46 @@
+qubes-gui-daemon (4.1.5-1) unstable; urgency=medium
+
+  [ Frédéric Pierret (fepitre) ]
+  * gui-daemon: set qubes-keyboard only in dom0
+  * qubes-release: define it in xside.h
+
+  [ Paweł Marczewski ]
+  * shmoverride: handle Xorg crash leaving shm.id file
+  * Convert qubes.WindowIconUpdater to a socket service
+  * qubes.WindowIconUpdater: use wait-for-session
+  * Add dependencies for qubes.WindowIconUpdater
+  * icon-receiver: use logging
+  * icon-receiver: handle app.domains updates
+
+  [ M. Vefa Bicakci ]
+  * xside: Introduce override_redirect protection
+
+  [ Paweł Marczewski ]
+  * Support MSG_CURSOR
+  * Define supported protocol version
+
+  [ Marek Marczykowski-Górecki ]
+  * pulse: periodically check if vchan connection is alive
+  * pulse: create pidfile
+
+  [ Frédéric Pierret (fepitre) ]
+  * Currently disable failing builds for CentOS 7
+  * xside: drop related pulseaudio (done in qvm-start-daemon)
+  * spec: put audio part in subpackage
+
+  [ Marek Marczykowski-Górecki ]
+  * pulse: fix compiler warning
+  * rpm: pull in audio packages on dom0 upgrade
+  * pulse: replace dbus control with QubesDB + local socket
+  * pulse: add qrexec services to control audio-input in another VM
+  * rpm: use rpm-build provided CFLAGS for pacat-simple-vchan
+  * Update core-admin extension for new audio-input control mechanism
+  * rpm: require new enough qubes-core-dom0
+  * Revert "Currently disable failing builds for CentOS 7"
+  * travis: add CentOS 7
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 10 Apr 2020 05:56:54 +0200
+
 qubes-gui-daemon (4.1.4-1) unstable; urgency=medium
 
   [ Frédéric Pierret (fepitre) ]
