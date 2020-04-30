@@ -298,6 +298,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     XSizeHints my_size_hints;    /* hints for the window manager */
     Atom atom_label;
     int i;
+    XSetWindowAttributes attr;
 
     my_size_hints.flags = PSize;
     my_size_hints.width = vm_window->width;
@@ -307,13 +308,15 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
         parent = vm_window->parent->local_winid;
     else
         parent = g->root_win;
-    // we will set override_redirect later, if needed
-    child_win = XCreateSimpleWindow(g->display, parent,
+    attr.override_redirect = vm_window->override_redirect;
+    child_win = XCreateWindow(g->display, parent,
                     vm_window->x, vm_window->y,
                     vm_window->width,
                     vm_window->height, 0,
-                    BlackPixel(g->display, g->screen),
-                    WhitePixel(g->display, g->screen));
+		    CopyFromParent,
+                    CopyFromParent,
+                    CopyFromParent,
+                    CWOverrideRedirect, &attr);
     /* pass my size hints to the window manager, along with window
        and icon names */
     (void) XSetStandardProperties(g->display, child_win,
