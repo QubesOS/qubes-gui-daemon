@@ -552,7 +552,8 @@ static void context_state_callback(pa_context *c, void *userdata) {
             pa_stream_set_buffer_attr_callback(u->rec_stream, stream_buffer_attr_callback, u);
 
             flags = PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY;
-            u->rec_allowed = u->rec_requested = 0;
+            u->rec_allowed = 0;
+            u->rec_requested = 1;
 
             if (pa_stream_connect_record(u->rec_stream, u->rec_device, bufattr, flags) < 0) {
                 pacat_log("pa_stream_connect_record() failed: %s", pa_strerror(pa_context_errno(c)));
