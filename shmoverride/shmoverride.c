@@ -224,6 +224,7 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
     }
 
     memset(&buf->shm_perm, 0, sizeof(buf->shm_perm));
+    buf->shm_perm.mode = 0666;
     buf->shm_segsz = segsz;
 
     return 0;
