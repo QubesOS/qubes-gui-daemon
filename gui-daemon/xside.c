@@ -2943,6 +2943,7 @@ enum {
 };
 
 struct option longopts[] = {
+    { "config", required_argument, NULL, 'C' },
     { "domid", required_argument, NULL, 'd' },
     { "name", required_argument, NULL, 'N' },
     { "target-domid", required_argument, NULL, 't' },
@@ -2962,7 +2963,7 @@ struct option longopts[] = {
     { "help", no_argument, NULL, 'h' },
     { 0, 0, 0, 0 },
 };
-static const char optstring[] = "d:t:N:c:l:i:K:vqQnafIp:Th";
+static const char optstring[] = "C:d:t:N:c:l:i:K:vqQnafIp:Th";
 
 static void usage(FILE *stream)
 {
@@ -2970,6 +2971,7 @@ static void usage(FILE *stream)
         "Usage: qubes-guid -d domain_id -N domain_name [options]\n");
     fprintf(stream, "\n");
     fprintf(stream, "Options:\n");
+    fprintf(stream, " --config=PATH, -C PATH\tpath to configuration file\n");
     fprintf(stream, " --verbose, -v\tincrease log verbosity\n");
     fprintf(stream, " --quiet, -q\tdecrease log verbosity\n");
     fprintf(stream, " --domid=ID, -d ID\tdomain ID running GUI agent\n");
@@ -3006,18 +3008,17 @@ static void usage(FILE *stream)
     fprintf(stream, "\n");
 }
 
-static void parse_cmdline_vmname(Ghandles * g, int argc, char **argv)
+static void parse_cmdline_config_path(Ghandles * g, int argc, char **argv)
 {
     int opt;
     optind = 1;
-    g->vmname[0] = '\0';
 
     while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
-        if (opt == 'N') {
-            strncpy(g->vmname, optarg, sizeof(g->vmname));
-            g->vmname[sizeof(g->vmname) - 1] = '\0';
-            if (strcmp(g->vmname, optarg)) {
-                fprintf(stderr, "domain name too long");
+        if (opt == 'C') {
+            strncpy(g->config_path, optarg, sizeof(g->config_path));
+            g->config_path[sizeof(g->config_path) - 1] = '\0';
+            if (strcmp(g->config_path, optarg)) {
+                fprintf(stderr, "config path too long");
                 exit(1);
             }
         } else if (opt == 'h') {
@@ -3149,6 +3150,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 
     while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
         switch (opt) {
+        case 'C':
+            /* already handled in parse_cmdline_config_path */
+            break;
         case 'd':
             g->domid = atoi(optarg);
             break;
@@ -3156,7 +3160,12 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
             g->target_domid = atoi(optarg);
             break;
         case 'N':
-            /* already handled in parse_cmdline_vmname */
+            strncpy(g->vmname, optarg, sizeof(g->vmname));
+            g->vmname[sizeof(g->vmname) - 1] = '\0';
+            if (strcmp(g->vmname, optarg)) {
+                fprintf(stderr, "domain name too long");
+                exit(1);
+            }
             break;
         case 'c':
             g->cmdline_color = optarg;
@@ -3232,7 +3241,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 
 static void load_default_config_values(Ghandles * g)
 {
-
+    strcpy(g->config_path, GUID_CONFIG_FILE);
     g->allow_utf8_titles = 0;
     g->copy_seq_mask = ControlMask | ShiftMask;
     g->copy_seq_key = XK_c;
@@ -3343,14 +3352,13 @@ static void parse_config(Ghandles * g)
 {
     config_t config;
     config_setting_t *setting;
-    char buf[128];
 
     config_init(&config);
 #if (((LIBCONFIG_VER_MAJOR == 1) && (LIBCONFIG_VER_MINOR > 5)) \
         || (LIBCONFIG_VER_MAJOR > 1))
     config_set_include_dir(&config, GUID_CONFIG_DIR);
 #endif
-    if (config_read_file(&config, GUID_CONFIG_FILE) == CONFIG_FALSE) {
+    if (config_read_file(&config, g->config_path) == CONFIG_FALSE) {
 #if (((LIBCONFIG_VER_MAJOR == 1) && (LIBCONFIG_VER_MINOR >= 4)) \
         || (LIBCONFIG_VER_MAJOR > 1))
         if (config_error_type(&config) == CONFIG_ERR_FILE_IO) {
@@ -3360,7 +3368,7 @@ static void parse_config(Ghandles * g)
 #endif
             fprintf(stderr,
                 "Warning: cannot read config file (%s): %s\n",
-                GUID_CONFIG_FILE,
+                g->config_path,
                 config_error_text(&config));
         } else {
             fprintf(stderr,
@@ -3369,20 +3377,14 @@ static void parse_config(Ghandles * g)
         || (LIBCONFIG_VER_MAJOR > 1))
                 config_error_file(&config),
 #else
-                GUID_CONFIG_FILE,
+                g->config_path,
 #endif
                 config_error_line(&config),
                 config_error_text(&config));
             exit(1);
         }
     }
-    // first load global settings
     if ((setting = config_lookup(&config, "global"))) {
-        parse_vm_config(g, setting);
-    }
-    // then try to load per-VM settings
-    snprintf(buf, sizeof(buf), "VM/%s", g->vmname);
-    if ((setting = config_lookup(&config, buf))) {
         parse_vm_config(g, setting);
     }
 }
@@ -3476,8 +3478,8 @@ int main(int argc, char **argv)
     int display_num;
 
     load_default_config_values(&ghandles);
-    /* get the VM name to read the right section in config file */
-    parse_cmdline_vmname(&ghandles, argc, argv);
+    /* get the config file path first */
+    parse_cmdline_config_path(&ghandles, argc, argv);
     /* load config file */
     parse_config(&ghandles);
     /* parse cmdline, possibly overriding values from config */

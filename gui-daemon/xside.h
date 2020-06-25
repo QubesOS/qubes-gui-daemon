@@ -175,6 +175,7 @@ struct _global_handles {
     int volatile reload_requested;
     pid_t pulseaudio_pid;
     /* configuration */
+    char config_path[64]; /* configuration file path (initialized to default) */
     int log_level;        /* log level */
     int startup_timeout;
     int nofork;               /* do not fork into background - used during guid restart */
