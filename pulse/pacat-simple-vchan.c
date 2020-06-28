@@ -307,7 +307,6 @@ static void vchan_play_callback(pa_mainloop_api *UNUSED(a),
     }
 
     /* process playback data */
-    if (u->play_stream && pa_stream_get_state(u->play_stream) == PA_STREAM_READY)
         process_playback_data(u, u->play_stream, pa_stream_writable_size(u->play_stream));
 }
 
@@ -325,7 +324,6 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
         return;
     }
 
-    if (u->rec_stream && pa_stream_get_state(u->rec_stream) == PA_STREAM_READY) {
         /* process VM control command */
         uint32_t cmd;
         while (libvchan_data_ready(u->rec_ctrl) >= (int)sizeof(cmd)) {
@@ -370,7 +368,6 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
         if (libvchan_buffer_space(u->rec_ctrl)) {
             send_rec_data(u->rec_stream, u);
         }
-    }
 }
 
 /* This routine is called whenever the stream state changes */
@@ -380,7 +377,18 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
 
     switch (pa_stream_get_state(s)) {
         case PA_STREAM_CREATING:
+	    break;
         case PA_STREAM_TERMINATED:
+	    if (u->play_stdio_event && u->play_stream == s) {
+               pacat_log("play stream terminated");
+		assert(u->mainloop_api);
+		u->mainloop_api->io_free(u->play_stdio_event);
+	    }
+	    if (u->rec_stdio_event && u->rec_stream == s) {
+               pacat_log("rec stream terminated");
+		assert(u->mainloop_api);
+		u->mainloop_api->io_free(u->rec_stdio_event);
+	    }
             break;
 
         case PA_STREAM_READY:
@@ -406,7 +414,18 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
                         pa_stream_get_device_index(s),
                         pa_stream_is_suspended(s) ? "" : "not ");
             }
-
+	    if (u->play_stream == s) {
+		u->play_stdio_event = u->mainloop_api->io_new(u->mainloop_api,
+                    libvchan_fd_for_select(u->play_ctrl), PA_IO_EVENT_INPUT, vchan_play_callback,  u);
+		if (!u->play_stdio_event)
+		    pacat_log("io_new play failed");
+	    }
+	    if (u->rec_stream == s) {
+		u->rec_stdio_event = u->mainloop_api->io_new(u->mainloop_api,
+			libvchan_fd_for_select(u->rec_ctrl), PA_IO_EVENT_INPUT, vchan_rec_callback, u);
+		if (!u->rec_stdio_event)
+		    pacat_log("io_new rec failed");
+	    }
             break;
 
         case PA_STREAM_FAILED:
@@ -891,20 +910,6 @@ int main(int argc, char *argv[])
 
     u.mainloop_api = pa_glib_mainloop_get_api(m);
 
-    u.play_stdio_event = u.mainloop_api->io_new(u.mainloop_api,
-            libvchan_fd_for_select(u.play_ctrl), PA_IO_EVENT_INPUT, vchan_play_callback, &u);
-    if (!u.play_stdio_event) {
-        pacat_log("io_new play failed");
-        goto quit;
-    }
-
-    u.rec_stdio_event = u.mainloop_api->io_new(u.mainloop_api,
-            libvchan_fd_for_select(u.rec_ctrl), PA_IO_EVENT_INPUT, vchan_rec_callback, &u);
-    if (!u.rec_stdio_event) {
-        pacat_log("io_new rec failed");
-        goto quit;
-    }
-
     pa_gettimeofday(&tv);
     pa_timeval_add(&tv, (pa_usec_t) 5 * 1000 * PA_USEC_PER_MSEC);
     time_event = u.mainloop_api->time_new(u.mainloop_api, &tv, check_vchan_eof_timer, &u);
@@ -948,15 +953,6 @@ quit:
 
     if (u.context)
         pa_context_unref(u.context);
-
-    if (u.play_stdio_event) {
-        assert(u.mainloop_api);
-        u.mainloop_api->io_free(u.play_stdio_event);
-    }
-    if (u.rec_stdio_event) {
-        assert(u.mainloop_api);
-        u.mainloop_api->io_free(u.rec_stdio_event);
-    }
 
     if (time_event) {
         assert(u.mainloop_api);
