@@ -307,7 +307,7 @@ static void vchan_play_callback(pa_mainloop_api *UNUSED(a),
     }
 
     /* process playback data */
-        process_playback_data(u, u->play_stream, pa_stream_writable_size(u->play_stream));
+    process_playback_data(u, u->play_stream, pa_stream_writable_size(u->play_stream));
 }
 
 static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
@@ -324,50 +324,50 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
         return;
     }
 
-        /* process VM control command */
-        uint32_t cmd;
-        while (libvchan_data_ready(u->rec_ctrl) >= (int)sizeof(cmd)) {
-            if (libvchan_read(u->rec_ctrl, (char*)&cmd, sizeof(cmd)) != sizeof(cmd)) {
-                if (!pa_stream_is_corked(u->rec_stream))
+    /* process VM control command */
+    uint32_t cmd;
+    while (libvchan_data_ready(u->rec_ctrl) >= (int)sizeof(cmd)) {
+        if (libvchan_read(u->rec_ctrl, (char*)&cmd, sizeof(cmd)) != sizeof(cmd)) {
+            if (!pa_stream_is_corked(u->rec_stream))
+                pa_stream_cork(u->rec_stream, 1, NULL, u);
+            fprintf(stderr, "Failed to read from vchan\n");
+            quit(u, 1);
+            return;
+        }
+        switch (cmd) {
+            case QUBES_PA_SOURCE_START_CMD:
+                g_mutex_lock(&u->prop_mutex);
+                u->rec_requested = 1;
+                if (u->rec_allowed) {
+                    pacat_log("Recording start");
+                    pa_stream_cork(u->rec_stream, 0, NULL, u);
+                } else
+                    pacat_log("Recording requested but not allowed");
+                g_mutex_unlock(&u->prop_mutex);
+                break;
+            case QUBES_PA_SOURCE_STOP_CMD:
+                g_mutex_lock(&u->prop_mutex);
+                u->rec_requested = 0;
+                if (!pa_stream_is_corked(u->rec_stream)) {
+                    pacat_log("Recording stop");
                     pa_stream_cork(u->rec_stream, 1, NULL, u);
-                fprintf(stderr, "Failed to read from vchan\n");
-                quit(u, 1);
-                return;
-            }
-            switch (cmd) {
-                case QUBES_PA_SOURCE_START_CMD:
-                    g_mutex_lock(&u->prop_mutex);
-                    u->rec_requested = 1;
-                    if (u->rec_allowed) {
-                        pacat_log("Recording start");
-                        pa_stream_cork(u->rec_stream, 0, NULL, u);
-                    } else
-                        pacat_log("Recording requested but not allowed");
-                    g_mutex_unlock(&u->prop_mutex);
-                    break;
-                case QUBES_PA_SOURCE_STOP_CMD:
-                    g_mutex_lock(&u->prop_mutex);
-                    u->rec_requested = 0;
-                    if (!pa_stream_is_corked(u->rec_stream)) {
-                        pacat_log("Recording stop");
-                        pa_stream_cork(u->rec_stream, 1, NULL, u);
-                    }
-                    g_mutex_unlock(&u->prop_mutex);
-                    break;
-                case QUBES_PA_SINK_CORK_CMD:
-                    pacat_log("Stream cork");
-                    pa_stream_cork(u->play_stream, 1, NULL, u);
-                    break;
-                case QUBES_PA_SINK_UNCORK_CMD:
-                    pacat_log("Stream uncork");
-                    pa_stream_cork(u->play_stream, 0, NULL, u);
-                    break;
-            }
+                }
+                g_mutex_unlock(&u->prop_mutex);
+                break;
+            case QUBES_PA_SINK_CORK_CMD:
+                pacat_log("Stream cork");
+                pa_stream_cork(u->play_stream, 1, NULL, u);
+                break;
+            case QUBES_PA_SINK_UNCORK_CMD:
+                pacat_log("Stream uncork");
+                pa_stream_cork(u->play_stream, 0, NULL, u);
+                break;
         }
-        /* send the data if space is available */
-        if (libvchan_buffer_space(u->rec_ctrl)) {
-            send_rec_data(u->rec_stream, u);
-        }
+    }
+    /* send the data if space is available */
+    if (libvchan_buffer_space(u->rec_ctrl)) {
+        send_rec_data(u->rec_stream, u);
+    }
 }
 
 /* This routine is called whenever the stream state changes */
