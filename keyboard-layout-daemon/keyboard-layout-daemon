@@ -1,0 +1,216 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+#
+# The Qubes OS Project, http://www.qubes-os.org
+#
+# Copyright (C) 2020  Marek Marczykowski-Górecki
+#                                   <marmarek@invisiblethingslab.com>
+# Copyright (C) 2020  Marta Marczykowska-Górecka
+#                                   <marmarta@invisiblethingslab.com>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+import struct
+import io
+
+import xcffib
+from xcffib import xproto
+
+from qubesadmin import Qubes
+
+
+class XkbUseExtensionReply(xcffib.Reply):
+    def __init__(self, unpacker):
+        if isinstance(unpacker, xcffib.Protobj):
+            unpacker = xcffib.MemoryUnpacker(unpacker.pack())
+        xcffib.Reply.__init__(self, unpacker)
+        base = unpacker.offset
+        self.major_version, self.minor_version = unpacker.unpack(
+            "xx2x4xHH4x4x4x4x")
+        self.bufsize = unpacker.offset - base
+
+
+class XkbUseExtensionCookie(xcffib.Cookie):
+    reply_type = XkbUseExtensionReply
+
+
+class XkbGetStateReply(xcffib.Reply):
+    # copy&paste from X11/XKBproto.h
+    _typedef = """
+        BYTE    type;
+        BYTE    deviceID;
+        CARD16  sequenceNumber B16;
+        CARD32  length B32;
+        CARD8   mods;
+        CARD8   baseMods;
+        CARD8   latchedMods;
+        CARD8   lockedMods;
+        CARD8   group;
+        CARD8   lockedGroup;
+        INT16   baseGroup B16;
+        INT16   latchedGroup B16;
+        CARD8   compatState;
+        CARD8   grabMods;
+        CARD8   compatGrabMods;
+        CARD8   lookupMods;
+        CARD8   compatLookupMods;
+        CARD8   pad1;
+        CARD16  ptrBtnState B16;
+        CARD16  pad2 B16;
+        CARD32  pad3 B32;"""
+    _type_mapping = {
+        "BYTE": "B",
+        "CARD16": "H",
+        "CARD8": "B",
+        "CARD32": "I",
+        "INT16": "h",
+    }
+
+    def __init__(self, unpacker):
+        if isinstance(unpacker, xcffib.Protobj):
+            unpacker = xcffib.MemoryUnpacker(unpacker.pack())
+        xcffib.Reply.__init__(self, unpacker)
+        base = unpacker.offset
+
+        # dynamic parse of copy&pasted struct content, for easy re-usability
+        for line in self._typedef.splitlines():
+            line = line.strip()
+            line = line.rstrip(';')
+            if not line:
+                continue
+            typename, name = line.split()[:2]  # ignore optional third part
+            setattr(self, name, unpacker.unpack(self._type_mapping[typename]))
+
+        self.bufsize = unpacker.offset - base
+
+
+class XkbGetStateCookie(xcffib.Cookie):
+    reply_type = XkbGetStateReply
+
+
+class XkbExtension(xcffib.Extension):
+    def UseExtension(self, is_checked=True):
+        buf = io.BytesIO()
+        buf.write(struct.pack("=xx2xHH", 1, 0))
+        return self.send_request(0, buf, XkbGetStateCookie,
+                                 is_checked=is_checked)
+
+    def GetState(self, deviceSpec=0x100, is_checked=True):
+        buf = io.BytesIO()
+        buf.write(struct.pack("=xx2xHxx", deviceSpec))
+        return self.send_request(4, buf, XkbGetStateCookie,
+                                 is_checked=is_checked)
+
+
+class KeyboardLayout:
+    def __init__(self, binary_string):
+        split_string = binary_string.split(b'\0')
+        self.languages = split_string[2].decode().split(',')
+        self.variants = split_string[3].decode().split(',')
+        self.options = split_string[4].decode()
+
+    def get_property(self, layout_num):
+        return '+'.join([self.languages[layout_num],
+                         self.variants[layout_num],
+                         self.options])
+
+
+class XWatcher:
+    def __init__(self):
+        self.qubes = Qubes()
+        self.current_vm = self.qubes.domains[self.qubes.local_name]
+
+        self.conn = xcffib.connect()
+        self.ext = self.initialize_extension()
+
+        # get root window
+        self.setup = self.conn.get_setup()
+        self.root = self.setup.roots[0].root
+
+        # atoms (strings) of events we need to watch
+        # keyboard layout was switched
+        self.atom_xklavier = self.conn.core.InternAtom(
+            False, len("XKLAVIER_ALLOW_SECONDARY"),
+            "XKLAVIER_ALLOW_SECONDARY").reply().atom
+        # keyboard layout was changed
+        self.atom_xkb_rules = self.conn.core.InternAtom(
+            False, len("_XKB_RULES_NAMES"),
+            "_XKB_RULES_NAMES").reply().atom
+
+        self.conn.core.ChangeWindowAttributesChecked(
+            self.root, xproto.CW.EventMask,
+            [xproto.EventMask.PropertyChange])
+        self.conn.flush()
+
+        # initialize state
+        self.keyboard_layout = KeyboardLayout(self.get_keyboard_layout())
+        self.selected_layout = self.get_selected_layout()
+
+    def initialize_extension(self):
+        xkb_key = xcffib.ExtensionKey("XKEYBOARD")
+
+        # this is a lie: there are events and errors types
+        _events = {}
+        _errors = {}
+
+        xcffib._add_ext(xkb_key, XkbExtension, _events, _errors)
+        ext = self.conn(xkb_key)
+        ext.UseExtension()
+
+        return ext
+
+    def get_keyboard_layout(self):
+        property_cookie = self.conn.core.GetProperty(
+            False,  # delete
+            self.root,  # window
+            self.atom_xkb_rules,
+            xproto.Atom.STRING,
+            0, 1000
+        )
+        prop_reply = property_cookie.reply()
+        return prop_reply.value.buf()
+
+    def get_selected_layout(self):
+        state_reply = self.ext.GetState().reply()
+        return state_reply.lockedGroup[0]
+
+    def watch_events(self):
+        for ev in iter(self.conn.wait_for_event, None):
+            if isinstance(ev, xproto.PropertyNotifyEvent):
+                if ev.atom == self.atom_xklavier:
+                    self.selected_layout = self.get_selected_layout()
+                elif ev.atom == self.atom_xkb_rules:
+                    self.keyboard_layout = KeyboardLayout(
+                        self.get_keyboard_layout())
+                else:
+                    continue
+
+                new_property = self.keyboard_layout.get_property(
+                    self.selected_layout)
+
+                current_property = self.current_vm.keyboard_layout
+
+                if new_property != current_property:
+                    self.current_vm.keyboard_layout = current_property
+
+
+def main():
+    watcher = XWatcher()
+
+    watcher.watch_events()
+
+
+if __name__ == '__main__':
+    main()

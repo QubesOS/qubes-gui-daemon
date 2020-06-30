@@ -4,9 +4,11 @@ usr/libexec/qubes/watch-screen-layout-changes
 usr/share/man/man1/qubes-guid.1
 usr/lib/*/qubes-gui-daemon/shmoverride.so
 usr/lib/qubes/icon-receiver
+usr/lib/qubes/keyboard-layout-daemon
 etc/qubes/guid.conf
 etc/xdg/autostart/qubes-screen-layout-watches.desktop
 etc/xdg/autostart/qubes-icon-receiver.desktop
+etc/xdg/autostart/keyboard-layout-daemon.desktop
 etc/qubes-rpc/qubes.WindowIconUpdater
 etc/qubes-rpc/policy/qubes.ClipboardPaste
 etc/qubes-rpc/policy/qubes.WindowIconUpdater

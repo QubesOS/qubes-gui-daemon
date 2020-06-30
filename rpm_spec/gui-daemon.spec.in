@@ -144,6 +144,8 @@ rm -f %{name}-%{version}
 /usr/lib/qubes/icon-receiver
 %config %{_sysconfdir}/qubes-rpc/qubes.WindowIconUpdater
 %config %{_sysconfdir}/qubes/rpc-config/qubes.WindowIconUpdater
+/usr/lib/qubes/keyboard-layout-daemon
+/etc/xdg/autostart/keyboard-layout-daemon.desktop
 
 %files -n qubes-audio-daemon
 /usr/bin/pacat-simple-vchan

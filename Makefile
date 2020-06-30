@@ -61,6 +61,8 @@ install:
 	install -D -m 0644 gui-daemon/qubes.ClipboardPaste.policy $(DESTDIR)/etc/qubes-rpc/policy/qubes.ClipboardPaste
 	install -D screen-layout-handler/watch-screen-layout-changes $(DESTDIR)/usr/libexec/qubes/watch-screen-layout-changes
 	install -D -m 0644 screen-layout-handler/qubes-screen-layout-watches.desktop $(DESTDIR)/etc/xdg/autostart/qubes-screen-layout-watches.desktop
+	install -D keyboard-layout-daemon/keyboard-layout-daemon $(DESTDIR)/usr/lib/qubes/keyboard-layout-daemon
+	install -D -m 0644 keyboard-layout-daemon/keyboard-layout-daemon.desktop $(DESTDIR)/etc/xdg/autostart/keyboard-layout-daemon.desktop
 	$(MAKE) -C window-icon-updater install
 
 tar:

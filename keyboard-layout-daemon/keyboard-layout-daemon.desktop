@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Qubes keyboard layout daemon
+Comment=monitors X events and updates keyboard_layout accordingly
+Icon=qubes
+Exec=/usr/lib/qubes/keyboard-layout-daemon
+Terminal=false
+Type=Application
