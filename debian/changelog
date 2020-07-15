@@ -1,3 +1,22 @@
+qubes-gui-daemon (4.1.7-1) unstable; urgency=medium
+
+  [ Marek Marczykowski-Górecki ]
+  * shmoverride: fill shm_perm when faking shmctl(IPC_STAT) output
+  * Update dependencies for icon receiver
+
+  [ Dmitry Fedorov ]
+  * audio: register vchan' callbacks when stream in PA_STREAM_READY
+    state
+  * audio: fix indentation
+  * audio: quit if io_new() fails
+
+  [ Paweł Marczewski ]
+  * Allow overriding configuration file
+  * Remove audio_low_latency option (not used anymore)
+  * Add a warning to the configuration file
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Wed, 15 Jul 2020 13:50:45 +0200
+
 qubes-gui-daemon (4.1.6-1) unstable; urgency=medium
 
   [ Ivan Kardykov ]
