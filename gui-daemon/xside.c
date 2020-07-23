@@ -2323,6 +2323,90 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
     }
 }
 
+
+/* Check if we should keep this window on top of others */
+static bool should_keep_on_top(Ghandles *g, Window window) {
+    XWindowAttributes attr;
+    XClassHint hint;
+    bool result;
+
+    /* Check if the window has override_redirect attribute, and is mapped. */
+    XGetWindowAttributes(g->display, window, &attr);
+    if (!(attr.override_redirect && attr.map_state == IsViewable)) {
+        return false;
+    }
+
+    /* Check if this is a dom0 screensaver window by looking at window class.
+     * (VM windows have a prefix, so this is not spoofable by a VM). */
+    if (XGetClassHint(g->display, window, &hint) == 0)
+        return false;
+
+    result = (strcmp(hint.res_name, "xscreensaver") == 0);
+
+    XFree(hint.res_name);
+    XFree(hint.res_class);
+    return result;
+}
+
+
+/* Move a newly mapped override_redirect window below windows that need to be
+ * kept on top, i.e. screen lockers. */
+static void restack_windows(Ghandles *g, struct windowdata *vm_window)
+{
+    Window root;
+    Window parent;
+    Window *children_list;
+    unsigned int children_count;
+    int i, current_pos, goal_pos;
+
+    /* Find all windows below parent */
+
+    XQueryTree(
+        g->display,
+        vm_window->parent ? vm_window->parent->local_winid : g->root_win,
+        &root, &parent, &children_list, &children_count);
+
+    if (!children_list) {
+        fprintf(stderr, "XQueryTree returned an empty list\n");
+        return;
+    }
+
+    /* Traverse children_list, looking for bottom-most window that
+     * need to be kept on top. The list is bottom-to-top, so we record only the
+     * first such window, and break as soon as we encounter our own window. */
+
+    current_pos = -1;
+    goal_pos = -1;
+    for (i = 0; i < (int) children_count; i++) {
+        if (children_list[i] == vm_window->local_winid) {
+            current_pos = i;
+            break;
+        } else if (goal_pos == -1 && should_keep_on_top(g, children_list[i]))
+            goal_pos = i;
+    }
+
+    /* Reorder if needed */
+
+    if (current_pos != -1 && goal_pos != -1) {
+        Window to_restack[2];
+
+        assert(current_pos > goal_pos);
+
+        if (g->log_level > 0) {
+            fprintf(stderr, "restack_windows: moving window 0x%x deeper\n",
+                    (int) vm_window->local_winid);
+        }
+
+        to_restack[0] = children_list[goal_pos];
+        to_restack[1] = vm_window->local_winid;
+
+        XRestackWindows(g->display, to_restack, 2);
+    }
+
+    XFree(children_list);
+}
+
+
 /* handle VM message: MSG_MAP
  * Map a window with given parameters */
 static void handle_map(Ghandles * g, struct windowdata *vm_window)
@@ -2360,6 +2444,10 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
     }
 
     (void) XMapWindow(g->display, vm_window->local_winid);
+
+    if (vm_window->override_redirect) {
+        restack_windows(g, vm_window);
+    }
 }
 
 /* handle VM message: MSG_DOCK
