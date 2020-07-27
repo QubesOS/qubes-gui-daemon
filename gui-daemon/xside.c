@@ -2329,6 +2329,7 @@ static bool should_keep_on_top(Ghandles *g, Window window) {
     XWindowAttributes attr;
     XClassHint hint;
     bool result;
+    int i;
 
     /* Check if the window has override_redirect attribute, and is mapped. */
     XGetWindowAttributes(g->display, window, &attr);
@@ -2341,7 +2342,13 @@ static bool should_keep_on_top(Ghandles *g, Window window) {
     if (XGetClassHint(g->display, window, &hint) == 0)
         return false;
 
-    result = (strcmp(hint.res_name, "xscreensaver") == 0);
+    result = false;
+    for (i = 0; i < MAX_SCREENSAVER_NAMES && g->screensaver_names[i]; i++) {
+        if (strcmp(hint.res_name, g->screensaver_names[i]) == 0) {
+            result = true;
+            break;
+        }
+    }
 
     XFree(hint.res_name);
     XFree(hint.res_class);
@@ -3028,6 +3035,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 
 enum {
     opt_trayicon_mode = 257,
+    opt_screensaver_name = 258,
 };
 
 struct option longopts[] = {
@@ -3048,6 +3056,7 @@ struct option longopts[] = {
     { "prop", required_argument, NULL, 'p' },
     { "title-name", no_argument, NULL, 'T' },
     { "trayicon-mode", required_argument, NULL, opt_trayicon_mode },
+    { "screensaver-name", required_argument, NULL, opt_screensaver_name },
     { "help", no_argument, NULL, 'h' },
     { 0, 0, 0, 0 },
 };
@@ -3077,6 +3086,7 @@ static void usage(FILE *stream)
     fprintf(stream, "          specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
     fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
     fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: tint\n");
+    fprintf(stream, " --screensaver-name\tscreensaver window name, can be repeated, default: xscreensaver\n");
     fprintf(stream, " --help, -h\tPrint help message\n");
     fprintf(stream, "\n");
     fprintf(stream, "Log levels:\n");
@@ -3226,6 +3236,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
     int opt;
     int prop_num = 0;
+    int screensaver_name_num = 0;
     /* defaults */
     g->log_level = 1;
     g->qrexec_clipboard = 0;
@@ -3233,6 +3244,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
     g->kill_on_connect = 0;
     g->prefix_titles = 0;
     memset(g->extra_props, 0, MAX_EXTRA_PROPS * sizeof(struct extra_prop));
+    memset(g->screensaver_names, 0, MAX_SCREENSAVER_NAMES * sizeof(char*));
 
     optind = 1;
 
@@ -3300,6 +3312,13 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
         case opt_trayicon_mode:
             parse_trayicon_mode(g, optarg);
             break;
+        case opt_screensaver_name:
+            if (screensaver_name_num >= MAX_SCREENSAVER_NAMES) {
+                fprintf(stderr, "Too many --screensaver-name args\n");
+                exit(1);
+            }
+            g->screensaver_names[screensaver_name_num++] = strdup(optarg);
+            break;
         default:
             usage(stderr);
             exit(1);
@@ -3324,6 +3343,10 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
     if (g->vmname[0]=='\0') {
         fprintf(stderr, "domain name?");
         exit(1);
+    }
+
+    if (screensaver_name_num == 0) {
+        g->screensaver_names[0] = "xscreensaver";
     }
 }
 

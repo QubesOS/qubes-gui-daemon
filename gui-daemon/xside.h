@@ -53,6 +53,8 @@
 
 #define MAX_EXTRA_PROPS 10
 
+#define MAX_SCREENSAVER_NAMES 10
+
 #ifdef __GNUC__
 #  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
 #else
@@ -196,6 +198,7 @@ struct _global_handles {
     int trayicon_border; /* position of trayicon border - 0 - no border, 1 - at the edges, 2 - 1px from the edges */
     bool trayicon_tint_reduce_saturation; /* reduce trayicon saturation by 50% (available only for "tint" mode) */
     bool trayicon_tint_whitehack; /* replace white pixels with almost-white 0xfefefe (available only for "tint" mode) */
+    char *screensaver_names[MAX_SCREENSAVER_NAMES]; /* WM_CLASS names for windows detected as screensavers */
     Cursor *cursors;  /* preloaded cursors (using XCreateFontCursor) */
 };
 
