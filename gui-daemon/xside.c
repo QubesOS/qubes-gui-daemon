@@ -233,11 +233,23 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
     /* log the error */
     dummy_handler(dpy, ev);
-    if ((ev->request_code == X_DestroyWindow || ev->request_code == X_UnmapWindow)
+    if ((ev->request_code == X_DestroyWindow
+         || ev->request_code == X_UnmapWindow
+         || ev->request_code == X_ConfigureWindow
+         || ev->request_code == X_GetProperty)
             && ev->error_code == BadWindow) {
         fprintf(stderr, "  someone else already destroyed this window, ignoring\n");
         return 0;
     }
+    /* Permit XGetWindowAttributes errors, as long as they're not for root_win */
+    if (ev->request_code == X_GetWindowAttributes &&
+        ev->error_code == BadWindow &&
+        ev->resourceid != ghandles.root_win) {
+
+        fprintf(stderr, "  someone else already destroyed this window, ignoring\n");
+        return 0;
+    }
+
     if (ev->request_code == ghandles.shm_major_opcode
             && ev->minor_code == X_ShmAttach
             && ev->error_code == BadAccess) {
@@ -1551,11 +1563,14 @@ static void process_xevent_expose(Ghandles * g, const XExposeEvent * ev)
  * after some checks, send to relevant window in VM */
 static void process_xevent_mapnotify(Ghandles * g, const XMapEvent * ev)
 {
+    int ret;
     XWindowAttributes attr;
     CHECK_NONMANAGED_WINDOW(g, ev->window);
     if (vm_window->is_mapped)
         return;
-    XGetWindowAttributes(g->display, vm_window->local_winid, &attr);
+    ret = XGetWindowAttributes(g->display, vm_window->local_winid, &attr);
+    if (!ret)
+        return;
     if (attr.map_state != IsViewable && !vm_window->is_docked) {
         /* Unmap windows that are not visible on vmside.
          * WM may try to map non-viewable windows ie. when
@@ -2259,20 +2274,21 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 
 /* Check if we should keep this window on top of others */
 static bool should_keep_on_top(Ghandles *g, Window window) {
+    int ret;
     XWindowAttributes attr;
     XClassHint hint;
     bool result;
     int i;
 
     /* Check if the window has override_redirect attribute, and is mapped. */
-    XGetWindowAttributes(g->display, window, &attr);
-    if (!(attr.override_redirect && attr.map_state == IsViewable)) {
+    ret = XGetWindowAttributes(g->display, window, &attr);
+    if (!(ret && attr.override_redirect && attr.map_state == IsViewable))
         return false;
-    }
 
     /* Check if this is a dom0 screensaver window by looking at window class.
      * (VM windows have a prefix, so this is not spoofable by a VM). */
-    if (XGetClassHint(g->display, window, &hint) == 0)
+    ret = XGetClassHint(g->display, window, &hint);
+    if (!ret)
         return false;
 
     result = false;
