@@ -245,11 +245,23 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
     /* log the error */
     dummy_handler(dpy, ev);
-    if ((ev->request_code == X_DestroyWindow || ev->request_code == X_UnmapWindow)
+    if ((ev->request_code == X_DestroyWindow
+         || ev->request_code == X_UnmapWindow
+         || ev->request_code == X_ConfigureWindow
+         || ev->request_code == X_GetProperty)
             && ev->error_code == BadWindow) {
         fprintf(stderr, "  someone else already destroyed this window, ignoring\n");
         return 0;
     }
+    /* Permit XGetWindowAttributes errors, as long as they're not for root_win */
+    if (ev->request_code == X_GetWindowAttributes &&
+        ev->error_code == BadWindow &&
+        ev->resourceid != ghandles.root_win) {
+
+        fprintf(stderr, "  someone else already destroyed this window, ignoring\n");
+        return 0;
+    }
+
     if (ev->request_code == ghandles.shm_major_opcode
             && ev->minor_code == X_ShmAttach
             && ev->error_code == BadAccess) {
@@ -1618,11 +1630,14 @@ static void process_xevent_expose(Ghandles * g, const XExposeEvent * ev)
  * after some checks, send to relevant window in VM */
 static void process_xevent_mapnotify(Ghandles * g, const XMapEvent * ev)
 {
+    int ret;
     XWindowAttributes attr;
     CHECK_NONMANAGED_WINDOW(g, ev->window);
     if (vm_window->is_mapped)
         return;
-    XGetWindowAttributes(g->display, vm_window->local_winid, &attr);
+    ret = XGetWindowAttributes(g->display, vm_window->local_winid, &attr);
+    if (!ret)
+        return;
     if (attr.map_state != IsViewable && !vm_window->is_docked) {
         /* Unmap windows that are not visible on vmside.
          * WM may try to map non-viewable windows ie. when
@@ -2323,6 +2338,98 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
     }
 }
 
+
+/* Check if we should keep this window on top of others */
+static bool should_keep_on_top(Ghandles *g, Window window) {
+    int ret;
+    XWindowAttributes attr;
+    XClassHint hint;
+    bool result;
+    int i;
+
+    /* Check if the window has override_redirect attribute, and is mapped. */
+    ret = XGetWindowAttributes(g->display, window, &attr);
+    if (!(ret && attr.override_redirect && attr.map_state == IsViewable))
+        return false;
+
+    /* Check if this is a dom0 screensaver window by looking at window class.
+     * (VM windows have a prefix, so this is not spoofable by a VM). */
+    ret = XGetClassHint(g->display, window, &hint);
+    if (!ret)
+        return false;
+
+    result = false;
+    for (i = 0; i < MAX_SCREENSAVER_NAMES && g->screensaver_names[i]; i++) {
+        if (strcmp(hint.res_name, g->screensaver_names[i]) == 0) {
+            result = true;
+            break;
+        }
+    }
+
+    XFree(hint.res_name);
+    XFree(hint.res_class);
+    return result;
+}
+
+
+/* Move a newly mapped override_redirect window below windows that need to be
+ * kept on top, i.e. screen lockers. */
+static void restack_windows(Ghandles *g, struct windowdata *vm_window)
+{
+    Window root;
+    Window parent;
+    Window *children_list;
+    unsigned int children_count;
+    int i, current_pos, goal_pos;
+
+    /* Find all windows below parent */
+
+    XQueryTree(
+        g->display,
+        vm_window->parent ? vm_window->parent->local_winid : g->root_win,
+        &root, &parent, &children_list, &children_count);
+
+    if (!children_list) {
+        fprintf(stderr, "XQueryTree returned an empty list\n");
+        return;
+    }
+
+    /* Traverse children_list, looking for bottom-most window that
+     * need to be kept on top. The list is bottom-to-top, so we record only the
+     * first such window, and break as soon as we encounter our own window. */
+
+    current_pos = -1;
+    goal_pos = -1;
+    for (i = 0; i < (int) children_count; i++) {
+        if (children_list[i] == vm_window->local_winid) {
+            current_pos = i;
+            break;
+        } else if (goal_pos == -1 && should_keep_on_top(g, children_list[i]))
+            goal_pos = i;
+    }
+
+    /* Reorder if needed */
+
+    if (current_pos != -1 && goal_pos != -1) {
+        Window to_restack[2];
+
+        assert(current_pos > goal_pos);
+
+        if (g->log_level > 0) {
+            fprintf(stderr, "restack_windows: moving window 0x%x deeper\n",
+                    (int) vm_window->local_winid);
+        }
+
+        to_restack[0] = children_list[goal_pos];
+        to_restack[1] = vm_window->local_winid;
+
+        XRestackWindows(g->display, to_restack, 2);
+    }
+
+    XFree(children_list);
+}
+
+
 /* handle VM message: MSG_MAP
  * Map a window with given parameters */
 static void handle_map(Ghandles * g, struct windowdata *vm_window)
@@ -2360,6 +2467,10 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
     }
 
     (void) XMapWindow(g->display, vm_window->local_winid);
+
+    if (vm_window->override_redirect) {
+        restack_windows(g, vm_window);
+    }
 }
 
 /* handle VM message: MSG_DOCK
@@ -2940,6 +3051,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 
 enum {
     opt_trayicon_mode = 257,
+    opt_screensaver_name = 258,
 };
 
 struct option longopts[] = {
@@ -2960,6 +3072,7 @@ struct option longopts[] = {
     { "prop", required_argument, NULL, 'p' },
     { "title-name", no_argument, NULL, 'T' },
     { "trayicon-mode", required_argument, NULL, opt_trayicon_mode },
+    { "screensaver-name", required_argument, NULL, opt_screensaver_name },
     { "help", no_argument, NULL, 'h' },
     { 0, 0, 0, 0 },
 };
@@ -2989,6 +3102,7 @@ static void usage(FILE *stream)
     fprintf(stream, "          specify value as \"s:text\" for string, \"a:atom\" for atom, \"c:cardinal1,cardinal2,...\" for unsigned number(s)\n");
     fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
     fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: tint\n");
+    fprintf(stream, " --screensaver-name\tscreensaver window name, can be repeated, default: xscreensaver\n");
     fprintf(stream, " --help, -h\tPrint help message\n");
     fprintf(stream, "\n");
     fprintf(stream, "Log levels:\n");
@@ -3138,6 +3252,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
     int opt;
     int prop_num = 0;
+    int screensaver_name_num = 0;
     /* defaults */
     g->log_level = 1;
     g->qrexec_clipboard = 0;
@@ -3145,6 +3260,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
     g->kill_on_connect = 0;
     g->prefix_titles = 0;
     memset(g->extra_props, 0, MAX_EXTRA_PROPS * sizeof(struct extra_prop));
+    memset(g->screensaver_names, 0, MAX_SCREENSAVER_NAMES * sizeof(char*));
 
     optind = 1;
 
@@ -3212,6 +3328,13 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
         case opt_trayicon_mode:
             parse_trayicon_mode(g, optarg);
             break;
+        case opt_screensaver_name:
+            if (screensaver_name_num >= MAX_SCREENSAVER_NAMES) {
+                fprintf(stderr, "Too many --screensaver-name args\n");
+                exit(1);
+            }
+            g->screensaver_names[screensaver_name_num++] = strdup(optarg);
+            break;
         default:
             usage(stderr);
             exit(1);
@@ -3236,6 +3359,10 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
     if (g->vmname[0]=='\0') {
         fprintf(stderr, "domain name?");
         exit(1);
+    }
+
+    if (screensaver_name_num == 0) {
+        g->screensaver_names[0] = "xscreensaver";
     }
 }
 
