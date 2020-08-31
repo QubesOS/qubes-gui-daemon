@@ -1,3 +1,10 @@
+qubes-gui-daemon (4.1.9-1) unstable; urgency=medium
+
+  [ Frédéric Pierret (fepitre) ]
+  * Update travis
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 31 Aug 2020 04:20:14 +0200
+
 qubes-gui-daemon (4.1.8-1) unstable; urgency=medium
 
   [ Paweł Marczewski ]
