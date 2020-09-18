@@ -1,3 +1,10 @@
+qubes-gui-daemon (4.1.10-1) unstable; urgency=medium
+
+  [ John Hensley ]
+  * icon-receiver: exit on X connection error
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 18 Sep 2020 05:15:19 +0200
+
 qubes-gui-daemon (4.1.9-1) unstable; urgency=medium
 
   [ Frédéric Pierret (fepitre) ]
