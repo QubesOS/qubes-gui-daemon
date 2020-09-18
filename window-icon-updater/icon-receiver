@@ -402,11 +402,18 @@ def main():
 
     rcvd = IconReceiver()
 
+    def handle_exception(loop, context):
+        e = context.get('exception')
+        if isinstance(e, xcb.ConnectionException):
+            logging.error("Connection error: %s", e)
+            sys.exit(1)
+
     loop = asyncio.get_event_loop()
     tasks = [
         rcvd.handle_events(),
         rcvd.handle_clients(),
     ]
+    loop.set_exception_handler(handle_exception)
     loop.run_until_complete(asyncio.gather(*tasks))
 
 
