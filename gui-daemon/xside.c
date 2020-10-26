@@ -95,6 +95,7 @@ static Ghandles ghandles;
  */
 static bool shm_attach_failed = false;
 
+static int (*default_x11_io_error_handler)(Display *dpy);
 static void inter_appviewer_lock(Ghandles *g, int mode);
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window);
 static void print_backtrace(void);
@@ -269,6 +270,26 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
 #endif
     return 0;
 }
+
+/* 
+ * The X11 IO error handler. It is supposed to cleanup things and do _not_
+ * return (should terminate the process).
+ */
+static int x11_io_error_handler(Display * dpy)
+{
+    /* The default error handler below will call exit(1), which will then call
+     * release_all_mapped_mfns (registerd with atexit(3)), which would try to
+     * release window images with XShmDetach.
+     * When the IO error occurs in X11 it is no longer safe/possible to
+     * communicate with the X server. Clean window images without calling to
+     * X11. And hope that X server will call XShmDetach internally when
+     * cleaning windows of disconnected client */
+    release_all_shm_no_x11_calls();
+    if (default_x11_io_error_handler)
+        default_x11_io_error_handler(dpy);
+    exit(1);
+}
+
 
 /* prepare graphic context for painting colorful frame and set RGB value of the
  * color */
@@ -3563,6 +3584,7 @@ int main(int argc, char **argv)
     }
     mkghandles(&ghandles);
     XSetErrorHandler(x11_error_handler);
+    default_x11_io_error_handler = XSetIOErrorHandler(x11_io_error_handler);
     double_buffer_init();
     ghandles.vchan = libvchan_client_init(ghandles.domid, 6000);
     if (!ghandles.vchan) {
