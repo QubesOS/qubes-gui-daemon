@@ -35,6 +35,8 @@ int vchan_is_closed = 0;
  */
 int double_buffered = 1;
 
+int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int nfd, int *fd, fd_set * retset);
+
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void)) {
     vchan_at_eof = new_vchan_at_eof;
 }
@@ -93,6 +95,8 @@ int read_data(libvchan_t *vchan, char *buf, int size)
     int written = 0;
     int ret;
     while (written < size) {
+        while (!libvchan_data_ready(vchan))
+            wait_for_vchan_or_argfd_once(vchan, 0, NULL, NULL);
         ret = libvchan_read(vchan, buf + written, size - written);
         if (ret <= 0)
             handle_vchan_error(vchan, "read data");
