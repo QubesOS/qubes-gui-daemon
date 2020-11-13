@@ -1,3 +1,10 @@
+qubes-gui-daemon (4.1.11-1) unstable; urgency=medium
+
+  * Fix handling X11 exit
+  * xside: don't hang indefinitely if VM is killed early
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 13 Nov 2020 03:15:42 +0100
+
 qubes-gui-daemon (4.1.10-1) unstable; urgency=medium
 
   [ John Hensley ]
