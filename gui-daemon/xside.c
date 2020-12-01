@@ -160,8 +160,8 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
             "rare cases, however, it might be possible that a legitimate "
             "application trigger such condition (check the guid logs for more "
             "information). \n\n"
-            "Click \"Terminate\" to terminate this domain immediately, or "
-            "\"Ignore\" to ignore this condition check and allow the GUI request "
+            "Click “Terminate” to terminate this domain immediately, or "
+            "“Ignore” to ignore this condition check and allow the GUI request "
             "to proceed.",
          g->vmname);
 #else
@@ -1184,6 +1184,9 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
             int border_width, const char *caller)
 {
     int do_move = 0, reason = -1;
+    if (border_width > (INT_MAX / 2))
+        border_width = (INT_MAX / 2);
+    int taskbar_height = vm_window->is_docked ? 0 : g->taskbar_height;
     int x = vm_window->x, y = vm_window->y, w = vm_window->width, h =
         vm_window->height;
 
@@ -1193,9 +1196,9 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
         do_move = 1;
         reason = 1;
     }
-    if (vm_window->y < border_width
+    if (vm_window->y < border_width + taskbar_height
         && vm_window->y + (int)vm_window->height > 0) {
-        vm_window->y = border_width;
+        vm_window->y = border_width + taskbar_height;
         do_move = 1;
         reason = 2;
     }
@@ -1243,6 +1246,11 @@ static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
 		"notification to close it.";
 
 	req_override_redirect = !!req_override_redirect;
+
+	if (g->disable_override_redirect) {
+		vm_window->override_redirect = 0;
+		return;
+	}
 
 	avail = (uint64_t) g->root_width * (uint64_t) g->root_height;
 	desired = (uint64_t) vm_window->width * (uint64_t) vm_window->height;
@@ -1474,7 +1482,7 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
      * practice it ignores NotifyGrab and NotifyUngrab. VM does not have any
      * way to grab focus in dom0, so it shouldn't care about those events. Grab
      * is used by window managers during task switching (either classic task
-     * switcher, or KDE "present windows" feature.
+     * switcher, or KDE "present windows" feature).
      */
     if (ev->mode != NotifyNormal && ev->mode != NotifyWhileGrabbed)
         return;
@@ -3076,6 +3084,7 @@ enum {
 };
 
 struct option longopts[] = {
+    { "disable-override-redirect", no_argument, NULL, 'r' },
     { "config", required_argument, NULL, 'C' },
     { "domid", required_argument, NULL, 'd' },
     { "name", required_argument, NULL, 'N' },
@@ -3124,7 +3133,7 @@ static void usage(FILE *stream)
     fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
     fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: tint\n");
     fprintf(stream, " --screensaver-name\tscreensaver window name, can be repeated, default: xscreensaver\n");
-    fprintf(stream, " --help, -h\tPrint help message\n");
+    fprintf(stream, " --disable-override-redirect\tdisable the “override redirect” flag (will likely break applications)\n");
     fprintf(stream, "\n");
     fprintf(stream, "Log levels:\n");
     fprintf(stream, " 0 - only errors\n");
@@ -3335,6 +3344,9 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
         case 'K':
             g->kill_on_connect = strtoul(optarg, NULL, 0);
             break;
+        case 'r'
+            g->disable_override_redirect = 1;
+            break;
         case 'p':
             if (prop_num >= MAX_EXTRA_PROPS) {
                 fprintf(stderr, "Too many extra properties (-p)\n");
@@ -3493,6 +3505,20 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
     if ((setting =
          config_setting_get_member(group, "startup_timeout"))) {
         g->startup_timeout = config_setting_get_int(setting);
+    }
+
+    if ((setting =
+         config_setting_get_member(group, "disable_override_redirect"))) {
+        g->disable_override_redirect = config_setting_get_bool(setting);
+    }
+
+    if ((setting =
+         config_setting_get_member(group, "taskbar_height"))) {
+        g->taskbar_height = config_setting_get_int(setting);
+        if (g->taskbar_height < 0 || g->taskbar_height > (INT_MAX / 2)) {
+            fputs("taskbar height %d not valid (too large or negative) \n", stderr);
+            exit(1);
+        }
     }
 }
 
