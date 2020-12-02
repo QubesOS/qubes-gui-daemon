@@ -283,7 +283,7 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
     return 0;
 }
 
-/* 
+/*
  * The X11 IO error handler. It is supposed to cleanup things and do _not_
  * return (should terminate the process).
  */
@@ -434,6 +434,17 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     return child_win;
 }
 
+static Atom intern_atom(Ghandles *const g, const char *const name,
+    bool const only_if_exists) {
+    Atom retval;
+    if ((retval = XInternAtom(g->display, name, only_if_exists)) == None) {
+        fprintf(stderr, "Error: cannot intern %s\n", name);
+        exit(1);
+    }
+    return retval;
+}
+
+
 /* prepare global variables content:
  * most of them are handles to local Xserver structures */
 static void mkghandles(Ghandles * g)
@@ -454,25 +465,24 @@ static void mkghandles(Ghandles * g)
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
-    g->wmDeleteMessage =
-        XInternAtom(g->display, "WM_DELETE_WINDOW", True);
+    g->wmDeleteMessage = intern_atom(g, "WM_DELETE_WINDOW", True);
     g->clipboard_requested = 0;
     g->clipboard_xevent_time = 0;
     snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
          "_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display));
-    g->tray_selection =
-        XInternAtom(g->display, tray_sel_atom_name, False);
-    g->tray_opcode =
-        XInternAtom(g->display, "_NET_SYSTEM_TRAY_OPCODE", False);
-    g->xembed_message = XInternAtom(g->display, "_XEMBED", False);
-    g->xembed_info = XInternAtom(g->display, "_XEMBED_INFO", False);
-    g->wm_state = XInternAtom(g->display, "_NET_WM_STATE", False);
-    g->wm_state_fullscreen = XInternAtom(g->display, "_NET_WM_STATE_FULLSCREEN", False);
-    g->wm_state_demands_attention = XInternAtom(g->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
-    g->wm_state_hidden = XInternAtom(g->display, "_NET_WM_STATE_HIDDEN", False);
-    g->frame_extents = XInternAtom(g->display, "_NET_FRAME_EXTENTS", False);
-    g->wm_state_maximized_vert = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
-    g->wm_state_maximized_horz = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    g->tray_selection = intern_atom(g, tray_sel_atom_name, False);
+    g->tray_opcode = intern_atom(g, "_NET_SYSTEM_TRAY_OPCODE", False);
+    g->xembed_message = intern_atom(g, "_XEMBED", False);
+    g->xembed_info = intern_atom(g, "_XEMBED_INFO", False);
+    g->wm_state = intern_atom(g, "_NET_WM_STATE", False);
+    g->wm_state_fullscreen = intern_atom(g, "_NET_WM_STATE_FULLSCREEN", False);
+    g->wm_state_demands_attention = intern_atom(g, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
+    g->wm_state_hidden = intern_atom(g, "_NET_WM_STATE_HIDDEN", False);
+    g->wm_workarea = intern_atom(g, "_NET_WORKAREA", True);
+    g->frame_extents = intern_atom(g, "_NET_FRAME_EXTENTS", False);
+    g->wm_state_maximized_vert = intern_atom(g, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+    g->wm_state_maximized_horz = intern_atom(g, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    g->wm_workarea = intern_atom(g, "_NET_WORKAREA", False);
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
@@ -1184,47 +1194,60 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
             int border_width, const char *caller)
 {
     int do_move = 0, reason = -1;
+    unsigned long nitems, bytesleft;
+    long *work_area;
+    Atom act_type;
+    int ret, act_fmt;
     if (border_width > (INT_MAX / 2))
         border_width = (INT_MAX / 2);
     int taskbar_height = vm_window->is_docked ? 0 : g->taskbar_height;
     int x = vm_window->x, y = vm_window->y, w = vm_window->width, h =
         vm_window->height;
+    ret = XGetWindowProperty(g->display, g->root_win, g->wm_workarea, 0, 4, False,
+            XA_CARDINAL, &act_type, &act_fmt, &nitems, &bytesleft,
+            (unsigned char**)&work_area);
+    if (ret != Success || nitems != 4 || act_type != XA_CARDINAL || bytesleft) {
+        /* FIXME! */
+        exit(1);
+    }
+    int work_x = work_area[0], work_y = work_area[1],
+             work_width = work_area[2], work_height = work_area[3];
+    XFree(work_area);
+    work_area = NULL;
 
     if (vm_window->x < border_width
-        && vm_window->x + (int)vm_window->width > 0) {
-        vm_window->x = border_width;
+        && vm_window->x + (int)vm_window->width > work_x) {
+        vm_window->x = border_width + work_x;
         do_move = 1;
         reason = 1;
     }
     if (vm_window->y < border_width + taskbar_height
-        && vm_window->y + (int)vm_window->height > 0) {
-        vm_window->y = border_width + taskbar_height;
+        && vm_window->y + (int)vm_window->height > work_y) {
+        vm_window->y = border_width + work_y;
         do_move = 1;
         reason = 2;
     }
     if (vm_window->x < g->root_width &&
         vm_window->x + (int)vm_window->width >
-        g->root_width - border_width) {
-        vm_window->width =
-            g->root_width - vm_window->x - border_width;
+        work_width - border_width) {
+        vm_window->width = work_width - vm_window->x - border_width;
         do_move = 1;
         reason = 3;
     }
     if (vm_window->y < g->root_height &&
         vm_window->y + (int)vm_window->height >
-        g->root_height - border_width) {
-        vm_window->height =
-            g->root_height - vm_window->y - border_width;
+        work_height - border_width) {
+        vm_window->height = work_height - vm_window->y - border_width;
         do_move = 1;
         reason = 4;
     }
     if (do_move)
         if (g->log_level > 0)
             fprintf(stderr,
-                "force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, root %d %d borderwidth %d\n",
+                "force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, work area %d %d borderwidth %d\n",
                 caller, reason,
                 (int) vm_window->local_winid, x, y, w, h,
-                g->root_width, g->root_height,
+                work_width, work_height,
                 border_width);
     return do_move;
 }

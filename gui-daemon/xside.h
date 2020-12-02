@@ -141,6 +141,7 @@ struct _global_handles {
     Atom wm_state_fullscreen; /* Atom: _NET_WM_STATE_FULLSCREEN */
     Atom wm_state_demands_attention; /* Atom: _NET_WM_STATE_DEMANDS_ATTENTION */
     Atom wm_state_hidden;    /* Atom: _NET_WM_STATE_HIDDEN */
+    Atom wm_workarea;      /* Atom: _NET_WORKAREA */
     Atom frame_extents; /* Atom: _NET_FRAME_EXTENTS */
     Atom wm_state_maximized_vert; /* Atom: _NET_WM_STATE_MAXIMIZED_VERT */
     Atom wm_state_maximized_horz; /* Atom: _NET_WM_STATE_MAXIMIZED_HORZ */
