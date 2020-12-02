@@ -20,6 +20,12 @@
 #
 #
 
+BACKEND_VMM_PKGCONFIG = $(shell pkg-config --variable=backend_vmm vchan)
+BACKEND_VMM ?= $(firstword $(BACKEND_VMM_PKGCONFIG) xen)
+ifneq ($(BACKEND_VMM),xen)
+$(error shmoverride currently supports Xen only, '$(BACKEND_VMM)' set)
+endif
+
 LIBDIR ?= /usr/lib64
 CFLAGS+=-g -O2 -I../include/ -fPIC -Wall -Wextra -Werror \
 		-DBACKEND_VMM_$(BACKEND_VMM) \
