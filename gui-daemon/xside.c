@@ -3084,7 +3084,7 @@ enum {
 };
 
 struct option longopts[] = {
-    { "disable-override-redirect", no_argument, NULL, 'r' },
+    { "override-redirect", required_argument, NULL, 'r' },
     { "config", required_argument, NULL, 'C' },
     { "domid", required_argument, NULL, 'd' },
     { "name", required_argument, NULL, 'N' },
@@ -3133,7 +3133,7 @@ static void usage(FILE *stream)
     fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
     fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: tint\n");
     fprintf(stream, " --screensaver-name\tscreensaver window name, can be repeated, default: xscreensaver\n");
-    fprintf(stream, " --disable-override-redirect\tdisable the “override redirect” flag (will likely break applications)\n");
+    fprintf(stream, " --override-redirect=disabled\tdisable the “override redirect” flag (will likely break applications)\n");
     fprintf(stream, "\n");
     fprintf(stream, "Log levels:\n");
     fprintf(stream, " 0 - only errors\n");
@@ -3344,8 +3344,15 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
         case 'K':
             g->kill_on_connect = strtoul(optarg, NULL, 0);
             break;
-        case 'r'
-            g->disable_override_redirect = 1;
+	case 'r':
+            if (!strcmp(optarg, "allow"))
+                g->disable_override_redirect = 0;
+            else if (!strcmp(optarg, "disabled"))
+                g->disable_override_redirect = 1;
+            else {
+                fputs("Unsupported argument to --override-redirect=\n", stderr);
+                exit(1);
+            }
             break;
         case 'p':
             if (prop_num >= MAX_EXTRA_PROPS) {
@@ -3508,8 +3515,19 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
     }
 
     if ((setting =
-         config_setting_get_member(group, "disable_override_redirect"))) {
-        g->disable_override_redirect = config_setting_get_bool(setting);
+         config_setting_get_member(group, "override_redirect"))) {
+        const char *value;
+        if ((value = config_setting_get_string(setting)) == NULL) {
+            fputs("override_redirect must be a string\n", stderr);
+            exit(1);
+        } else if (!strcmp(value, "disabled"))
+            g->disable_override_redirect = 1;
+        else if (!strcmp(value, "allow"))
+            g->disable_override_redirect = 0;
+        else {
+            fprintf(stderr, "unsupported value ‘%s’ for override_redirect\n", value);
+            exit(1);
+        }
     }
 
     if ((setting =
