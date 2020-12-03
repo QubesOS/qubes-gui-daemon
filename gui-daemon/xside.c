@@ -444,6 +444,62 @@ static Atom intern_atom(Ghandles *const g, const char *const name,
     return retval;
 }
 
+/* update g when the current desktop changes */
+static void update_work_area(Ghandles *g) {
+    unsigned long *scratch;
+    unsigned long nitems, bytesleft;
+    Atom act_type;
+    int ret, act_fmt;
+
+    ret = XGetWindowProperty(g->display, g->root_win, g->wm_current_desktop,
+        0, 1, False, XA_CARDINAL, &act_type, &act_fmt, &nitems, &bytesleft,
+        (unsigned char**)&scratch);
+    if (ret != Success || nitems != 1 || act_type != XA_CARDINAL) {
+        if (None == act_fmt && !act_fmt && !bytesleft) {
+            g->work_x = 0;
+            g->work_y = 0;
+            g->work_width = g->root_width;
+            g->work_height = g->root_height;
+            return;
+        }
+        /* Panic!  Serious window manager problem. */
+        fputs("PANIC: cannot obtain current desktop\n"
+                "Instead of creating a security hole we will just exit.\n",
+            stderr);
+        exit(1);
+    }
+    uint32_t current_desktop = (uint32_t)*scratch;
+    XFree(scratch);
+    ret = XGetWindowProperty(g->display, g->root_win, g->wm_workarea,
+            current_desktop, 4, False, XA_CARDINAL, &act_type, &act_fmt,
+            &nitems, &bytesleft, (unsigned char**)&scratch);
+    if (ret != Success || nitems != 4 || act_type != XA_CARDINAL) {
+        /* Panic!  We have no idea where the window should be.  The only safe
+         * thing to do is exit. */
+        if (None == act_fmt && !act_fmt && !bytesleft) {
+            g->work_x = 0;
+            g->work_y = 0;
+            g->work_width = g->root_width;
+            g->work_height = g->root_height;
+            return;
+        }
+        fputs("PANIC: cannot obtain work area\n"
+                "Instead of creating a security hole we will just exit.\n",
+                stderr);
+        exit(1);
+    }
+    for (int s = 0; s < 4; ++s) {
+        if (scratch[s] > (1UL << 20)) {
+            fputs("Absurd work area, crashing\n", stderr);
+            abort();
+        }
+    }
+    g->work_x = scratch[0];
+    g->work_y = scratch[1];
+    g->work_width = scratch[2];
+    g->work_height = scratch[3];
+    XFree(scratch);
+}
 
 /* prepare global variables content:
  * most of them are handles to local Xserver structures */
@@ -482,10 +538,12 @@ static void mkghandles(Ghandles * g)
     g->frame_extents = intern_atom(g, "_NET_FRAME_EXTENTS", False);
     g->wm_state_maximized_vert = intern_atom(g, "_NET_WM_STATE_MAXIMIZED_VERT", False);
     g->wm_state_maximized_horz = intern_atom(g, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-    g->wm_workarea = intern_atom(g, "_NET_WORKAREA", False);
+    g->wm_current_desktop = intern_atom(g, "_NET_CURRENT_DESKTOP", False);
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
+    /* get the work area */
+    update_work_area(g);
     /* create graphical contexts */
     get_frame_gc(g, g->cmdline_color ? : "red");
     if (g->trayicon_mode == TRAY_BACKGROUND)
@@ -1194,50 +1252,35 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
             int border_width, const char *caller)
 {
     int do_move = 0, reason = -1;
-    unsigned long nitems, bytesleft;
-    long *work_area;
-    Atom act_type;
-    int ret, act_fmt;
-    if (border_width > (INT_MAX / 2))
-        border_width = (INT_MAX / 2);
-    int taskbar_height = vm_window->is_docked ? 0 : g->taskbar_height;
     int x = vm_window->x, y = vm_window->y, w = vm_window->width, h =
         vm_window->height;
-    ret = XGetWindowProperty(g->display, g->root_win, g->wm_workarea, 0, 4, False,
-            XA_CARDINAL, &act_type, &act_fmt, &nitems, &bytesleft,
-            (unsigned char**)&work_area);
-    if (ret != Success || nitems != 4 || act_type != XA_CARDINAL || bytesleft) {
-        /* FIXME! */
-        exit(1);
-    }
-    int work_x = work_area[0], work_y = work_area[1],
-             work_width = work_area[2], work_height = work_area[3];
-    XFree(work_area);
-    work_area = NULL;
 
-    if (vm_window->x < border_width
-        && vm_window->x + (int)vm_window->width > work_x) {
-        vm_window->x = border_width + work_x;
+    const int border_x = border_width + g->work_x,
+        border_y = border_width + g->work_y,
+        max_width = g->work_width - border_width,
+        max_height = g->work_height - border_width;
+    if (vm_window->x < border_x
+        && vm_window->x + border_width + (int)vm_window->width > 0) {
+        vm_window->x = border_x;
         do_move = 1;
         reason = 1;
     }
-    if (vm_window->y < border_width + taskbar_height
-        && vm_window->y + (int)vm_window->height > work_y) {
-        vm_window->y = border_width + work_y;
+    if (vm_window->y < border_y
+        && vm_window->y + border_width + (int)vm_window->width > 0) {
+        vm_window->y = border_y;
         do_move = 1;
         reason = 2;
     }
-    if (vm_window->x < g->root_width &&
-        vm_window->x + (int)vm_window->width >
-        work_width - border_width) {
-        vm_window->width = work_width - vm_window->x - border_width;
+    /* Note that vm_window->x and vm_window->y have already be sanitized */
+    if (vm_window->x < g->root_width + border_width &&
+        vm_window->x + (int)vm_window->width > max_width) {
+        vm_window->width = max_width - vm_window->x;
         do_move = 1;
         reason = 3;
     }
     if (vm_window->y < g->root_height &&
-        vm_window->y + (int)vm_window->height >
-        work_height - border_width) {
-        vm_window->height = work_height - vm_window->y - border_width;
+        vm_window->y + (int)vm_window->height > max_height) {
+        vm_window->height = max_height - vm_window->y;
         do_move = 1;
         reason = 4;
     }
@@ -1247,7 +1290,7 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
                 "force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, work area %d %d borderwidth %d\n",
                 caller, reason,
                 (int) vm_window->local_winid, x, y, w, h,
-                work_width, work_height,
+                g->work_width, g->work_height,
                 border_width);
     return do_move;
 }
@@ -1731,7 +1774,7 @@ static inline uint32_t flags_from_atom(Ghandles * g, Atom a) {
 
 /* handle local Xserver event: XPropertyEvent
  * currently only _NET_WM_STATE is examined */
-static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev)
+static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent *const ev)
 {
     Atom act_type;
     Atom *state_list;
@@ -1742,6 +1785,11 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev
     struct msg_hdr hdr;
     struct msg_window_flags msg;
 
+    if (ev->window == g->root_win) {
+        if (ev->state != PropertyNewValue)
+            return;
+        update_work_area(g);
+    }
     CHECK_NONMANAGED_WINDOW(g, ev->window);
     if (ev->atom == g->wm_state) {
         if (!vm_window->is_mapped)
@@ -3549,15 +3597,6 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
             g->disable_override_redirect = 0;
         else {
             fprintf(stderr, "unsupported value ‘%s’ for override_redirect\n", value);
-            exit(1);
-        }
-    }
-
-    if ((setting =
-         config_setting_get_member(group, "taskbar_height"))) {
-        g->taskbar_height = config_setting_get_int(setting);
-        if (g->taskbar_height < 0 || g->taskbar_height > (INT_MAX / 2)) {
-            fputs("taskbar height %d not valid (too large or negative) \n", stderr);
             exit(1);
         }
     }
