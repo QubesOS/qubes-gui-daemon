@@ -543,7 +543,7 @@ static void mkghandles(Ghandles * g)
     g->wm_state_fullscreen = intern_atom(g, "_NET_WM_STATE_FULLSCREEN", False);
     g->wm_state_demands_attention = intern_atom(g, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
     g->wm_state_hidden = intern_atom(g, "_NET_WM_STATE_HIDDEN", False);
-    g->wm_workarea = intern_atom(g, "_NET_WORKAREA", True);
+    g->wm_workarea = intern_atom(g, "_NET_WORKAREA", False);
     g->frame_extents = intern_atom(g, "_NET_FRAME_EXTENTS", False);
     g->wm_state_maximized_vert = intern_atom(g, "_NET_WM_STATE_MAXIMIZED_VERT", False);
     g->wm_state_maximized_horz = intern_atom(g, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
