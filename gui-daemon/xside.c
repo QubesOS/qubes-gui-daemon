@@ -470,12 +470,15 @@ static void update_work_area(Ghandles *g) {
     }
     uint32_t current_desktop = (uint32_t)*scratch;
     XFree(scratch);
+    if (current_desktop > (1UL << 20)) {
+        fputs("Absurd current desktop, crashing\n", stderr);
+        abort();
+    }
+
     ret = XGetWindowProperty(g->display, g->root_win, g->wm_workarea,
-            current_desktop, 4, False, XA_CARDINAL, &act_type, &act_fmt,
+            current_desktop * 4, 4, False, XA_CARDINAL, &act_type, &act_fmt,
             &nitems, &bytesleft, (unsigned char**)&scratch);
     if (ret != Success || nitems != 4 || act_type != XA_CARDINAL) {
-        /* Panic!  We have no idea where the window should be.  The only safe
-         * thing to do is exit. */
         if (None == act_fmt && !act_fmt && !bytesleft) {
             g->work_x = 0;
             g->work_y = 0;
@@ -483,6 +486,8 @@ static void update_work_area(Ghandles *g) {
             g->work_height = g->root_height;
             return;
         }
+        /* Panic!  We have no idea where the window should be.  The only safe
+         * thing to do is exit. */
         fputs("PANIC: cannot obtain work area\n"
                 "Instead of creating a security hole we will just exit.\n",
                 stderr);
