@@ -478,9 +478,11 @@ static void update_work_area(Ghandles *g) {
     uint32_t current_desktop = (uint32_t)*scratch;
     XFree(scratch);
     ret = XGetWindowProperty(g->display, g->root_win, g->wm_workarea,
-            current_desktop * 4, 4, False, XA_CARDINAL, &act_type, &act_fmt,
+            current_desktop * desktop_coordinates_size,
+            desktop_coordinates_size, False, XA_CARDINAL, &act_type, &act_fmt,
             &nitems, &bytesleft, (unsigned char**)&scratch);
-    if (ret != Success || nitems != 4 || act_fmt != 32 || act_type != XA_CARDINAL) {
+    if (ret != Success || nitems != desktop_coordinates_size || act_fmt != 32 ||
+        act_type != XA_CARDINAL) {
         if (None == act_fmt && !act_fmt && !bytesleft) {
             g->work_x = 0;
             g->work_y = 0;
@@ -495,7 +497,7 @@ static void update_work_area(Ghandles *g) {
                 stderr);
         exit(1);
     }
-    for (int s = 0; s < 4; ++s) {
+    for (int s = 0; s < desktop_coordinates_size; ++s) {
         if (scratch[s] > max_display_width) {
             fputs("Absurd work area, crashing\n", stderr);
             abort();
@@ -1225,9 +1227,11 @@ static void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
     if (!vm_window->is_docked) {
         /* we have window content coordinates, but XMoveResizeWindow requires
          * left top *border* pixel coordinates (if any border is present). */
-        ret = XGetWindowProperty(g->display, vm_window->local_winid, g->frame_extents, 0, 4,
-                False, XA_CARDINAL, &act_type, &act_fmt, &nitems, &bytesleft, (unsigned char**)&frame_extents);
-        if (ret == Success && nitems == 4) {
+        ret = XGetWindowProperty(g->display, vm_window->local_winid,
+                g->frame_extents, 0, desktop_coordinates_size,
+                False, XA_CARDINAL, &act_type, &act_fmt, &nitems, &bytesleft,
+                (unsigned char**)&frame_extents);
+        if (ret == Success && nitems == desktop_coordinates_size) {
             x = vm_window->x - frame_extents[0];
             y = vm_window->y - frame_extents[2];
             XFree(frame_extents);
