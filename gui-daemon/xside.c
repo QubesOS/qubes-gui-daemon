@@ -444,6 +444,9 @@ static Atom intern_atom(Ghandles *const g, const char *const name,
     return retval;
 }
 
+static const int desktop_coordinates_size = 4;
+static const long max_display_width = 1UL << 20;
+
 /* update g when the current desktop changes */
 static void update_work_area(Ghandles *g) {
     unsigned long *scratch;
@@ -454,7 +457,7 @@ static void update_work_area(Ghandles *g) {
     ret = XGetWindowProperty(g->display, g->root_win, g->wm_current_desktop,
         0, 1, False, XA_CARDINAL, &act_type, &act_fmt, &nitems, &bytesleft,
         (unsigned char**)&scratch);
-    if (ret != Success || nitems != 1 || act_type != XA_CARDINAL) {
+    if (ret != Success || nitems != 1 || act_fmt != 32 || act_type != XA_CARDINAL) {
         if (None == act_fmt && !act_fmt && !bytesleft) {
             g->work_x = 0;
             g->work_y = 0;
@@ -468,17 +471,16 @@ static void update_work_area(Ghandles *g) {
             stderr);
         exit(1);
     }
-    uint32_t current_desktop = (uint32_t)*scratch;
-    XFree(scratch);
-    if (current_desktop > (1UL << 20)) {
+    if (*scratch > max_display_width) {
         fputs("Absurd current desktop, crashing\n", stderr);
         abort();
     }
-
+    uint32_t current_desktop = (uint32_t)*scratch;
+    XFree(scratch);
     ret = XGetWindowProperty(g->display, g->root_win, g->wm_workarea,
             current_desktop * 4, 4, False, XA_CARDINAL, &act_type, &act_fmt,
             &nitems, &bytesleft, (unsigned char**)&scratch);
-    if (ret != Success || nitems != 4 || act_type != XA_CARDINAL) {
+    if (ret != Success || nitems != 4 || act_fmt != 32 || act_type != XA_CARDINAL) {
         if (None == act_fmt && !act_fmt && !bytesleft) {
             g->work_x = 0;
             g->work_y = 0;
@@ -494,7 +496,7 @@ static void update_work_area(Ghandles *g) {
         exit(1);
     }
     for (int s = 0; s < 4; ++s) {
-        if (scratch[s] > (1UL << 20)) {
+        if (scratch[s] > max_display_width) {
             fputs("Absurd work area, crashing\n", stderr);
             abort();
         }
