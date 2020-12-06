@@ -77,10 +77,7 @@
 static Ghandles ghandles;
 
 /* macro used to verify data from VM */
-#define VERIFY(x) if (!(x)) { \
-        if (ask_whether_verify_failed(g, __STRING(x))) \
-            return; \
-    }
+#define VERIFY(x) do if (!(x) && ask_whether_verify_failed(g, __STRING(x))) return; while(0)
 
 /* calculate virtual width */
 #define XORG_DEFAULT_XINC 8
@@ -161,8 +158,7 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
             "application trigger such condition (check the guid logs for more "
             "information). \n\n"
             "Click “Terminate” to terminate this domain immediately, or "
-            "“Ignore” to ignore this condition check and allow the GUI request "
-            "to proceed.",
+            "“Ignore” to ignore this GUI request.",
          g->vmname);
 #else
     snprintf(text, sizeof(text),
@@ -207,7 +203,7 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
 //    case 2:    /*cancel */
 //        break;
     case 0:    /* YES */
-        return 0;
+        return 1;
     case 1:    /* NO */
         execl(QVM_KILL_PATH, "qvm-kill", g->vmname, (char*)NULL);
         perror("Problems executing qvm-kill");
@@ -217,7 +213,7 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
         exit(1);
     }
     /* should never happen */
-    return 1;
+    abort();
 }
 
 #ifdef MAKE_X11_ERRORS_FATAL
@@ -948,6 +944,8 @@ static int evaluate_clipboard_policy(Ghandles * g) {
     }
     return WEXITSTATUS(status) == 0;
 }
+
+_Static_assert(CURSOR_X11_MAX == CURSOR_X11 + XC_num_glyphs, "protocol bug");
 
 /* handle VM message: MSG_CURSOR */
 static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
