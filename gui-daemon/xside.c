@@ -216,7 +216,7 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
         fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
         exit(1);
     }
-    /* should never happend */
+    /* should never happen */
     return 1;
 }
 
@@ -533,8 +533,10 @@ static void mkghandles(Ghandles * g)
     g->wmDeleteMessage = intern_atom(g, "WM_DELETE_WINDOW", True);
     g->clipboard_requested = 0;
     g->clipboard_xevent_time = 0;
-    snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
-         "_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display));
+    if ((unsigned)snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
+        "_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display)) >=
+        sizeof(tray_sel_atom_name))
+        abort();
     g->tray_selection = intern_atom(g, tray_sel_atom_name, False);
     g->tray_opcode = intern_atom(g, "_NET_SYSTEM_TRAY_OPCODE", False);
     g->xembed_message = intern_atom(g, "_XEMBED", False);
@@ -759,7 +761,7 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
             break;
         default:
             /* not reachable */
-            return 0;
+            abort();
     }
     switch (pid=fork()) {
         case -1:
@@ -771,7 +773,7 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
              * fire that functions) */
 
             /* grant group write */
-            old_umask = umask(0002);
+            old_umask = umask(0007);
             fd = open(path_stdout, O_WRONLY|O_CREAT|O_TRUNC, 0644);
             if (fd < 0) {
                 perror("open");
@@ -782,7 +784,6 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
                 rl.rlim_cur = MAX_CLIPBOARD_SIZE;
                 rl.rlim_max = MAX_CLIPBOARD_SIZE;
                 setrlimit(RLIMIT_FSIZE, &rl);
-                // TODO: place for security filter (via pipe() and another fork+exec)
             }
             dup2(fd, 1);
             close(fd);
@@ -793,8 +794,10 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
             }
             dup2(fd, 0);
             close(fd);
-            snprintf(domid_str, sizeof(domid_str), "%d", g->target_domid);
-            execl(QREXEC_CLIENT_PATH, "qrexec-client", "-d", domid_str, service_call, (char*)NULL);
+            if ((unsigned)snprintf(domid_str, sizeof(domid_str), "%d", g->target_domid)
+                >= sizeof(domid_str))
+                abort();
+            execl(QREXEC_CLIENT_PATH, "qrexec-client", "-T", "-d", domid_str, service_call, (char*)NULL);
             perror("execl");
             _exit(1);
         default:
@@ -885,7 +888,7 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
         return;
     }
     /* grant group write */
-    old_umask = umask(0002);
+    old_umask = umask(0007);
     file = fopen(QUBES_CLIPBOARD_FILENAME, "w");
     if (!file) {
         show_error_message(g, "secure copy: failed to open file " QUBES_CLIPBOARD_FILENAME);
@@ -3097,7 +3100,7 @@ static void get_protocol_version(Ghandles * g)
                 "The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
                 "To start and access the VM or template without GUI virtualization, use the following commands:\n"
                 "qvm-start --no-guid vmname\n"
-                "sudo xl console vmname\"",
+                "qvm-console-dispvm vmname\"",
                 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
                 g->use_kdialog ? "--sorry" : "--error --text ",
                 g->vmname, version_major, version_minor);
@@ -3360,6 +3363,28 @@ static void parse_trayicon_mode(Ghandles *g, const char *mode_str) {
     }
 }
 
+static _Bool parse_vm_name(const char *arg, Ghandles *g) {
+    if (('a' > *arg || *arg > 'z') &&
+        ('A' > *arg || *arg > 'Z'))
+        return false;
+    for (size_t i = 1; i < sizeof(g->vmname); ++i) {
+        switch (arg[i]) {
+        case 'A'...'Z':
+        case 'a'...'z':
+        case '0'...'9':
+        case '-':
+        case '_':
+            continue;
+        case '\0':
+            memcpy(g->vmname, arg, i + 1);
+            return true;
+        default:
+            return false;
+        }
+    }
+    return false;
+}
+
 static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
     int opt;
@@ -3388,13 +3413,10 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
             g->target_domid = atoi(optarg);
             break;
         case 'N':
-            strncpy(g->vmname, optarg, sizeof(g->vmname));
-            g->vmname[sizeof(g->vmname) - 1] = '\0';
-            if (strcmp(g->vmname, optarg)) {
-                fprintf(stderr, "domain name too long");
-                exit(1);
-            }
-            break;
+            if (parse_vm_name(optarg, g))
+                break;
+            fprintf(stderr, "domain name not valid");
+            exit(1);
         case 'c':
             g->cmdline_color = optarg;
             break;
