@@ -586,7 +586,7 @@ static void mkghandles(Ghandles * g)
             fprintf(stderr, "Icon size: %lux%lu\n", g->icon_data[0], g->icon_data[1]);
         }
     }
-    g->inter_appviewer_lock_fd = open("/var/run/qubes/appviewer.lock",
+    g->inter_appviewer_lock_fd = open("/run/qubes/appviewer.lock",
             O_RDWR | O_CREAT, 0666);
     if (g->inter_appviewer_lock_fd < 0) {
         perror("create lock");
@@ -3680,7 +3680,7 @@ static void parse_config(Ghandles * g)
 static char *guid_fs_flag(const char *type, int domid)
 {
     static char buf[256];
-    snprintf(buf, sizeof(buf), "/var/run/qubes/guid-%s.%d",
+    snprintf(buf, sizeof(buf), "/run/qubes/guid-%s.%d",
          type, domid);
     return buf;
 }
@@ -3872,8 +3872,8 @@ int main(int argc, char **argv)
             close(logfd);
     }
 
-    if (chdir("/var/run/qubes")) {
-        perror("chdir /var/run/qubes");
+    if (chdir("/run/qubes")) {
+        perror("chdir /run/qubes");
         exit(1);
     }
     errno = 0;
