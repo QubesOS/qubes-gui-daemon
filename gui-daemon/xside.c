@@ -3845,10 +3845,19 @@ int main(int argc, char **argv)
     }
 
     if (!ghandles.nofork) {
+        int fd;
         /* output redirection only when started as daemon, if "nofork" option
          * is set as part of guid restart, output is already redirected */
-        close(0);
-        open("/dev/null", O_RDONLY);
+        while ((fd = open("/dev/null", O_RDONLY | O_CLOEXEC)) < 0) {
+            if (errno != EINTR)
+                err(1, "open /dev/null");
+        }
+        while (dup2(fd, 0) < 0) {
+            if (errno != EINTR)
+                err(1, "dup2");
+        }
+        close(fd);
+        fd = -1;
         snprintf(dbg_log, sizeof(dbg_log),
                 "/var/log/qubes/guid.%s.log", ghandles.vmname);
         snprintf(dbg_log_old, sizeof(dbg_log_old),
@@ -3866,8 +3875,10 @@ int main(int argc, char **argv)
                     "Failed to open log file: %s\n", strerror (errno));
             exit(1);
         }
-        dup2(logfd, 1);
-        dup2(logfd, 2);
+        while (dup2(logfd, 1) < 0 || dup2(logfd, 2) < 0) {
+            if (errno != EINTR)
+                err(1, "dup2");
+        }
         if (logfd > 2)
             close(logfd);
     }
