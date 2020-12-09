@@ -771,7 +771,9 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
     }
     inter_appviewer_lock(g, 1);
     clipboard_file_xevent_time = get_clipboard_file_xevent_timestamp();
-    if (clipboard_file_xevent_time > g->clipboard_xevent_time) {
+    /* X11 time is just 32-bit miliseconds counter, which make it wrap every
+     * ~50 days - something that is realistic. Handle that wrapping too. */
+    if (clipboard_file_xevent_time - g->clipboard_xevent_time < (1UL<<31)) {
         /* some other clipboard operation happened in the meantime, discard
          * request */
         inter_appviewer_lock(g, 0);
@@ -880,7 +882,9 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
             return 1;
         inter_appviewer_lock(g, 1);
         clipboard_file_xevent_time = get_clipboard_file_xevent_timestamp();
-        if (clipboard_file_xevent_time > ev->time) {
+        /* X11 time is just 32-bit miliseconds counter, which make it wrap every
+         * ~50 days - something that is realistic. Handle that wrapping too. */
+        if (clipboard_file_xevent_time - ev->time < (1UL<<31)) {
             /* some other clipboard operation happened in the meantime, discard
              * request */
             inter_appviewer_lock(g, 0);
