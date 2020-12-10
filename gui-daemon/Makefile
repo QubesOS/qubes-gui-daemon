@@ -38,7 +38,7 @@ qubes-guid: $(OBJS)
 		`pkg-config --libs libnotify`
 
 qubes-guid.1: qubes-guid
-	help2man --version-string=`cat ../version` --no-info --name="Qubes GUI daemon" ./qubes-guid  > qubes-guid.1
+	LC_ALL=C help2man --version-string=`cat ../version` --no-info --name="Qubes GUI daemon" ./qubes-guid  > qubes-guid.1
 
 clean:
 	rm -f qubes-guid *.o *~
