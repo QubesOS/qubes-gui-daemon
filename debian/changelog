@@ -1,3 +1,36 @@
+qubes-gui-daemon (4.1.12-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * More protection vs override redirect windows
+  * Use --override-redirect=disabled
+  * Use the work area instead of root window size
+
+  [ Frédéric Pierret (fepitre) ]
+  * Add .gitlab-ci.yml
+
+  [ Marek Marczykowski-Górecki ]
+  * gitlab-ci: adjust install excludes
+  * Make the build detect BACKEND_VMM based on installed vchan version
+
+  [ Demi Marie Obenour ]
+  * Listen for property changes instead of polling
+  * Respond to code review from @marmarek
+  * Remove hard-coded magic numbers
+  * Use desktop_coordinates_size instead of a magic number
+  * Don’t crash if there is no window manager
+  * Miscellaneous hardening
+  * Replace /var/run with /run
+  * Check syscall return values
+  * Never pass an invalid X11 operation to dom0
+
+  [ Frédéric Pierret (fepitre) ]
+  * Enforce locale for help2man
+
+  [ Marek Marczykowski-Górecki ]
+  * Fix clipboard stop working after ~50 days of uptime
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Wed, 06 Jan 2021 21:44:44 +0100
+
 qubes-gui-daemon (4.1.11-1) unstable; urgency=medium
 
   * Fix handling X11 exit
