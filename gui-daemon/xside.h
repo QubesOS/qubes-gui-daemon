@@ -27,12 +27,29 @@
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes-clipboard.bin"
-#define QREXEC_CLIENT_PATH "/usr/lib/qubes/qrexec-client"
-#define QREXEC_POLICY_PATH "/usr/bin/qrexec-policy"
+#define QREXEC_CLIENT "qrexec-client"
+#define QREXEC_CLIENT_VM QREXEC_CLIENT "-vm"
+#define QREXEC_CLIENT_PATH "/usr/lib/qubes/" QREXEC_CLIENT
+#define QREXEC_CLIENT_VM_PATH "/usr/bin/" QREXEC_CLIENT_VM
 #define QVM_KILL_PATH "/usr/bin/qvm-kill"
 #define KDIALOG_PATH "/usr/bin/kdialog"
 #define ZENITY_PATH "/usr/bin/zenity"
 #define QUBES_RELEASE "/etc/qubes-release"
+
+/* dom0 policy evaluation result */
+#define QUBES_POLICY_ACCESS_ALLOWED ("result=allow\n")
+#define QUBES_POLICY_ACCESS_DENIED  ("result=deny\n")
+#define QUBES_POLICY_ACCESS_ALLOWED_LEN (sizeof QUBES_POLICY_ACCESS_ALLOWED - 1)
+#define QUBES_POLICY_ACCESS_DENIED_LEN (sizeof QUBES_POLICY_ACCESS_DENIED - 1)
+
+/* qrexec prefix for qrexec-client */
+#define QREXEC_COMMAND_PREFIX "DEFAULT:QUBESRPC "
+
+/* qrexec service names */
+#define QUBES_SERVICE_CLIPBOARD_COPY "qubes.ClipboardCopy"
+#define QUBES_SERVICE_CLIPBOARD_PASTE "qubes.ClipboardPaste"
+#define QUBES_SERVICE_EVAL_SIMPLE "policy.EvalSimple"
+#define QUBES_SERVICE_EVAL_GUI "policy.EvalGUI"
 
 /* default width of forced colorful border */
 #define BORDER_WIDTH 2
@@ -67,6 +84,9 @@
 #include <libvchan.h>
 #include <X11/Xlib.h>
 #include <X11/extensions/XShm.h>
+
+#define QUBES_POLICY_EVAL_SIMPLE_SOCKET ("/etc/qubes-rpc/" QUBES_SERVICE_EVAL_SIMPLE)
+#define QREXEC_PRELUDE_CLIPBOARD_PASTE (QUBES_SERVICE_EVAL_SIMPLE "+" QUBES_SERVICE_CLIPBOARD_PASTE " dom0 keyword adminvm")
 
 enum clipboard_op {
     CLIPBOARD_COPY,
@@ -204,6 +224,7 @@ struct _global_handles {
     char *screensaver_names[MAX_SCREENSAVER_NAMES]; /* WM_CLASS names for windows detected as screensavers */
     Cursor *cursors;  /* preloaded cursors (using XCreateFontCursor) */
     int work_x, work_y, work_width, work_height;  /* do not allow a window to go beyond these bounds */
+    bool in_dom0; /* true if we are in dom0, otherwise false */
 };
 
 typedef struct _global_handles Ghandles;
