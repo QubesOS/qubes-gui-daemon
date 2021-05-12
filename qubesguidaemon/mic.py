@@ -87,8 +87,7 @@ class MicDeviceExtension(qubes.ext.Extension):
             yield (self.get_device(vm.app), {})
 
     @qubes.ext.handler('device-pre-attach:mic')
-    @asyncio.coroutine
-    def on_device_pre_attach_mic(self, vm, event, device, options):
+    async def on_device_pre_attach_mic(self, vm, event, device, options):
         '''Attach microphone to the VM'''
 
         # there is only one microphone
@@ -107,7 +106,7 @@ class MicDeviceExtension(qubes.ext.Extension):
             raise qubes.exc.QubesVMNotRunningError(audiovm,
                 "Audio VM {} isn't running".format(audiovm))
         try:
-            yield from audiovm.run_service_for_stdio(
+            await audiovm.run_service_for_stdio(
                 'qubes.AudioInputEnable+{}'.format(vm.name))
         except subprocess.CalledProcessError as e:
             raise qubes.exc.QubesVMError(vm,
@@ -115,8 +114,7 @@ class MicDeviceExtension(qubes.ext.Extension):
                 'pulseaudio agent not running'.format(audiovm, vm))
 
     @qubes.ext.handler('device-pre-detach:mic')
-    @asyncio.coroutine
-    def on_device_pre_detach_mic(self, vm, event, device):
+    async def on_device_pre_detach_mic(self, vm, event, device):
         '''Detach microphone from the VM'''
 
         # there is only one microphone
@@ -132,7 +130,7 @@ class MicDeviceExtension(qubes.ext.Extension):
             raise qubes.exc.QubesVMNotRunningError(audiovm,
                     "Audio VM {} isn't running".format(audiovm))
         try:
-            yield from audiovm.run_service_for_stdio(
+            await audiovm.run_service_for_stdio(
                 'qubes.AudioInputDisable+{}'.format(vm.name))
         except subprocess.CalledProcessError as e:
             raise qubes.exc.QubesVMError(vm,
