@@ -28,7 +28,7 @@ help:
 	    echo "make all                  <--- build binaries";\
 	    echo "make all                  <--- install files into \$$DESTDIR";\
 	    echo "make clean                <--- clean all the binary files";\
-	    @exit 0;
+	    exit 0;
 
 all: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X-wrapper-qubes \
 		pulse/pacat-simple-vchan screen-layout-handler/watch-screen-layout-changes

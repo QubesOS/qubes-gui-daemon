@@ -60,6 +60,7 @@
 #include "png.h"
 #include "trayicon.h"
 #include "shm-args.h"
+#include "util.h"
 
 /* Supported protocol version */
 
@@ -337,7 +338,6 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     Window child_win;
     Window parent;
     XSizeHints my_size_hints;    /* hints for the window manager */
-    Atom atom_label;
     int i;
     XSetWindowAttributes attr;
 
@@ -370,8 +370,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
     XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
     if (g->icon_data) {
-        Atom atom_icon = XInternAtom(g->display, "_NET_WM_ICON", 0);
-        XChangeProperty(g->display, child_win, atom_icon, XA_CARDINAL, 32,
+        XChangeProperty(g->display, child_win, g->net_wm_icon, XA_CARDINAL, 32,
                 PropModeReplace, (unsigned char *) g->icon_data,
                 g->icon_data_len);
         XClassHint class_hint =
@@ -386,28 +385,24 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
         XSetClassHint(g->display, child_win, &class_hint);
     }
     // Set '_QUBES_LABEL' property so that Window Manager can read it and draw proper decoration
-    atom_label = XInternAtom(g->display, "_QUBES_LABEL", 0);
-    XChangeProperty(g->display, child_win, atom_label, XA_CARDINAL,
+    XChangeProperty(g->display, child_win, g->qubes_label, XA_CARDINAL,
             8 /* 8 bit is enough */ , PropModeReplace,
             (unsigned char *) &g->label_index, 1);
 
     // Set '_QUBES_LABEL_COLOR' property so that Window Manager can read it and draw proper decoration
-    atom_label = XInternAtom(g->display, "_QUBES_LABEL_COLOR", 0);
-    XChangeProperty(g->display, child_win, atom_label, XA_CARDINAL,
+    XChangeProperty(g->display, child_win, g->qubes_label_color, XA_CARDINAL,
             32 /* bits */ , PropModeReplace,
             (unsigned char *) &g->label_color_rgb, 1);
 
     // Set '_QUBES_VMNAME' property so that Window Manager can read it and nicely display it
-    atom_label = XInternAtom(g->display, "_QUBES_VMNAME", 0);
-    XChangeProperty(g->display, child_win, atom_label, XA_STRING,
+    XChangeProperty(g->display, child_win, g->qubes_vmname, XA_STRING,
             8 /* 8 bit is enough */ , PropModeReplace,
             (const unsigned char *) g->vmname,
             strlen(g->vmname));
 
     // Set '_QUBES_VMWINDOWID' property so that additional plugins can
     // synchronize window state (icon etc)
-    atom_label = XInternAtom(g->display, "_QUBES_VMWINDOWID", 0);
-    XChangeProperty(g->display, child_win, atom_label, XA_WINDOW,
+    XChangeProperty(g->display, child_win, g->qubes_vmwindowid, XA_WINDOW,
             32, PropModeReplace,
             (const unsigned char *)&vm_window->remote_winid,
             1);
@@ -428,16 +423,6 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     }
 
     return child_win;
-}
-
-static Atom intern_atom(Ghandles *const g, const char *const name,
-    bool const only_if_exists) {
-    Atom retval;
-    if ((retval = XInternAtom(g->display, name, only_if_exists)) == None) {
-        fprintf(stderr, "Error: cannot intern %s\n", name);
-        exit(1);
-    }
-    return retval;
 }
 
 static const int desktop_coordinates_size = 4;
@@ -526,26 +511,48 @@ static void mkghandles(Ghandles * g)
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
-    g->wmDeleteMessage = intern_atom(g, "WM_DELETE_WINDOW", True);
     g->clipboard_requested = 0;
     g->clipboard_xevent_time = 0;
     if ((unsigned)snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
         "_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display)) >=
         sizeof(tray_sel_atom_name))
         abort();
-    g->tray_selection = intern_atom(g, tray_sel_atom_name, False);
-    g->tray_opcode = intern_atom(g, "_NET_SYSTEM_TRAY_OPCODE", False);
-    g->xembed_message = intern_atom(g, "_XEMBED", False);
-    g->xembed_info = intern_atom(g, "_XEMBED_INFO", False);
-    g->wm_state = intern_atom(g, "_NET_WM_STATE", False);
-    g->wm_state_fullscreen = intern_atom(g, "_NET_WM_STATE_FULLSCREEN", False);
-    g->wm_state_demands_attention = intern_atom(g, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
-    g->wm_state_hidden = intern_atom(g, "_NET_WM_STATE_HIDDEN", False);
-    g->wm_workarea = intern_atom(g, "_NET_WORKAREA", False);
-    g->frame_extents = intern_atom(g, "_NET_FRAME_EXTENTS", False);
-    g->wm_state_maximized_vert = intern_atom(g, "_NET_WM_STATE_MAXIMIZED_VERT", False);
-    g->wm_state_maximized_horz = intern_atom(g, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-    g->wm_current_desktop = intern_atom(g, "_NET_CURRENT_DESKTOP", False);
+    {
+        const struct {
+            Atom *const dest;
+            const char *const name;
+        } atoms_to_intern[] = {
+            { &g->tray_selection, tray_sel_atom_name },
+            { &g->tray_opcode, "_NET_SYSTEM_TRAY_OPCODE" },
+            { &g->xembed_message, "_XEMBED" },
+            { &g->xembed_info, "_XEMBED_INFO" },
+            { &g->wm_state, "_NET_WM_STATE" },
+            { &g->wm_state_fullscreen, "_NET_WM_STATE_FULLSCREEN" },
+            { &g->wm_state_demands_attention, "_NET_WM_STATE_DEMANDS_ATTENTION" },
+            { &g->wm_state_hidden, "_NET_WM_STATE_HIDDEN" },
+            { &g->wm_workarea, "_NET_WORKAREA" },
+            { &g->frame_extents, "_NET_FRAME_EXTENTS" },
+            { &g->wm_state_maximized_vert, "_NET_WM_STATE_MAXIMIZED_VERT" },
+            { &g->wm_state_maximized_horz, "_NET_WM_STATE_MAXIMIZED_HORZ" },
+            { &g->qubes_label, "_QUBES_LABEL" },
+            { &g->qubes_label_color, "_QUBES_LABEL_COLOR" },
+            { &g->qubes_vmname, "_QUBES_VMNAME" },
+            { &g->qubes_vmwindowid, "_QUBES_VMWINDOWID" },
+            { &g->net_wm_icon, "_NET_WM_ICON" },
+            { &g->wm_current_desktop, "_NET_WM_CURRENT_DESKTOP" },
+            { &g->wmDeleteMessage, "WM_DELETE_WINDOW" },
+        };
+        Atom labels[QUBES_ARRAY_SIZE(atoms_to_intern)];
+        const char *names[QUBES_ARRAY_SIZE(atoms_to_intern)];
+        for (size_t i = 0; i < QUBES_ARRAY_SIZE(atoms_to_intern); ++i)
+            names[i] = atoms_to_intern[i].name;
+        if (!XInternAtoms(g->display, (char **)names, QUBES_ARRAY_SIZE(atoms_to_intern), False, labels)) {
+            fputs("Could not intern global atoms\n", stderr);
+            exit(1);
+        }
+        for (size_t i = 0; i < QUBES_ARRAY_SIZE(atoms_to_intern); ++i)
+            *atoms_to_intern[i].dest = labels[i];
+    }
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
