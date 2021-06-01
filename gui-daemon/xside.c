@@ -491,11 +491,56 @@ static void update_work_area(Ghandles *g) {
     XFree(scratch);
 }
 
+/*
+ * Internal all of the atoms we will use.  For performance reasons, we perform
+ * all atom interning at startup, and do so using a single XInternAtoms() call.
+ */
+static void intern_global_atoms(Ghandles *const g) {
+    char tray_sel_atom_name[64];
+    if ((unsigned)snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
+        "_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display)) >=
+        sizeof(tray_sel_atom_name))
+        abort();
+    const struct {
+        Atom *const dest;
+        const char *const name;
+    } atoms_to_intern[] = {
+        { &g->tray_selection, tray_sel_atom_name },
+        { &g->tray_opcode, "_NET_SYSTEM_TRAY_OPCODE" },
+        { &g->xembed_message, "_XEMBED" },
+        { &g->xembed_info, "_XEMBED_INFO" },
+        { &g->wm_state, "_NET_WM_STATE" },
+        { &g->wm_state_fullscreen, "_NET_WM_STATE_FULLSCREEN" },
+        { &g->wm_state_demands_attention, "_NET_WM_STATE_DEMANDS_ATTENTION" },
+        { &g->wm_state_hidden, "_NET_WM_STATE_HIDDEN" },
+        { &g->wm_workarea, "_NET_WORKAREA" },
+        { &g->frame_extents, "_NET_FRAME_EXTENTS" },
+        { &g->wm_state_maximized_vert, "_NET_WM_STATE_MAXIMIZED_VERT" },
+        { &g->wm_state_maximized_horz, "_NET_WM_STATE_MAXIMIZED_HORZ" },
+        { &g->qubes_label, "_QUBES_LABEL" },
+        { &g->qubes_label_color, "_QUBES_LABEL_COLOR" },
+        { &g->qubes_vmname, "_QUBES_VMNAME" },
+        { &g->qubes_vmwindowid, "_QUBES_VMWINDOWID" },
+        { &g->net_wm_icon, "_NET_WM_ICON" },
+        { &g->wm_current_desktop, "_NET_WM_CURRENT_DESKTOP" },
+        { &g->wmDeleteMessage, "WM_DELETE_WINDOW" },
+    };
+    Atom labels[QUBES_ARRAY_SIZE(atoms_to_intern)];
+    const char *names[QUBES_ARRAY_SIZE(atoms_to_intern)];
+    for (size_t i = 0; i < QUBES_ARRAY_SIZE(atoms_to_intern); ++i)
+        names[i] = atoms_to_intern[i].name;
+    if (!XInternAtoms(g->display, (char **)names, QUBES_ARRAY_SIZE(atoms_to_intern), False, labels)) {
+        fputs("Could not intern global atoms\n", stderr);
+        exit(1);
+    }
+    for (size_t i = 0; i < QUBES_ARRAY_SIZE(atoms_to_intern); ++i)
+        *atoms_to_intern[i].dest = labels[i];
+}
+
 /* prepare global variables content:
  * most of them are handles to local Xserver structures */
 static void mkghandles(Ghandles * g)
 {
-    char tray_sel_atom_name[64];
     int ev_base, err_base; /* ignore */
     XWindowAttributes attr;
     int i;
@@ -513,53 +558,14 @@ static void mkghandles(Ghandles * g)
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
     g->clipboard_requested = 0;
     g->clipboard_xevent_time = 0;
-    if ((unsigned)snprintf(tray_sel_atom_name, sizeof(tray_sel_atom_name),
-        "_NET_SYSTEM_TRAY_S%u", DefaultScreen(g->display)) >=
-        sizeof(tray_sel_atom_name))
-        abort();
-    {
-        const struct {
-            Atom *const dest;
-            const char *const name;
-        } atoms_to_intern[] = {
-            { &g->tray_selection, tray_sel_atom_name },
-            { &g->tray_opcode, "_NET_SYSTEM_TRAY_OPCODE" },
-            { &g->xembed_message, "_XEMBED" },
-            { &g->xembed_info, "_XEMBED_INFO" },
-            { &g->wm_state, "_NET_WM_STATE" },
-            { &g->wm_state_fullscreen, "_NET_WM_STATE_FULLSCREEN" },
-            { &g->wm_state_demands_attention, "_NET_WM_STATE_DEMANDS_ATTENTION" },
-            { &g->wm_state_hidden, "_NET_WM_STATE_HIDDEN" },
-            { &g->wm_workarea, "_NET_WORKAREA" },
-            { &g->frame_extents, "_NET_FRAME_EXTENTS" },
-            { &g->wm_state_maximized_vert, "_NET_WM_STATE_MAXIMIZED_VERT" },
-            { &g->wm_state_maximized_horz, "_NET_WM_STATE_MAXIMIZED_HORZ" },
-            { &g->qubes_label, "_QUBES_LABEL" },
-            { &g->qubes_label_color, "_QUBES_LABEL_COLOR" },
-            { &g->qubes_vmname, "_QUBES_VMNAME" },
-            { &g->qubes_vmwindowid, "_QUBES_VMWINDOWID" },
-            { &g->net_wm_icon, "_NET_WM_ICON" },
-            { &g->wm_current_desktop, "_NET_WM_CURRENT_DESKTOP" },
-            { &g->wmDeleteMessage, "WM_DELETE_WINDOW" },
-        };
-        Atom labels[QUBES_ARRAY_SIZE(atoms_to_intern)];
-        const char *names[QUBES_ARRAY_SIZE(atoms_to_intern)];
-        for (size_t i = 0; i < QUBES_ARRAY_SIZE(atoms_to_intern); ++i)
-            names[i] = atoms_to_intern[i].name;
-        if (!XInternAtoms(g->display, (char **)names, QUBES_ARRAY_SIZE(atoms_to_intern), False, labels)) {
-            fputs("Could not intern global atoms\n", stderr);
-            exit(1);
-        }
-        for (size_t i = 0; i < QUBES_ARRAY_SIZE(atoms_to_intern); ++i)
-            *atoms_to_intern[i].dest = labels[i];
-    }
+    intern_global_atoms(g);
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
     /* get the work area */
     update_work_area(g);
     /* create graphical contexts */
-    get_frame_gc(g, g->cmdline_color ? : "red");
+    get_frame_gc(g, g->cmdline_color ? g->cmdline_color : "red");
     if (g->trayicon_mode == TRAY_BACKGROUND)
         init_tray_bg(g);
     else if (g->trayicon_mode == TRAY_TINT)
@@ -574,29 +580,24 @@ static void mkghandles(Ghandles * g)
     /* use qrexec for clipboard operations when stubdom GUI is used */
     if (g->domid != g->target_domid)
         g->qrexec_clipboard = 1;
-    if (getenv("KDE_SESSION_UID"))
-        g->use_kdialog = 1;
-    else
-        g->use_kdialog = 0;
-
+    g->use_kdialog = getenv("KDE_SESSION_UID") ? 1 : 0;
     g->icon_data = NULL;
     g->icon_data_len = 0;
     if (g->cmdline_icon && g->cmdline_icon[0] == '/') {
         /* in case of error g->icon_data will remain NULL so cmdline_icon will
          * be used instead (as icon label) */
         g->icon_data = load_png(g->cmdline_icon, &g->icon_data_len);
-        if (g->icon_data) {
+        if (g->icon_data)
             fprintf(stderr, "Icon size: %lux%lu\n", g->icon_data[0], g->icon_data[1]);
-        }
     }
     g->inter_appviewer_lock_fd = open("/run/qubes/appviewer.lock",
-            O_RDWR | O_CREAT, 0666);
+            O_RDWR | O_CREAT, 0660);
     if (g->inter_appviewer_lock_fd < 0) {
         perror("create lock");
         exit(1);
     }
     /* ignore possible errors */
-    fchmod(g->inter_appviewer_lock_fd, 0666);
+    fchmod(g->inter_appviewer_lock_fd, 0660);
 
     g->cursors = malloc(sizeof(Cursor) * XC_num_glyphs);
     if (!g->cursors) {
@@ -607,10 +608,7 @@ static void mkghandles(Ghandles * g)
         /* X font cursors have even numbers from 0 up to XC_num_glyphs.
          * Fill the rest with None.
          */
-        if (i % 2 == 0)
-            g->cursors[i] = XCreateFontCursor(g->display, i);
-        else
-            g->cursors[i] = None;
+        g->cursors[i] = (i % 2 == 0) ? XCreateFontCursor(g->display, i) : None;
     }
 }
 
