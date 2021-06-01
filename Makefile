@@ -21,7 +21,8 @@
 
 MANDIR ?= /usr/share/man
 LIBDIR ?= /usr/lib64
-export LIBDIR
+VCHAN_PKG ?= vchan-xen
+export LIBDIR CFLAGS
 
 help:
 	@echo "Qubes GUI main Makefile:" ;\
@@ -30,11 +31,12 @@ help:
 	    echo "make clean                <--- clean all the binary files";\
 	    exit 0;
 
-all: gui-daemon/qubes-guid shmoverride/shmoverride.so shmoverride/X-wrapper-qubes \
-		pulse/pacat-simple-vchan screen-layout-handler/watch-screen-layout-changes
+all: gui-daemon/qubes-guid gui-daemon/qubes-guid.1 shmoverride/shmoverride.so \
+     shmoverride/X-wrapper-qubes pulse/pacat-simple-vchan \
+     screen-layout-handler/watch-screen-layout-changes
 
-gui-daemon/qubes-guid:
-	(cd gui-daemon; $(MAKE))
+gui-daemon/qubes-guid gui-daemon/qubes-guid.1:
+	$(MAKE) -C gui-daemon qubes-guid qubes-guid.1
 
 shmoverride/shmoverride.so:
 	(cd shmoverride; $(MAKE) shmoverride.so)

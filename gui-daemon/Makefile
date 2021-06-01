@@ -19,27 +19,26 @@
 #
 #
 
+MAKEFLAGS := -rR
 VCHAN_PKG = $(if $(BACKEND_VMM),vchan-$(BACKEND_VMM),vchan)
 CC=gcc
-CFLAGS+=-I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
-		`pkg-config --cflags libconfig` \
-		`pkg-config --cflags libnotify` \
-		`pkg-config --cflags libpng` \
-		`pkg-config --cflags $(VCHAN_PKG)`
-OBJS=xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
-	../gui-common/error.o ../common/list.o
-
-all: qubes-guid qubes-guid.1
-qubes-guid: $(OBJS)
-	$(CC) -g -pie -o qubes-guid $(OBJS) \
-		-lX11 -lXext -Wall -lm \
-		`pkg-config --libs $(VCHAN_PKG)` \
-		`pkg-config --libs libpng` \
-		`pkg-config --libs libconfig` \
-		`pkg-config --libs libnotify`
+pkgs := x11 xext glib-2.0 $(VCHAN_PKG) libpng libnotify libconfig
+objs := xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
+	../gui-common/error.o list.o
+extra_cflags := -I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
+		$(shell pkg-config --cflags $(pkgs))
+LDLIBS := $(shell pkg-config --libs $(pkgs))
+all: qubes-guid # qubes-guid.1
+vpath %.c ../common
+qubes-guid: $(objs)
+	$(CC) -g -pie -o qubes-guid $(objs) -Wall -lm $(LDLIBS) $(LDFLAGS)
 
 qubes-guid.1: qubes-guid
 	LC_ALL=C help2man --version-string=`cat ../version` --no-info --name="Qubes GUI daemon" ./qubes-guid  > qubes-guid.1
 
 clean:
-	rm -f qubes-guid *.o *~
+	rm -f qubes-guid ./*.o ./*~
+
+%.o: %.c Makefile
+	$(CC) -MD -MP -MF $@.dep -c -o $@ $(extra_cflags) $(CFLAGS) $<
+-include *.dep

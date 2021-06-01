@@ -27,21 +27,25 @@ $(error shmoverride currently supports Xen only, '$(BACKEND_VMM)' set)
 endif
 
 LIBDIR ?= /usr/lib64
-CFLAGS+=-g -O2 -I../include/ -fPIC -Wall -Wextra -Werror \
+extra_cflags := -g -O2 -I../include/ -fPIC -Wall -Wextra -Werror \
 		-DBACKEND_VMM_$(BACKEND_VMM) \
-		-DSHMOVERRIDE_LIB_PATH=\"$(LIBDIR)/qubes-gui-daemon/shmoverride.so\"
+		-DSHMOVERRIDE_LIB_PATH=\"$(LIBDIR)/qubes-gui-daemon/shmoverride.so\" \
+		-I../include
 CC=gcc
 
 all: shmoverride.so X-wrapper-qubes
 
-shmoverride.so: shmoverride.o list.o
-	gcc -shared -o shmoverride.so \
+shmoverride.so: shmoverride.o ./list.o
+	$(CC) $(CFLAGS) $(extra_cflags) -shared -o shmoverride.so \
 		shmoverride.o list.o -ldl -lxenctrl -lxengnttab
 
-list.o: ../common/list.c
-	$(CC) $(CFLAGS) -shared -c -o list.o ../common/list.c
+vpath %.c ../common
 
 X-wrapper-qubes: X-wrapper-qubes.o
 
 clean:
-	rm -f *~ *.o shmoverride.so X-wrapper-qubes
+	rm -f ./*~ ./*.o shmoverride.so X-wrapper-qubes
+
+%.o: %.c Makefile
+	$(CC) -MD -MP -MF $@.dep -c -o $@ $(extra_cflags) $(CFLAGS) $<
+-include *.dep
