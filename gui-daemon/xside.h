@@ -143,6 +143,9 @@ struct _global_handles {
     Atom frame_extents; /* Atom: _NET_FRAME_EXTENTS */
     Atom wm_state_maximized_vert; /* Atom: _NET_WM_STATE_MAXIMIZED_VERT */
     Atom wm_state_maximized_horz; /* Atom: _NET_WM_STATE_MAXIMIZED_HORZ */
+    Atom wm_user_time_window; /* Atom: _NET_WM_USER_TIME_WINDOW */
+    Atom wm_user_time; /* Atom: _NET_WM_USER_TIME */
+    Atom net_supported;
     int shm_major_opcode;   /* MIT-SHM extension opcode */
     /* shared memory handling */
     struct shm_cmd *shmcmd;    /* shared memory with Xorg */
@@ -169,8 +172,8 @@ struct _global_handles {
     /* counters and other state */
     int clipboard_requested;    /* if clippoard content was requested by dom0 */
     Time clipboard_xevent_time;  /* timestamp of keypress which triggered last copy/paste */
+    Window time_win; /* Window to set _NET_WM_USER_TIME on */
     int windows_count;    /* created window count */
-    struct windowdata *last_input_window;
     /* signal was caught */
     int volatile reload_requested;
     pid_t pulseaudio_pid;

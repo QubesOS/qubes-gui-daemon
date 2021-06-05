@@ -346,7 +346,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                     vm_window->x, vm_window->y,
                     vm_window->width,
                     vm_window->height, 0,
-		    CopyFromParent,
+                    CopyFromParent,
                     CopyFromParent,
                     CopyFromParent,
                     CWOverrideRedirect, &attr);
@@ -355,6 +355,11 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     (void) XSetStandardProperties(g->display, child_win,
                       "VMapp command", "Pixmap", None,
                       gargv, 0, &my_size_hints);
+    if (g->time_win != None)
+        XChangeProperty(g->display, child_win, g->wm_user_time_window,
+               XA_WINDOW, 32, PropModeReplace,
+               (const unsigned char *)&g->time_win,
+               1);
     (void) XSelectInput(g->display, child_win,
                 ExposureMask | KeyPressMask | KeyReleaseMask |
                 ButtonPressMask | ButtonReleaseMask |
@@ -422,6 +427,33 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     return child_win;
 }
 
+static bool qubes_get_all_atom_properties(Display *const display,
+        Window const window, Atom property, long **state_list, size_t *items) {
+    assert(state_list && "NULL state_list in qubes_get_all_atom_properties");
+    assert(items && "NULL items in qubes_get_all_atom_properties");
+    *items = 0;
+    unsigned long nitems = 0, bytesleft = 0;
+    Atom act_type = None;
+    int act_fmt = 0, ret;
+retry:
+    /* Ensure we read all of the atoms */
+    *state_list = NULL;
+    ret = XGetWindowProperty(display, window, property,
+            0, (10 * 4 + bytesleft + 3) / 4, False, XA_ATOM, &act_type, &act_fmt,
+            &nitems, &bytesleft, (unsigned char**)state_list);
+    if (ret != Success) {
+        XFree(*state_list);
+        *state_list = NULL;
+        return false;
+    }
+    if (bytesleft) {
+        XFree(*state_list);
+        goto retry;
+    }
+    *items = nitems;
+    return true;
+}
+
 /* prepare global variables content:
  * most of them are handles to local Xserver structures */
 static void mkghandles(Ghandles * g)
@@ -437,7 +469,10 @@ static void mkghandles(Ghandles * g)
     }
     g->screen = DefaultScreen(g->display);
     g->root_win = RootWindow(g->display, g->screen);
-    XGetWindowAttributes(g->display, g->root_win, &attr);
+    if (!XGetWindowAttributes(g->display, g->root_win, &attr)) {
+        fprintf(stderr, "Cannot get global window attributes!\n");
+        exit(1);
+    }
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
@@ -460,6 +495,9 @@ static void mkghandles(Ghandles * g)
     g->frame_extents = XInternAtom(g->display, "_NET_FRAME_EXTENTS", False);
     g->wm_state_maximized_vert = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
     g->wm_state_maximized_horz = XInternAtom(g->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    g->wm_user_time_window = XInternAtom(g->display, "_NET_WM_USER_TIME_WINDOW", False);
+    g->wm_user_time = XInternAtom(g->display, "_NET_WM_USER_TIME", False);
+    g->net_supported = XInternAtom(g->display, "_NET_SUPPORTED", False);
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
@@ -502,6 +540,38 @@ static void mkghandles(Ghandles * g)
     }
     /* ignore possible errors */
     fchmod(g->inter_appviewer_lock_fd, 0666);
+
+    long *state_list;
+    size_t nitems;
+    /* Get the stub window for _NET_WM_USER_TIME */
+    if (!qubes_get_all_atom_properties(g->display,
+            g->root_win, g->net_supported, &state_list, &nitems)) {
+        fputs("Cannot get properties for global window!\n", stderr);
+        exit(1);
+    }
+    g->time_win = None;
+    for (size_t i = 0; i < nitems; ++i) {
+        if ((Atom)state_list[i] == g->wm_user_time_window && g->time_win == None) {
+            XSetWindowAttributes sattr = { 0 };
+            g->time_win = XCreateWindow(
+                    /* display */ g->display,
+                    /* parent */ g->root_win,
+                    /* x */ -2,
+                    /* y */ -2,
+                    /* width */ 1,
+                    /* height */ 1,
+                    /* border_width */ 0,
+                    /* depth */ 0,
+                    /* class */ InputOnly,
+                    /* visual */ CopyFromParent,
+                    /* valuemask */ 0,
+                    &sattr);
+            if (g->time_win == None)
+                fputs("Cannot create window!\n", stderr);
+        }
+    }
+    if (g->time_win == None)
+        fputs("Falling back to setting _NET_WM_USER_TIME on the root window\n", stderr);
 }
 
 /* reload X server parameters, especially after monitor/screen layout change */
@@ -922,6 +992,16 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
     return 0;
 }
 
+static void update_wm_user_time(Ghandles *const g, const Window window,
+        const Time time) {
+    static_assert(sizeof time == sizeof(long), "Wrong size of X11 time");
+    XChangeProperty(g->display, g->time_win != None ? g->time_win : window,
+            g->wm_user_time, XA_CARDINAL,
+            32, PropModeReplace,
+            (const unsigned char *)&time,
+            1);
+}
+
 /* handle local Xserver event: XKeyEvent
  * send it to relevant window in VM
  */
@@ -930,7 +1010,7 @@ static void process_xevent_keypress(Ghandles * g, const XKeyEvent * ev)
     struct msg_hdr hdr;
     struct msg_keypress k;
     CHECK_NONMANAGED_WINDOW(g, ev->window);
-    g->last_input_window = vm_window;
+    update_wm_user_time(g, ev->window, ev->time);
     if (is_special_keypress(g, ev, vm_window->remote_winid))
         return;
     k.type = ev->type;
@@ -972,8 +1052,8 @@ static void process_xevent_button(Ghandles * g, const XButtonEvent * ev)
     struct msg_hdr hdr;
     struct msg_button k;
     CHECK_NONMANAGED_WINDOW(g, ev->window);
+    update_wm_user_time(g, ev->window, ev->time);
 
-    g->last_input_window = vm_window;
     k.type = ev->type;
 
     k.x = ev->x;
@@ -1639,10 +1719,9 @@ static inline uint32_t flags_from_atom(Ghandles * g, Atom a) {
  * currently only _NET_WM_STATE is examined */
 static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev)
 {
-    Atom act_type;
-    Atom *state_list;
-    unsigned long nitems, bytesleft, i;
-    int ret, act_fmt;
+    long *state_list;
+    size_t nitems;
+    unsigned long i;
     int maximize_flags_seen;
     uint32_t flags;
     struct msg_hdr hdr;
@@ -1653,16 +1732,8 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev
         if (!vm_window->is_mapped)
             return;
         if (ev->state == PropertyNewValue) {
-            ret = XGetWindowProperty(g->display, vm_window->local_winid, g->wm_state, 0, 10,
-                    False, XA_ATOM, &act_type, &act_fmt, &nitems, &bytesleft, (unsigned char**)&state_list);
-            if (ret == Success && bytesleft > 0) {
-              /* Ensure we read all of the atoms */
-              XFree(state_list);
-              ret = XGetWindowProperty(g->display, vm_window->local_winid, g->wm_state,
-                    0, (10 * 4 + bytesleft + 3) / 4, False, XA_ATOM, &act_type, &act_fmt,
-                    &nitems, &bytesleft, (unsigned char**)&state_list);
-            }
-            if (ret != Success) {
+            if (!qubes_get_all_atom_properties(g->display,
+                    vm_window->local_winid, g->wm_state, &state_list, &nitems)) {
                 if (g->log_level > 0) {
                     fprintf(stderr, "Failed to get 0x%x window state details\n", (int)ev->window);
                     return;
@@ -1672,10 +1743,11 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent * ev
             /* check if both VERT and HORZ states are set */
             maximize_flags_seen = 0;
             for (i = 0; i < nitems; i++) {
-                flags |= flags_from_atom(g, state_list[i]);
-                if (state_list[i] == g->wm_state_maximized_vert)
+                const Atom state = (Atom)state_list[i];
+                flags |= flags_from_atom(g, state);
+                if (state == g->wm_state_maximized_vert)
                     maximize_flags_seen |= 1;
-                if (state_list[i] == g->wm_state_maximized_horz)
+                if (state == g->wm_state_maximized_horz)
                     maximize_flags_seen |= 2;
             }
             if (flags & WINDOW_FLAG_FULLSCREEN) {
@@ -1912,8 +1984,6 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
     struct genlist *l2;
     struct windowdata *vm_window = l->data;
     g->windows_count--;
-    if (vm_window == g->last_input_window)
-        g->last_input_window = NULL;
     XDestroyWindow(g->display, vm_window->local_winid);
     if (g->log_level > 0)
         fprintf(stderr, " XDestroyWindow 0x%x\n",
