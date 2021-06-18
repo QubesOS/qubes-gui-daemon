@@ -1,3 +1,19 @@
+qubes-gui-daemon (4.1.13-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Move XInternAtom calls to startup
+  * Miscellaneous cleanups
+  * Avoid dangerous functions in shmoverride
+  * Remove @asyncio.coroutine
+  * Rip out @asyncio.coroutine
+  * Remove deprecated qrexec policy syntax
+  * Support clipboard outside of dom0
+
+  [ Marek Marczykowski-Górecki ]
+  * rpm: require qrexec new enough for policy.EvalSimple service
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 18 Jun 2021 05:44:25 +0200
+
 qubes-gui-daemon (4.1.12-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
