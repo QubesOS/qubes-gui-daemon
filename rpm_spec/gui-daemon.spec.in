@@ -73,6 +73,8 @@ Requires:   qubes-gui-daemon
 Requires:   qubes-audio-daemon
 Requires:   qubes-audio-dom0
 Requires:	qubes-core-dom0 >= 4.1.1
+# for policy.EvalSimple service
+Requires:	qubes-core-qrexec-dom0 >= 4.1.14
 Requires:   python%{python3_pkgversion}-setuptools
 
 %description -n qubes-gui-dom0
