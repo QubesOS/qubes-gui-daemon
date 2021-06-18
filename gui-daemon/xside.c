@@ -28,9 +28,13 @@
 #include <err.h>
 #include <sys/shm.h>
 #include <sys/file.h>
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
+#include <sys/uio.h>
 #include <signal.h>
 #include <poll.h>
 #include <errno.h>
@@ -753,12 +757,14 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
         case CLIPBOARD_COPY:
             path_stdin = "/dev/null";
             path_stdout = QUBES_CLIPBOARD_FILENAME;
-            service_call = "DEFAULT:QUBESRPC qubes.ClipboardCopy";
+            service_call = g->in_dom0 ? QREXEC_COMMAND_PREFIX QUBES_SERVICE_CLIPBOARD_COPY :
+                QUBES_SERVICE_CLIPBOARD_COPY;
             break;
         case CLIPBOARD_PASTE:
             path_stdin = QUBES_CLIPBOARD_FILENAME;
             path_stdout = "/dev/null";
-            service_call = "DEFAULT:QUBESRPC qubes.ClipboardPaste";
+            service_call = g->in_dom0 ? QREXEC_COMMAND_PREFIX QUBES_SERVICE_CLIPBOARD_PASTE :
+                QUBES_SERVICE_CLIPBOARD_PASTE;
             break;
         default:
             /* not reachable */
@@ -775,7 +781,7 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
 
             /* grant group write */
             old_umask = umask(0007);
-            fd = open(path_stdout, O_WRONLY|O_CREAT|O_TRUNC, 0644);
+            fd = open(path_stdout, O_WRONLY|O_CREAT|O_TRUNC|O_NOCTTY, 0644);
             if (fd < 0) {
                 perror("open");
                 _exit(1);
@@ -788,23 +794,26 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
             }
             dup2(fd, 1);
             close(fd);
-            fd = open(path_stdin, O_RDONLY);
+            fd = open(path_stdin, O_RDONLY|O_NOCTTY);
             if (fd < 0) {
                 perror("open");
                 _exit(1);
             }
             dup2(fd, 0);
             close(fd);
-            if ((unsigned)snprintf(domid_str, sizeof(domid_str), "%d", g->target_domid)
-                >= sizeof(domid_str))
-                abort();
-            execl(QREXEC_CLIENT_PATH, "qrexec-client", "-T", "-d", domid_str, service_call, (char*)NULL);
+            if (g->in_dom0) {
+                if ((unsigned)snprintf(domid_str, sizeof(domid_str), "%d", g->target_domid)
+                    >= sizeof(domid_str))
+                    abort();
+                execl(QREXEC_CLIENT_PATH, QREXEC_CLIENT, "-T", "-d", domid_str, service_call, (char*)NULL);
+            } else
+                execl(QREXEC_CLIENT_VM_PATH, QREXEC_CLIENT_VM, "-T", "--", g->vmname, service_call, (char*)NULL);
             perror("execl");
             _exit(1);
         default:
             waitpid(pid, &status, 0);
     }
-    return WEXITSTATUS(status) == 0;
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
 static int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
@@ -915,11 +924,144 @@ error:
     free(untrusted_data);
 }
 
-static int evaluate_clipboard_policy(Ghandles * g) {
-    int fd, len;
-    char source_vm[255];
-    int status;
+static bool evaluate_clipboard_policy_socket(Ghandles *g, int socket, const char *const source_vm);
+
+static bool evaluate_clipboard_policy_domU(Ghandles *g, const char *const source_vm) {
+    int sockets[2]; /* 1 is for writing to dom0, 0 is for reading the result */
     pid_t pid;
+    if (socketpair(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0, sockets)) {
+        perror("socketpair");
+        return false;
+    }
+    switch(pid=fork()) {
+        case -1:
+            perror("fork");
+            return false;
+        case 0:
+            if (dup2(sockets[0], 0) == -1 || dup2(sockets[0], 1) == -1) {
+                perror("dup2");
+                _exit(1);
+            }
+            execl(QREXEC_CLIENT_VM_PATH, QREXEC_CLIENT_VM, "--",
+                  "@adminvm", QUBES_SERVICE_EVAL_GUI "+"
+                  QUBES_SERVICE_CLIPBOARD_PASTE, NULL);
+            perror("execl");
+            _exit(1);
+        default:
+            break;
+    }
+    close(sockets[0]);
+    const bool policy_allowed = evaluate_clipboard_policy_socket(g, sockets[1], source_vm);
+    close(sockets[1]);
+    int status;
+    /* this can only fail with EINTR, on which we retry */
+    while (waitpid(pid, &status, 0) == -1)
+        assert(errno == EINTR && "invalid return from kernel");
+    if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+        fprintf(stderr, QREXEC_CLIENT_VM " failed\n");
+        return false;
+    } else {
+        return policy_allowed;
+    }
+}
+
+static bool write_all(int socket, void *buf, size_t len) {
+    while (len) {
+        ssize_t bytes_written_or_err = send(socket, buf, len, MSG_NOSIGNAL);
+        if (bytes_written_or_err == -1) {
+            if (errno == EINTR)
+                continue;
+            perror("send");
+            return false;
+        }
+        assert((size_t)bytes_written_or_err <= len && "buffer overread");
+        len -= (size_t)bytes_written_or_err;
+        buf = (void *)((char *)buf + bytes_written_or_err);
+    }
+    return true;
+}
+
+static int evaluate_clipboard_policy_dom0(Ghandles *g,
+        const char *const source_vm) {
+    const int sockfd = socket(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0);
+    int status = 0;
+    if (sockfd < 0) {
+        perror("socket");
+        return false;
+    }
+    struct sockaddr_un addr = {
+        .sun_family = AF_UNIX,
+        .sun_path = QUBES_POLICY_EVAL_SIMPLE_SOCKET,
+    };
+    _Static_assert(sizeof addr - offsetof(struct sockaddr_un, sun_path) >=
+                   sizeof QUBES_POLICY_EVAL_SIMPLE_SOCKET,
+                   "struct sockaddr_un too small");
+    if (connect(sockfd, (struct sockaddr *)&addr,
+                sizeof QUBES_POLICY_EVAL_SIMPLE_SOCKET +
+                offsetof(struct sockaddr_un, sun_path)) != 0) {
+        perror("connect");
+        goto fail;
+    }
+    if (!write_all(sockfd, QREXEC_PRELUDE_CLIPBOARD_PASTE, sizeof(QREXEC_PRELUDE_CLIPBOARD_PASTE)))
+        goto fail;
+    status = evaluate_clipboard_policy_socket(g, sockfd, source_vm);
+fail:
+    close(sockfd);
+    return status;
+}
+
+static bool evaluate_clipboard_policy_socket(
+        Ghandles *g, int socket, const char *const source_vm) {
+    char buf[63];
+    size_t const source_vm_len = strlen(source_vm);
+    size_t const dst_vm_len = strlen(g->vmname);
+    if (source_vm_len > 31 || dst_vm_len > 31) {
+        fputs("VM name too long\n", stderr);
+        exit(1); // this means something has gone horribly wrong elsewhere
+    }
+    memcpy(buf, source_vm, source_vm_len + 1);
+    memcpy(buf + source_vm_len + 1, g->vmname, dst_vm_len);
+    if (!write_all(socket, buf, source_vm_len + dst_vm_len + 1))
+        return false;
+    if (shutdown(socket, SHUT_WR)) {
+        perror("shutdown");
+        return false;
+    }
+    memset(buf, 0, sizeof buf);
+    size_t bytes_received = 0;
+    for (;;) {
+        size_t const recv_len = sizeof buf - bytes_received - 1;
+        if (recv_len == 0)
+            break;
+        ssize_t res = recv(socket, buf + bytes_received, recv_len, MSG_WAITALL);
+        if (!res)
+            break; /* EOF */
+        if (res == -1) {
+            if (errno == EINTR)
+                continue;
+            perror("recv");
+            return false;
+        }
+        assert((size_t)res <= recv_len && "did we just overflow a buffer?");
+        bytes_received += (size_t)res;
+    }
+    if (bytes_received >= QUBES_POLICY_ACCESS_ALLOWED_LEN &&
+             !memcmp(buf, QUBES_POLICY_ACCESS_ALLOWED, QUBES_POLICY_ACCESS_ALLOWED_LEN))
+        return true;
+    else if (bytes_received >= QUBES_POLICY_ACCESS_DENIED_LEN &&
+             !memcmp(buf, QUBES_POLICY_ACCESS_DENIED, QUBES_POLICY_ACCESS_DENIED_LEN)) {
+        fprintf(stderr, "Operation refused by dom0\n");
+        return false;
+    } else {
+        fprintf(stderr, "Received invalid response from dom0: '%s'\n", buf);
+        return false;
+    }
+}
+
+static int evaluate_clipboard_policy(Ghandles * g) {
+    int fd;
+    ssize_t len;
+    char source_vm[255];
 
     fd = open(QUBES_CLIPBOARD_FILENAME ".source", O_RDONLY);
     if (fd < 0)
@@ -937,19 +1079,10 @@ static int evaluate_clipboard_policy(Ghandles * g) {
         return 0;
     }
     source_vm[len] = 0;
-    switch(pid=fork()) {
-        case -1:
-            perror("fork");
-            exit(1);
-        case 0:
-            execl(QREXEC_POLICY_PATH, "qrexec-policy", "--assume-yes-for-ask", "--just-evaluate",
-                    "dummy_id", source_vm, g->vmname, "qubes.ClipboardPaste", "0", (char*)NULL);
-            perror("execl");
-            _exit(1);
-        default:
-            waitpid(pid, &status, 0);
-    }
-    return WEXITSTATUS(status) == 0;
+    if (g->in_dom0)
+        return evaluate_clipboard_policy_dom0(g, source_vm);
+    else
+        return evaluate_clipboard_policy_domU(g, source_vm);
 }
 
 _Static_assert(CURSOR_X11_MAX == CURSOR_X11 + XC_num_glyphs, "protocol bug");
@@ -3944,7 +4077,7 @@ int main(int argc, char **argv)
 
     /* provide keyboard map before VM Xserver starts */
 
-    if(access(QUBES_RELEASE, F_OK) != -1) {
+    if (access(QUBES_RELEASE, F_OK) != -1) {
         /* cast return value to unsigned, so (unsigned)-1 > sizeof(cmd_tmp) */
         if ((unsigned)snprintf(cmd_tmp, sizeof(cmd_tmp), "/usr/bin/qubesdb-write -d %s "
                  "/qubes-keyboard \"`/usr/bin/setxkbmap -print`\"",
@@ -3953,6 +4086,12 @@ int main(int argc, char **argv)
              * keyboard layout fails */
             ignore_result(system(cmd_tmp));
         }
+        ghandles.in_dom0 = true;
+    } else if (errno != ENOENT) {
+        perror("cannot determine if " QUBES_RELEASE " exists");
+        exit(1);
+    } else {
+        ghandles.in_dom0 = false;
     }
     vchan_register_at_eof(restart_guid);
 
