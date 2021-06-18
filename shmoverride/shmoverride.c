@@ -230,14 +230,14 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
     return 0;
 }
 
-int get_display()
+int get_display(void)
 {
     int fd;
     ssize_t res;
     char ch;
     int in_arg = -1;
 
-    fd = open("/proc/self/cmdline", O_RDONLY);
+    fd = open("/proc/self/cmdline", O_RDONLY | O_NOCTTY | O_CLOEXEC);
     if (fd < 0) {
         perror("cmdline open");
         return -1;
@@ -290,7 +290,7 @@ int get_display()
     return 0;
 }
 
-int __attribute__ ((constructor)) initfunc()
+int __attribute__ ((constructor)) initfunc(void)
 {
     int len;
     char idbuf[20];
@@ -331,7 +331,7 @@ int __attribute__ ((constructor)) initfunc()
     /* Try to lock the shm.id file (don't rely on whether it exists, a previous
      * process might have crashed).
      */
-    idfd = open(shmid_filename, O_WRONLY | O_CREAT, 0600);
+    idfd = open(shmid_filename, O_WRONLY | O_CLOEXEC | O_CREAT | O_NOCTTY, 0600);
     if (idfd < 0) {
         fprintf(stderr, "shmoverride opening %s: %s\n",
             shmid_filename, strerror(errno));
@@ -354,8 +354,8 @@ int __attribute__ ((constructor)) initfunc()
         perror("shmoverride shmget");
         goto cleanup;
     }
-    sprintf(idbuf, "%d", local_shmid);
-    len = strlen(idbuf);
+    if ((unsigned)(len = snprintf(idbuf, sizeof idbuf, "%d", local_shmid)) >= sizeof idbuf)
+        abort();
     if (write(idfd, idbuf, len) != len) {
         fprintf(stderr, "shmoverride writing %s: %s\n",
             shmid_filename, strerror(errno));
@@ -394,7 +394,7 @@ cleanup:
     return 0;
 }
 
-int __attribute__ ((destructor)) descfunc()
+int __attribute__ ((destructor)) descfunc(void)
 {
     if (shm_args) {
         assert(shmid_filename);
