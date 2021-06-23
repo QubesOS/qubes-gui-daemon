@@ -50,6 +50,7 @@
 #include <X11/extensions/shmproto.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
+#include <X11/Xlib-xcb.h>
 #include <libconfig.h>
 #include <libnotify/notify.h>
 #include <assert.h>
@@ -552,6 +553,10 @@ static void mkghandles(Ghandles * g)
     g->display = XOpenDisplay(NULL);
     if (!g->display) {
         perror("XOpenDisplay");
+        exit(1);
+    }
+    if (!(g->cb_connection = XGetXCBConnection(g->display))) {
+        perror("XGetXCBConnection");
         exit(1);
     }
     g->screen = DefaultScreen(g->display);
