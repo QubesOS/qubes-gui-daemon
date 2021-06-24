@@ -55,6 +55,9 @@
 #include <libconfig.h>
 #include <libnotify/notify.h>
 #include <assert.h>
+#include <xen/xen.h>
+#include <xen/grant_table.h>
+#include <xen/gntdev.h>
 #include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
 #include <libvchan.h>
