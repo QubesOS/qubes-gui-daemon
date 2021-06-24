@@ -128,6 +128,7 @@ struct windowdata {
                                           request - translate it back when WM
                                           acknowledge maximize */
     uint32_t flags_set;    /* window flags acked to gui-agent */
+    uint32_t dma_buf;      /**< dma-buf */
 };
 
 /* extra X11 property to set on every window, prepared parameters for

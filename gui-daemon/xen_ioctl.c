@@ -4,8 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include <sys/ioctl.h>
+
+#include <err.h>
 
 #include <xen/grant_table.h>
 #include <xen/gntdev.h>
@@ -37,16 +40,36 @@ bool map_grant_references(int gntdev_fd,
     }
     ioctl_arg->flags = 0;
     ioctl_arg->count = count;
-    ioctl_arg->fd = *fd = (uint32_t)-1;
+    *fd = (uint32_t)-1;
+    ioctl_arg->fd = 0;
     ioctl_arg->domid = domid;
-    memcpy(ioctl_arg->refs, grants, SIZEOF_GRANT_REF * count);
-    if (ioctl(gntdev_fd, IOCTL_GNTDEV_DMABUF_EXP_FROM_REFS, ioctl_arg)) {
-        const int i = errno;
-        perror("ioctl(IOCTL_GNTDEV_DMABUF_EXP_FROM_REFS)");
+    memcpy((char *)ioctl_arg + offsetof(struct ioctl_gntdev_dmabuf_exp_from_refs, refs),
+           grants,
+           SIZEOF_GRANT_REF * count);
+    assert(ioctl_arg->flags == 0 &&
+           ioctl_arg->count == count &&
+           ioctl_arg->fd == 0 &&
+           ioctl_arg->domid == domid);
+    errno = 0;
+    for (uint32_t i = 0; i < count; ++i) {
+        assert(ioctl_arg->refs[i] == grants[i]);
+        fprintf(stderr, "Mapping grant %" PRIu32 " using dma-buf\n", grants[i]);
+    }
+    switch (ioctl(gntdev_fd, IOCTL_GNTDEV_DMABUF_EXP_FROM_REFS, ioctl_arg)) {
+    case 0:
+        break;
+    case -1:;
+        int i = errno;
+        warn("ioctl(IOCTL_GNTDEV_DMABUF_EXP_FROM_REFS): domid %" PRIu16 ", count %" PRIu32,
+             ioctl_arg->domid, ioctl_arg->count);
         free(ioctl_arg);
         errno = i;
         return false;
+    default:
+        assert(!"Bogus return value from ioctl(IOCTL_GNTDEV_DMABUF_EXP_FROM_REFS)");
+        abort();
     }
+    assert(ioctl_arg->fd > 2);
     *fd = ioctl_arg->fd;
     free(ioctl_arg);
     return true;
