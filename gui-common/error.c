@@ -62,6 +62,9 @@ int dummy_handler(Display * dpy, XErrorEvent * ev)
                       sizeof(buf));
         fprintf(stderr, "                 Minor opcode: %d (%s)\n",
             ev->minor_code, buf);
+    }  else {
+        fprintf(stderr, "                 Minor opcode: %d\n",
+            ev->minor_code);
     }
 
     /* Provide value information */
