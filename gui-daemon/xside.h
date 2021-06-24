@@ -83,9 +83,10 @@
 #include <unistd.h>
 #include <libvchan.h>
 #include <X11/Xlib.h>
-#include <X11/extensions/XShm.h>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
+#include <xcb/shm.h>
+#include "util.h"
 
 #define QUBES_POLICY_EVAL_SIMPLE_SOCKET ("/etc/qubes-rpc/" QUBES_SERVICE_EVAL_SIMPLE)
 #define QREXEC_PRELUDE_CLIPBOARD_PASTE (QUBES_SERVICE_EVAL_SIMPLE "+" QUBES_SERVICE_CLIPBOARD_PASTE " dom0 keyword adminvm")
@@ -100,6 +101,8 @@ enum trayicon_mode {
     TRAY_BACKGROUND,
     TRAY_TINT,
 };
+
+#define INVALID_SHM_ID (-2) /* shm-id that means “no image” */
 
 /* per-window data */
 struct windowdata {
@@ -116,8 +119,8 @@ struct windowdata {
     struct windowdata *parent;    /* parent window */
     struct windowdata *transient_for;    /* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
     int override_redirect;    /* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
-    XShmSegmentInfo shminfo;    /* temporary shmid; see shmoverride/README */
-    XImage *image;        /* image with window content */
+    xcb_shm_seg_t shmseg; /* X Shared Memory segment */
+    int shmid;           /**< System V IPC identifier, or -1 for fd-passing */
     int image_height;    /* size of window content, not always the same as window in dom0! */
     int image_width;
     int have_queued_configure;    /* have configure request been sent to VM - waiting for confirmation */
@@ -238,5 +241,35 @@ struct _global_handles {
 };
 
 typedef struct _global_handles Ghandles;
+
+static inline void put_shm_image(
+        Ghandles *g,
+        xcb_drawable_t drawable,
+        struct windowdata *vm_window,
+        uint16_t src_x,
+        uint16_t src_y,
+        uint16_t w,
+        uint16_t h,
+        uint16_t dst_x,
+        uint16_t dst_y) {
+    check_xcb_void(
+        xcb_shm_put_image(g->cb_connection,
+                      drawable,
+                      g->gc,
+                      vm_window->image_width,
+                      vm_window->image_height,
+                      src_x,
+                      src_y,
+                      w,
+                      h,
+                      dst_x,
+                      dst_y,
+                      24,
+                      XCB_IMAGE_FORMAT_Z_PIXMAP,
+                      0,
+                      vm_window->shmseg,
+                      0),
+        "xcb_shm_put_image");
+}
 
 #endif /* _XSIDE_H */
