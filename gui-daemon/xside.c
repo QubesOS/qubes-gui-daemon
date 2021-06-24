@@ -2173,7 +2173,7 @@ static void handle_create(Ghandles * g, XID window)
     /* sanitize end */
     vm_window->remote_winid = window;
     if (!list_insert(g->remote2local, window, vm_window)) {
-        fprintf(stderr, "list_insert(g->remote2local failed\n");
+        fprintf(stderr, "list_insert(g->remote2local) failed\n");
         exit(1);
     }
     l = list_lookup(g->remote2local, parent);
