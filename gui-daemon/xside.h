@@ -226,6 +226,7 @@ struct _global_handles {
     char *screensaver_names[MAX_SCREENSAVER_NAMES]; /* WM_CLASS names for windows detected as screensavers */
     Cursor *cursors;  /* preloaded cursors (using XCreateFontCursor) */
     xcb_connection_t *cb_connection; /**< XCB connection */
+    xcb_gcontext_t gc; /**< XCB graphics context */
     int work_x, work_y, work_width, work_height;  /* do not allow a window to go beyond these bounds */
     Atom qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
     bool in_dom0; /* true if we are in dom0, otherwise false */

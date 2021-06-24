@@ -560,6 +560,11 @@ static void mkghandles(Ghandles * g)
     }
     g->screen = DefaultScreen(g->display);
     g->root_win = RootWindow(g->display, g->screen);
+    g->gc = xcb_generate_id(g->cb_connection);
+    const xcb_void_cookie_t cookie = check_xcb_void(
+        xcb_create_gc_aux_checked(
+            g->cb_connection, g->gc, g->root_win, 0, NULL),
+        "xcb_create_gc_aux_checked");
     if (!XGetWindowAttributes(g->display, g->root_win, &attr)) {
         fprintf(stderr, "Cannot query window attributes!\n");
         exit(1);
@@ -567,6 +572,10 @@ static void mkghandles(Ghandles * g)
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
+    if (!g->context || xcb_request_check(g->cb_connection, cookie)) {
+        fprintf(stderr, "Failed to create global graphics context!\n");
+        exit(1);
+    }
     g->clipboard_requested = 0;
     g->clipboard_xevent_time = 0;
     intern_global_atoms(g);
