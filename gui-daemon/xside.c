@@ -568,6 +568,10 @@ static void mkghandles(Ghandles * g)
     }
     g->clipboard_requested = 0;
     g->clipboard_xevent_time = 0;
+    if ((g->gntdev_fd = open("/dev/xen/gntdev", O_RDWR|O_CLOEXEC|O_NOCTTY)) < 0) {
+        perror("open /dev/xen/gntdev");
+        exit(1);
+    }
     intern_global_atoms(g);
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
