@@ -233,6 +233,7 @@ struct _global_handles {
     int work_x, work_y, work_width, work_height;  /* do not allow a window to go beyond these bounds */
     Atom qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
     bool in_dom0; /* true if we are in dom0, otherwise false */
+    int gntdev_fd; /**< File descriptor to `/dev/xen/gntdev` */
 };
 
 typedef struct _global_handles Ghandles;
