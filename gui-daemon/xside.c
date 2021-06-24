@@ -70,6 +70,7 @@
 #include "trayicon.h"
 #include "shm-args.h"
 #include "util.h"
+#include "xen_ioctl.h"
 
 /* Supported protocol version */
 
@@ -2912,11 +2913,10 @@ out_free_shm_args:
     free(shm_args);
 }
 
-static void handle_window_dump_body_grant_refs(Ghandles *g,
-         size_t untrusted_wd_body_len, size_t *img_data_size, struct
-         shm_args_hdr **shm_args, size_t *shm_args_len) {
+static uint64_t handle_window_dump_body_grant_refs(Ghandles *g,
+                                    size_t untrusted_wd_body_len,
+                                    uint32_t *grants) {
     size_t refs_len;
-    struct shm_args_grant_refs *shm_args_grant;
 
     // We don't have any custom arguments except the variable length refs list.
     _Static_assert(sizeof(struct msg_window_dump_grant_refs) == 0,
@@ -2926,7 +2926,8 @@ static void handle_window_dump_body_grant_refs(Ghandles *g,
     _Static_assert(MAX_GRANT_REFS_COUNT < INT32_MAX / 4096,
                    "MAX_GRANT_REFS_COUNT too large");
 
-    if (untrusted_wd_body_len > MAX_GRANT_REFS_COUNT * SIZEOF_GRANT_REF ||
+    if (untrusted_wd_body_len == 0 ||
+        untrusted_wd_body_len > MAX_GRANT_REFS_COUNT * SIZEOF_GRANT_REF ||
         untrusted_wd_body_len % SIZEOF_GRANT_REF != 0) {
         fprintf(stderr, "handle_msg_window_dump_grant_refs: "
                 "invalid body size(%zu)\n",
@@ -2934,32 +2935,28 @@ static void handle_window_dump_body_grant_refs(Ghandles *g,
         exit(1);
     }
     refs_len = untrusted_wd_body_len;
-
-    *shm_args_len = sizeof(struct shm_args_hdr) +
-                    sizeof(struct shm_args_grant_refs) +
-                    refs_len;
-    *shm_args = calloc(1, *shm_args_len);
-    if (*shm_args == NULL) {
+    *grants = refs_len / SIZEOF_GRANT_REF;
+    uint32_t *refs = malloc(refs_len);
+    if (refs == NULL) {
         perror("malloc failed");
         exit(1);
     }
-    shm_args_grant = (struct shm_args_grant_refs *) (
-            ((uint8_t *) *shm_args) + sizeof(struct shm_args_hdr));
-    (*shm_args)->type = SHM_ARGS_TYPE_GRANT_REFS;
-    shm_args_grant->count = refs_len / SIZEOF_GRANT_REF;
-    *img_data_size = shm_args_grant->count * 4096;
-
-    read_data(g->vchan, (char *) &shm_args_grant->refs[0], refs_len);
+    uint64_t big_offset;
+    read_data(g->vchan, (char *)refs, refs_len);
+    if (!map_grant_references(g->gntdev_fd, g->domid, refs_len, refs, &big_offset))
+        exit(1);
+    free(refs);
+    return big_offset;
 }
 
-static void handle_window_dump_body(Ghandles *g, uint32_t wd_type, size_t
-        untrusted_wd_body_len, size_t *img_data_size, struct shm_args_hdr
-        **shm_args, size_t *shm_args_len) {
+static uint64_t handle_window_dump_body(Ghandles *g,
+                                        uint32_t wd_type,
+                                        size_t untrusted_wd_body_len,
+                                        uint32_t *grants) {
     switch (wd_type) {
         case WINDOW_DUMP_TYPE_GRANT_REFS:
-            handle_window_dump_body_grant_refs(g, untrusted_wd_body_len,
-                    img_data_size, shm_args, shm_args_len);
-            break;
+            return handle_window_dump_body_grant_refs(
+                    g, untrusted_wd_body_len, grants);
         default:
             // not reachable
             assert(false);
@@ -2970,8 +2967,7 @@ static void handle_window_dump_body(Ghandles *g, uint32_t wd_type, size_t
 static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
                                uint32_t untrusted_len) {
     struct msg_window_dump_hdr untrusted_wd_hdr;
-    size_t untrusted_wd_body_len = 0, img_data_size = 0, shm_args_len = 0;
-    struct shm_args_hdr *shm_args = NULL;
+    size_t untrusted_wd_body_len;
 
     release_mapped_mfns(g, vm_window);
 
@@ -3004,19 +3000,23 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
 
     vm_window->shmid = -1;
 
-    handle_window_dump_body(g, wd_type, untrusted_wd_body_len, &img_data_size,
-                            &shm_args, &shm_args_len);
+    const uint64_t big_offset = handle_window_dump_body(g,
+                            wd_type,
+                            untrusted_wd_body_len,
+                            &vm_window->grants);
 
     if (g->invisible)
         return;
 
-    // temporary shmid; see shmoverride/README
-    vm_window->shmid = shmget(IPC_PRIVATE, 1, IPC_CREAT | 0700);
-    if (vm_window->shmid < 0) {
-        perror("shmget");
+    if (big_offset > UINT32_MAX) {
+        fprintf(stderr,
+                "Grant table offset %" PRIu64 " too large!\n",
+                (uint64_t)big_offset);
         exit(1);
     }
+    vm_window->offset = (uint32_t)big_offset;
 
+    size_t img_data_size = 4096 * vm_window->grants;
     if (img_data_size < (size_t) (vm_window->image_width *
                                   vm_window->image_height *
                                   4)) {
@@ -3028,28 +3028,22 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     }
 
     vm_window->shmseg = xcb_generate_id(g->cb_connection);
-    shm_args->domid = g->domid;
-    shm_args->shmid = vm_window->shmid;
-    inter_appviewer_lock(g, 1);
-    memcpy(g->shm_args, shm_args, shm_args_len);
-    if (shm_args_len < SHM_ARGS_SIZE) {
-        memset(((uint8_t *) g->shm_args) + shm_args_len, 0,
-               SHM_ARGS_SIZE - shm_args_len);
-    }
-    const xcb_void_cookie_t cookie =
-        check_xcb_void(
-            xcb_shm_attach_checked(g->cb_connection, vm_window->shmseg,
-                                   vm_window->shmid, true),
-            "xcb_shm_attach_checked");
+    // Create an X shared memory segment - should *always* succeed,
+    // since we are *not* using shmoverride
+    int newfd = fcntl(g->gntdev_fd, F_DUPFD_CLOEXEC, 3);
+    if (newfd < 0)
+        err(1, "fcntl(g->gntdev_fd, F_DUPFD_CLOEXEC, 3)");
+    const xcb_void_cookie_t cookie = check_xcb_void(
+        xcb_shm_attach_fd_checked(g->cb_connection, vm_window->shmseg,
+            newfd, true),
+        "xcb_shm_attach_fd_checked");
     xcb_generic_error_t *error = xcb_request_check(g->cb_connection, cookie);
-    g->shm_args->shmid = g->cmd_shmid;
-    inter_appviewer_lock(g, 0);
     if (error) {
         fprintf(stderr,
-            "xcb_shm_attach_checked failed for window 0x%lx(remote 0x%lx)\n",
+            "xcb_shm_attach_fd_checked failed for window 0x%lx(remote 0x%lx) fd %d\n",
             vm_window->local_winid,
-            vm_window->remote_winid);
-        shmctl(vm_window->shmid, IPC_RMID, 0);
+            vm_window->remote_winid,
+            g->gntdev_fd);
         vm_window->shmid = INVALID_SHM_ID;
         XErrorEvent err = {
            .type = error->response_type,
@@ -3063,7 +3057,6 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
         free(error);
         dummy_handler(g->display, &err);
     }
-    free(shm_args);
 }
 
 /* VM message dispatcher */
