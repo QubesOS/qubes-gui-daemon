@@ -560,7 +560,10 @@ static void mkghandles(Ghandles * g)
     }
     g->screen = DefaultScreen(g->display);
     g->root_win = RootWindow(g->display, g->screen);
-    XGetWindowAttributes(g->display, g->root_win, &attr);
+    if (!XGetWindowAttributes(g->display, g->root_win, &attr)) {
+        fprintf(stderr, "Cannot query window attributes!\n");
+        exit(1);
+    }
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
