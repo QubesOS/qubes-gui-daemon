@@ -23,6 +23,7 @@
 /* high level documentation is here: https://www.qubes-os.org/doc/gui/ */
 
 #include <stdio.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <err.h>
@@ -45,11 +46,13 @@
 #include <X11/Xproto.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <X11/extensions/XShm.h>
 #include <X11/extensions/shmproto.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
+#include <xcb/xcb.h>
 #include <X11/Xlib-xcb.h>
+#include <xcb/shm.h>
+#include <xcb/xcb_aux.h>
 #include <libconfig.h>
 #include <libnotify/notify.h>
 #include <assert.h>
@@ -102,12 +105,6 @@ static Ghandles ghandles;
 #endif
 
 #define ignore_result(x) { __typeof__(x) __attribute__((unused)) _ignore=(x);}
-
-/* XShmAttach return value inform only about successful queueing the operation,
- * not its execution. Errors during XShmAttach are reported asynchronously with
- * registered X11 error handler.
- */
-static bool shm_attach_failed = false;
 
 static int (*default_x11_io_error_handler)(Display *dpy);
 static void inter_appviewer_lock(Ghandles *g, int mode);
@@ -234,14 +231,36 @@ static void release_all_shm_no_x11_calls() {
     for (curr = ghandles.wid2windowdata->next;
          curr != ghandles.wid2windowdata; curr = curr->next) {
         struct windowdata *vm_window = curr->data;
-        if (vm_window->image) {
-            vm_window->image = NULL;
-            shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
-        }
+        if (vm_window->shmid != -1 && vm_window->shmid != INVALID_SHM_ID)
+            shmctl(vm_window->shmid, IPC_RMID, 0);
+        vm_window->shmid = INVALID_SHM_ID;
     }
 
 }
 #endif
+
+
+static void
+qubes_xcb_handler(Ghandles *g, const char *msg, struct windowdata *vm_window,
+                  xcb_generic_error_t *error) {
+    fprintf(stderr,
+        "%s failed for window 0x%lx(remote 0x%lx)\n",
+        msg,
+        vm_window->local_winid,
+        vm_window->remote_winid);
+    shmctl(vm_window->shmid, IPC_RMID, 0);
+    vm_window->shmid = INVALID_SHM_ID;
+    XErrorEvent err = {
+       .type = error->response_type,
+       .display = g->display,
+       .error_code = error->error_code,
+       .resourceid = error->resource_id,
+       .serial = error->full_sequence,
+       .request_code = error->major_code,
+       .minor_code = error->minor_code,
+    };
+    dummy_handler(g->display, &err);
+}
 
 int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
@@ -264,14 +283,6 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
         return 0;
     }
 
-    if (ev->request_code == ghandles.shm_major_opcode
-            && ev->minor_code == X_ShmAttach
-            && ev->error_code == BadAccess) {
-        shm_attach_failed = true;
-        /* shmoverride failed to attach memory region,
-         * handled in handle_mfndump/handle_window_dump */
-        return 0;
-    }
 #ifdef MAKE_X11_ERRORS_FATAL
     /* The exit(1) below will call release_all_mapped_mfns (registerd with
      * atexit(3)), which would try to release window images with XShmDetach. We
@@ -2001,7 +2012,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         return;
     }
     // now known: untrusted_x and untrusted_y are not negative
-    if (vm_window->image) {
+    if (vm_window->shmid != INVALID_SHM_ID) {
         // image_width and image_height are not negative
         // (checked in handle_mfndump and handle_window_dump)
         x = min(untrusted_x, vm_window->image_width);
@@ -2142,16 +2153,17 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         else if (g->trayicon_mode == TRAY_TINT)
             tint_tray_and_update(g, vm_window, x, y, w, h);
     } else {
-        if (vm_window->image) {
-            XShmPutImage(g->display, vm_window->local_winid,
-                    g->context, vm_window->image, x,
-                    y, x, y, w, h, 0);
-        } else if (g->screen_window && g->screen_window->image) {
+        if (vm_window->shmid != INVALID_SHM_ID) {
+            put_shm_image(g, vm_window->local_winid, vm_window, x, y, w, h, x, y);
+        } else if (g->screen_window && g->screen_window->shmid != INVALID_SHM_ID) {
             // vm_window->x+x and vm_window->y+y are the position relative to
             // the screen, while x and y are the position relative to the window
-            XShmPutImage(g->display, vm_window->local_winid,
-                    g->context, g->screen_window->image, vm_window->x+x,
-                    vm_window->y+y, x, y, w, h, 0);
+            put_shm_image(g,
+                          vm_window->local_winid,
+                          g->screen_window,
+                          vm_window->x + x,
+                          vm_window->y + y,
+                          w, h, x, y);
         }
         /* else no window content to update, but still draw a frame (if needed) */
     }
@@ -2435,11 +2447,11 @@ static void handle_create(Ghandles * g, XID window)
     vm_window =
         (struct windowdata *) calloc(1, sizeof(struct windowdata));
     if (!vm_window) {
-        perror("malloc(vm_window in handle_create)");
+        perror("calloc(vm_window in handle_create)");
         exit(1);
     }
+    vm_window->shmid = INVALID_SHM_ID;
     /*
-       because of calloc vm_window->image = 0;
        vm_window->is_mapped = 0;
        vm_window->local_winid = 0;
        vm_window->dest = vm_window->src = vm_window->pix = 0;
@@ -3174,16 +3186,61 @@ static void inter_appviewer_lock(Ghandles *g, int mode)
 /* release shared memory connected with given window */
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 {
-    if (g->invisible || !vm_window->image)
+    if (g->invisible || vm_window->shmid == INVALID_SHM_ID)
         return;
+    if (vm_window->shmid != -1) {
+        inter_appviewer_lock(g, 1);
+        g->shm_args->shmid = vm_window->shmid;
+        xcb_void_cookie_t cookie = check_xcb_void(
+            xcb_shm_detach_checked(g->cb_connection, vm_window->shmseg),
+            "xcb_shm_detach");
+        xcb_aux_sync(g->cb_connection);
+        if (xcb_request_check(g->cb_connection, cookie)) {
+            fputs("SHM detach failed (this is a bug)", stderr);
+            exit(1);
+        }
+        inter_appviewer_lock(g, 0);
+        shmctl(vm_window->shmid, IPC_RMID, 0);
+    }
+    vm_window->shmid = INVALID_SHM_ID;
+}
+
+static void qubes_shm_attach(Ghandles *g, struct windowdata *const vm_window,
+                             struct shm_args_hdr *const shm_args,
+                             const size_t shm_args_len)
+{
+    if (g->invisible)
+        return;
+    // temporary shmid; see shmoverride/README
+    vm_window->shmid = shmget(IPC_PRIVATE, 1, IPC_CREAT | 0700);
+    if (vm_window->shmid < 0) {
+        perror("shmget");
+        exit(1);
+    }
+    vm_window->shmseg = xcb_generate_id(g->cb_connection);
+    shm_args->domid = g->domid;
+    shm_args->shmid = vm_window->shmid;
     inter_appviewer_lock(g, 1);
-    g->shm_args->shmid = vm_window->shminfo.shmid;
-    XShmDetach(g->display, &vm_window->shminfo);
-    XDestroyImage(vm_window->image);
-    XSync(g->display, False);
+    memcpy(g->shm_args, shm_args, shm_args_len);
+    if (shm_args_len < SHM_ARGS_SIZE) {
+        memset(((uint8_t *) g->shm_args) + shm_args_len, 0,
+               SHM_ARGS_SIZE - shm_args_len);
+    }
+    const xcb_void_cookie_t cookie =
+        check_xcb_void(
+            xcb_shm_attach_checked(g->cb_connection, vm_window->shmseg,
+                                   vm_window->shmid, true),
+            "xcb_shm_attach_checked");
+    xcb_aux_sync(g->cb_connection);
+    xcb_generic_error_t *error = xcb_request_check(g->cb_connection, cookie);
+    g->shm_args->shmid = g->cmd_shmid;
     inter_appviewer_lock(g, 0);
-    vm_window->image = NULL;
-    shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
+    if (error) {
+        qubes_xcb_handler(g, "xcb_shm_attach", vm_window, error);
+        shmctl(vm_window->shmid, IPC_RMID, 0);
+        vm_window->shmid = INVALID_SHM_ID;
+        free(error);
+    }
 }
 
 /* handle VM message: MSG_MFNDUMP
@@ -3244,21 +3301,8 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
     shm_args_mfns->off = off;
 
     read_data(g->vchan, (char *) &shm_args_mfns->mfns[0], mfns_len);
-    if (g->invisible)
-        goto out_free_shm_args;
-    vm_window->image =
-        XShmCreateImage(g->display,
-                DefaultVisual(g->display, g->screen), 24,
-                ZPixmap, NULL, &vm_window->shminfo,
-                vm_window->image_width,
-                vm_window->image_height);
-    if (!vm_window->image) {
-        perror("XShmCreateImage");
-        exit(1);
-    }
-    /* the below sanity check must be AFTER XShmCreateImage, it uses vm_window->image */
     if (num_mfn * 4096 <
-        vm_window->image->bytes_per_line * vm_window->image->height +
+        vm_window->image_width * vm_window->image_height * 4 +
         off) {
         fprintf(stderr,
             "handle_mfndump for window 0x%x(remote 0x%x)"
@@ -3267,44 +3311,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
             (int) vm_window->remote_winid, num_mfn);
         exit(1);
     }
-    // temporary shmid; see shmoverride/README
-    vm_window->shminfo.shmid =
-        shmget(IPC_PRIVATE, 1, IPC_CREAT | 0700);
-    if (vm_window->shminfo.shmid < 0) {
-        perror("shmget");
-        exit(1);
-    }
-    shm_args->shmid = vm_window->shminfo.shmid;
-    shm_args->domid = g->domid;
-    inter_appviewer_lock(g, 1);
-    memcpy(g->shm_args, shm_args, shm_args_len);
-    if (shm_args_len < SHM_ARGS_SIZE) {
-        memset(((uint8_t *) g->shm_args) + shm_args_len, 0,
-               SHM_ARGS_SIZE - shm_args_len);
-    }
-    {
-        static char dummybuf[100];
-        vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
-    }
-    vm_window->shminfo.readOnly = True;
-    shm_attach_failed = false;
-    if (!XShmAttach(g->display, &vm_window->shminfo))
-        shm_attach_failed = true;
-    /* shm_attach_failed can be also set by the X11 error handler */
-    XSync(g->display, False);
-    g->shm_args->shmid = g->cmd_shmid;
-    inter_appviewer_lock(g, 0);
-    if (shm_attach_failed) {
-        fprintf(stderr,
-            "XShmAttach failed for window 0x%lx(remote 0x%lx)\n",
-            vm_window->local_winid,
-            vm_window->remote_winid);
-        XDestroyImage(vm_window->image);
-        vm_window->image = NULL;
-        shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
-    }
-
-out_free_shm_args:
+    qubes_shm_attach(g, vm_window, shm_args, shm_args_len);
     free(shm_args);
 }
 
@@ -3366,7 +3373,6 @@ static void handle_window_dump_body(Ghandles *g, uint32_t wd_type, size_t
 static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
                                uint32_t untrusted_len) {
     struct msg_window_dump_hdr untrusted_wd_hdr;
-    static char dummybuf[100];
     struct shm_args_hdr *shm_args = NULL;
     size_t shm_args_len = 0, img_data_size = 0;
 
@@ -3399,33 +3405,14 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     vm_window->image_height = untrusted_wd_hdr.height;
     //VERIFY(untrusted_wd_hdr.bpp == 24);
 
+    vm_window->shmid = -1;
+
     handle_window_dump_body(g, wd_type, untrusted_wd_body_len, &img_data_size,
                             &shm_args, &shm_args_len);
 
-    if (g->invisible)
-        return;
-
-    // temporary shmid; see shmoverride/README
-    vm_window->shminfo.shmid =
-        shmget(IPC_PRIVATE, 1, IPC_CREAT | 0700);
-    if (vm_window->shminfo.shmid < 0) {
-        perror("shmget failed");
-        exit(1);
-    }
-
-    vm_window->image =
-        XShmCreateImage(g->display,
-                DefaultVisual(g->display, g->screen), 24,
-                ZPixmap, NULL, &vm_window->shminfo,
-                vm_window->image_width,
-                vm_window->image_height);
-    if (!vm_window->image) {
-        perror("XShmCreateImage");
-        exit(1);
-    }
-    /* the below sanity check must be AFTER XShmCreateImage, it uses vm_window->image */
-    if (img_data_size < (size_t) (vm_window->image->bytes_per_line *
-                                  vm_window->image->height)) {
+    if (img_data_size < (size_t) (vm_window->image_width *
+                                  vm_window->image_height *
+                                  4)) {
         fprintf(stderr,
             "handle_window_dump: got too small image data size (%zu)"
             " for window 0x%lx (remote 0x%lx)\n",
@@ -3433,32 +3420,7 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
         exit(1);
     }
 
-    shm_args->domid = g->domid;
-    shm_args->shmid = vm_window->shminfo.shmid;
-    inter_appviewer_lock(g, 1);
-    memcpy(g->shm_args, shm_args, shm_args_len);
-    if (shm_args_len < SHM_ARGS_SIZE) {
-        memset(((uint8_t *) g->shm_args) + shm_args_len, 0,
-               SHM_ARGS_SIZE - shm_args_len);
-    }
-    vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
-    vm_window->shminfo.readOnly = True;
-    shm_attach_failed = false;
-    if (!XShmAttach(g->display, &vm_window->shminfo))
-        shm_attach_failed = true;
-    /* shm_attach_failed can be also set by the X11 error handler */
-    XSync(g->display, False);
-    g->shm_args->shmid = g->cmd_shmid;
-    inter_appviewer_lock(g, 0);
-    if (shm_attach_failed) {
-        fprintf(stderr,
-            "XShmAttach failed for window 0x%lx(remote 0x%lx)\n",
-            vm_window->local_winid,
-            vm_window->remote_winid);
-        XDestroyImage(vm_window->image);
-        vm_window->image = NULL;
-        shmctl(vm_window->shminfo.shmid, IPC_RMID, 0);
-    }
+    qubes_shm_attach(g, vm_window, shm_args, shm_args_len);
     free(shm_args);
 }
 
