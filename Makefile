@@ -35,6 +35,7 @@ all: gui-daemon/qubes-guid gui-daemon/qubes-guid.1 shmoverride/shmoverride.so \
      shmoverride/X-wrapper-qubes pulse/pacat-simple-vchan \
      screen-layout-handler/watch-screen-layout-changes
 
+.PHONY: gui-daemon/qubes-guid gui-daemon/qubes-guid.1
 gui-daemon/qubes-guid gui-daemon/qubes-guid.1:
 	$(MAKE) -C gui-daemon qubes-guid qubes-guid.1
 

@@ -24,7 +24,7 @@ VCHAN_PKG = $(if $(BACKEND_VMM),vchan-$(BACKEND_VMM),vchan)
 CC=gcc
 pkgs := x11 x11-xcb xcb xcb-shm glib-2.0 $(VCHAN_PKG) libpng libnotify libconfig
 objs := xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
-	../gui-common/error.o list.o
+	../gui-common/error.o list.o xen_ioctl.o
 extra_cflags := -I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
 		$(shell pkg-config --cflags $(pkgs))
 LDLIBS := $(shell pkg-config --libs $(pkgs))
