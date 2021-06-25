@@ -70,15 +70,10 @@ struct mfns_info {
     uint32_t off;
 };
 
-struct grant_refs_info {
-    uint32_t count;
-};
-
 struct info {
     uint32_t type;
     union {
         struct mfns_info mfns;
-        struct grant_refs_info grant;
     } u;
 };
 
@@ -106,23 +101,6 @@ static uint8_t *shmat_mfns(struct shm_args_hdr *shm_args, struct info *info) {
     return map;
 }
 
-static uint8_t *shmat_grant_refs(struct shm_args_hdr *shm_args,
-                                 struct info *info) {
-    uint8_t *map;
-    struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
-            ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
-
-    info->u.grant.count = shm_args_grant->count;
-
-    map = xengnttab_map_domain_grant_refs(xgt,
-            shm_args_grant->count,
-            shm_args->domid,
-            &shm_args_grant->refs[0],
-            PROT_READ);
-
-    return map;
-}
-
 void *shmat(int shmid, const void *shmaddr, int shmflg)
 {
     uint8_t *fakeaddr = NULL;
@@ -138,9 +116,6 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
     switch (shm_args->type) {
     case SHM_ARGS_TYPE_MFNS:
         fakeaddr = shmat_mfns(shm_args, info);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        fakeaddr = shmat_grant_refs(shm_args, info);
         break;
     default:
         errno = EINVAL;
@@ -162,10 +137,6 @@ static int shmdt_mfns(void *map, struct info *info) {
     return munmap(map - info->u.mfns.off, info->u.mfns.count * XC_PAGE_SIZE);
 }
 
-static int shmdt_grant_refs(void *map, struct info *info) {
-    return xengnttab_unmap(xgt, map, info->u.grant.count);
-}
-
 int shmdt(const void *shmaddr)
 {
     void *addr = (void *) shmaddr; // drop const qualifier
@@ -179,9 +150,6 @@ int shmdt(const void *shmaddr)
     switch (info->type) {
     case SHM_ARGS_TYPE_MFNS:
         rc = shmdt_mfns(addr, info);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        rc = shmdt_grant_refs(addr, info);
         break;
     default:
         errno = EINVAL;
@@ -200,13 +168,6 @@ static size_t shm_segsz_mfns(struct shm_args_hdr *shm_args) {
     return shm_args_mfns->count * XC_PAGE_SIZE - shm_args_mfns->off;
 }
 
-static size_t shm_segsz_grant_refs(struct shm_args_hdr *shm_args) {
-    struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
-            ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
-
-    return shm_args_grant->count * XC_PAGE_SIZE;
-}
-
 int shmctl(int shmid, int cmd, struct shmid_ds *buf)
 {
     size_t segsz = 0;
@@ -217,9 +178,6 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
     switch (shm_args->type) {
     case SHM_ARGS_TYPE_MFNS:
         segsz = shm_segsz_mfns(shm_args);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        segsz = shm_segsz_grant_refs(shm_args);
         break;
     default:
         errno = EINVAL;
