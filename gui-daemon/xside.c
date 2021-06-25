@@ -2797,12 +2797,27 @@ static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
         xcb_void_cookie_t cookie = check_xcb_void(
             xcb_shm_detach_checked(g->cb_connection, vm_window->shmseg),
             "xcb_shm_detach");
+        // Wait for the X server to confirm that the detach succeeded,
+        // so that we can safely destroy the shared-memory region and
+        // unmap the foreign pages.
         if (xcb_request_check(g->cb_connection, cookie)) {
             fputs("SHM detach failed (this is a bug)", stderr);
             exit(1);
         }
         inter_appviewer_lock(g, 0);
         shmctl(vm_window->shmid, IPC_RMID, 0);
+    } else {
+        // We *do not* need to take any locks in this path, as
+        // we are not using a global singleton shared memory object.
+        xcb_void_cookie_t cookie = check_xcb_void(
+            xcb_shm_detach_checked(g->cb_connection, vm_window->shmseg),
+            "xcb_shm_detach");
+        // Wait for the X server to confirm that the detach succeeded,
+        // so that we can safely unmap the grant references.
+        if (xcb_request_check(g->cb_connection, cookie)) {
+            fputs("SHM detach failed (this is a bug)", stderr);
+            exit(1);
+        }
     }
     vm_window->shmid = INVALID_SHM_ID;
 }
@@ -2867,6 +2882,8 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
     read_data(g->vchan, (char *) &shm_args_mfns->mfns[0], mfns_len);
     if (g->invisible)
         goto out_free_shm_args;
+    // Check that the qube passed us sufficient pages.  Otherwise,
+    // xcb_shm_put_image() might fail.
     if (num_mfn * 4096 <
         vm_window->image_width * vm_window->image_height * 4 +
         off) {
@@ -3013,6 +3030,8 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     if (g->invisible)
         return;
 
+    // Check that the qube passed us sufficient grants.  Otherwise,
+    // xcb_shm_put_image() might fail.
     if (img_data_size < (size_t) (vm_window->image_width *
                                   vm_window->image_height *
                                   4)) {
@@ -3024,7 +3043,8 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     }
 
     vm_window->shmseg = xcb_generate_id(g->cb_connection);
-    // Create an X shared memory segment
+    // Create an X shared memory segment.
+    // This passes the DMA-BUF FD to the X server.
     int newfd = fcntl(vm_window->dma_buf, F_DUPFD_CLOEXEC, 3);
     if (newfd < 0)
         err(1, "fcntl(vm_window->dma_buf, F_DUPFD_CLOEXEC, 3)");
