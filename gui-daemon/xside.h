@@ -224,17 +224,18 @@ struct _global_handles {
     int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
     enum trayicon_mode trayicon_mode; /* trayicon coloring mode */
     int trayicon_border; /* position of trayicon border - 0 - no border, 1 - at the edges, 2 - 1px from the edges */
-    bool trayicon_tint_reduce_saturation; /* reduce trayicon saturation by 50% (available only for "tint" mode) */
-    bool trayicon_tint_whitehack; /* replace white pixels with almost-white 0xfefefe (available only for "tint" mode) */
-    bool disable_override_redirect; /* Disable “override redirect” windows */
     char *screensaver_names[MAX_SCREENSAVER_NAMES]; /* WM_CLASS names for windows detected as screensavers */
     Cursor *cursors;  /* preloaded cursors (using XCreateFontCursor) */
     xcb_connection_t *cb_connection; /**< XCB connection */
     xcb_gcontext_t gc; /**< XCB graphics context */
     int work_x, work_y, work_width, work_height;  /* do not allow a window to go beyond these bounds */
     Atom qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
-    bool in_dom0; /* true if we are in dom0, otherwise false */
     int gntdev_fd; /**< File descriptor to `/dev/xen/gntdev` */
+    uint8_t trayicon_tint_reduce_saturation : 1; /* reduce trayicon saturation by 50% (available only for "tint" mode) */
+    uint8_t trayicon_tint_whitehack : 1; /* replace white pixels with almost-white 0xfefefe (available only for "tint" mode) */
+    uint8_t disable_override_redirect : 1; /* Disable “override redirect” windows */
+    uint8_t in_dom0 : 1; /* true if we are in dom0, otherwise false */
+    uint8_t no_shmoverride : 1; /* true if we do not have shmoverride */
 };
 
 typedef struct _global_handles Ghandles;

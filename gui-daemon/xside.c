@@ -2837,10 +2837,19 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
     release_mapped_mfns(g, vm_window);
     read_struct(g->vchan, untrusted_shmcmd);
     if (!g->in_dom0) {
-        fprintf(stderr, "Qube %s (id %d) sent a MSG_MFNDUMP message, but this GUI daemon instance is not running in dom0.\n"
+        fprintf(stderr, "Qube %s (id %d) sent a MSG_MFNDUMP message, but this\n"
+                        "GUI daemon instance is not running in dom0.\n"
                         "Since we are not in dom0, we cannot process this request.\n"
                         "\n"
                         "Please upgrade the GUI agent in the VM if possible\n",
+                        g->vmname,
+                        g->domid);
+        exit(1);
+    }
+    if (g->no_shmoverride) {
+        fprintf(stderr, "Qube %s (id %d) sent a MSG_MFNDUMP message, but shmoverride\n"
+                        "has not been preloaded into the X server, so we cannot process\n"
+                        "this request.",
                         g->vmname,
                         g->domid);
         exit(1);
@@ -3946,6 +3955,7 @@ int main(int argc, char **argv)
         close(pipe_notify[0]);
     }
 
+    ghandles.no_shmoverride = 0;
     // inside the daemonized process...
     if (!ghandles.invisible) {
         display_str = getenv("DISPLAY");
@@ -3965,13 +3975,13 @@ int main(int argc, char **argv)
             fprintf(stderr,
                     "Missing %s; run X with preloaded shmoverride\n",
                     shmid_filename);
-            exit(1);
+            ghandles.no_shmoverride = 1;
         }
         if (fscanf(f, "%d", &ghandles.cmd_shmid) < 1) {
             fprintf(stderr,
                     "Failed to load %s; run X with preloaded shmoverride\n",
                     shmid_filename);
-            exit(1);
+            ghandles.no_shmoverride = 1;
         }
         fclose(f);
         ghandles.shm_args = shmat(ghandles.cmd_shmid, NULL, 0);
@@ -3980,7 +3990,7 @@ int main(int argc, char **argv)
                     "Invalid or stale shm id 0x%x in %s\n",
                     ghandles.cmd_shmid,
                     shmid_filename);
-            exit(1);
+            ghandles.no_shmoverride = 1;
         }
     }
 
