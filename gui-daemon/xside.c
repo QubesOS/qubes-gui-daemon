@@ -2797,12 +2797,33 @@ static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
         xcb_void_cookie_t cookie = check_xcb_void(
             xcb_shm_detach_checked(g->cb_connection, vm_window->shmseg),
             "xcb_shm_detach");
+        // Wait for the X server to confirm that the detach succeeded,
+        // so that we can safely destroy the shared-memory region and
+        // unmap the foreign pages.
         if (xcb_request_check(g->cb_connection, cookie)) {
             fputs("SHM detach failed (this is a bug)", stderr);
             exit(1);
         }
         inter_appviewer_lock(g, 0);
         shmctl(vm_window->shmid, IPC_RMID, 0);
+    } else {
+        // We *do not* need to take any locks in this path, as
+        // we are not using a global singleton shared memory object.
+        xcb_void_cookie_t cookie = check_xcb_void(
+            xcb_shm_detach_checked(g->cb_connection, vm_window->shmseg),
+            "xcb_shm_detach");
+        // Wait for the X server to confirm that the detach succeeded,
+        // so that we can safely unmap the grant references.
+        if (xcb_request_check(g->cb_connection, cookie)) {
+            fputs("SHM detach failed (this is a bug)", stderr);
+            exit(1);
+        }
+        if (!unmap_grant_references(g->gntdev_fd,
+                                    vm_window->offset,
+                                    vm_window->grants)) {
+            fputs("Cannot unmap grant references?\n", stderr);
+            exit(1);
+        }
     }
     vm_window->shmid = INVALID_SHM_ID;
 }
@@ -2867,6 +2888,8 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
     read_data(g->vchan, (char *) &shm_args_mfns->mfns[0], mfns_len);
     if (g->invisible)
         goto out_free_shm_args;
+    // Check that the qube passed us sufficient pages.  Otherwise,
+    // xcb_shm_put_image() might fail.
     if (num_mfn * 4096 <
         vm_window->image_width * vm_window->image_height * 4 +
         off) {
@@ -3008,6 +3031,10 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     if (g->invisible)
         return;
 
+    // The X shared memory extension only allows offsets less than 2^32.
+    // Bail out if Linux gave us a larger offset.  This requires a qube
+    // to have shared us at least 4GiB of memory, so it should not
+    // happen in practice.
     if (big_offset > UINT32_MAX) {
         fprintf(stderr,
                 "Grant table offset %" PRIu64 " too large!\n",
@@ -3016,6 +3043,10 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     }
     vm_window->offset = (uint32_t)big_offset;
 
+    // Check that the qube passed us sufficient grants.  Otherwise,
+    // xcb_shm_put_image() might fail, or it might cause the X server
+    // to map memory shared from a different qube.  The latter is a bona
+    // fide security issue.
     size_t img_data_size = 4096 * vm_window->grants;
     if (img_data_size < (size_t) (vm_window->image_width *
                                   vm_window->image_height *
@@ -3030,6 +3061,12 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     vm_window->shmseg = xcb_generate_id(g->cb_connection);
     // Create an X shared memory segment - should *always* succeed,
     // since we are *not* using shmoverride
+
+    // This passes g->gntdev_fd to the X server.  Later calls to
+    // xcb_shm_put_image() will cause the X server will to mmap()
+    // this file descriptor at the offset we specify.  We specify the
+    // offset that /dev/xen/gntdev returned to us via
+    // IOCTL_GNTDEV_MAP_GRANT_REF.
     int newfd = fcntl(g->gntdev_fd, F_DUPFD_CLOEXEC, 3);
     if (newfd < 0)
         err(1, "fcntl(g->gntdev_fd, F_DUPFD_CLOEXEC, 3)");
