@@ -2809,6 +2809,15 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
     if (vm_window->image)
         release_mapped_mfns(g, vm_window);
     read_struct(g->vchan, untrusted_shmcmd);
+    if (!g->in_dom0) {
+        fprintf(stderr, "Qube %s (id %d) sent a MSG_MFNDUMP message, but this GUI daemon instance is not running in dom0.\n"
+                        "Since we are not in dom0, we cannot process this request.\n"
+                        "\n"
+                        "Please upgrade the GUI agent in the VM if possible\n",
+                        g->vmname,
+                        g->domid);
+        exit(1);
+    }
 
     if (g->log_level > 1)
         fprintf(stderr, "MSG_MFNDUMP for 0x%x(0x%x): %dx%d, num_mfn 0x%x off 0x%x\n",
