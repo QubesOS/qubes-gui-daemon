@@ -46,7 +46,6 @@ BuildRequires:  python%{python3_pkgversion}-devel
 BuildRequires:  pulseaudio-libs-devel
 BuildRequires:	pkgconfig(x11-xcb)
 BuildRequires:	pkgconfig(xcb)
-BuildRequires:	libXt-devel
 BuildRequires:	libXext-devel
 BuildRequires:	libXrandr-devel
 BuildRequires:	libconfig-devel
