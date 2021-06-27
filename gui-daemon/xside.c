@@ -50,6 +50,7 @@
 #include <X11/extensions/shmproto.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
+#include <X11/Xlib-xcb.h>
 #include <libconfig.h>
 #include <libnotify/notify.h>
 #include <assert.h>
@@ -529,16 +530,22 @@ static void intern_global_atoms(Ghandles *const g) {
         { &g->wm_current_desktop, "_NET_WM_CURRENT_DESKTOP" },
         { &g->wmDeleteMessage, "WM_DELETE_WINDOW" },
     };
-    Atom labels[QUBES_ARRAY_SIZE(atoms_to_intern)];
-    const char *names[QUBES_ARRAY_SIZE(atoms_to_intern)];
+    xcb_intern_atom_cookie_t cookies[QUBES_ARRAY_SIZE(atoms_to_intern)];
     for (size_t i = 0; i < QUBES_ARRAY_SIZE(atoms_to_intern); ++i)
-        names[i] = atoms_to_intern[i].name;
-    if (!XInternAtoms(g->display, (char **)names, QUBES_ARRAY_SIZE(atoms_to_intern), False, labels)) {
-        fputs("Could not intern global atoms\n", stderr);
-        exit(1);
+        cookies[i] = xcb_intern_atom(g->cb_connection, false,
+                strlen(atoms_to_intern[i].name),
+                atoms_to_intern[i].name);
+    for (size_t i = 0; i < QUBES_ARRAY_SIZE(atoms_to_intern); ++i) {
+        xcb_intern_atom_reply_t *reply;
+        xcb_generic_error_t *error = NULL;
+        reply = xcb_intern_atom_reply(g->cb_connection, cookies[i], &error);
+        if (!reply || error) {
+            fprintf(stderr, "Could not intern global atom %s\n", atoms_to_intern[i].name);
+            exit(1);
+        }
+        *atoms_to_intern[i].dest = reply->atom;
+        free(reply);
     }
-    for (size_t i = 0; i < QUBES_ARRAY_SIZE(atoms_to_intern); ++i)
-        *atoms_to_intern[i].dest = labels[i];
 }
 
 /* prepare global variables content:
@@ -552,6 +559,10 @@ static void mkghandles(Ghandles * g)
     g->display = XOpenDisplay(NULL);
     if (!g->display) {
         perror("XOpenDisplay");
+        exit(1);
+    }
+    if (!(g->cb_connection = XGetXCBConnection(g->display))) {
+        perror("XGetXCBConnection");
         exit(1);
     }
     g->screen = DefaultScreen(g->display);
