@@ -429,8 +429,14 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     return child_win;
 }
 
-static const int desktop_coordinates_size = 4;
+static const unsigned long desktop_coordinates_size = 4;
 static const long max_display_width = 1UL << 20;
+
+/*
+ * Padding enforced between override-redirect windows and the edge of
+ * the work area.
+ */
+static const int override_redirect_padding = 0;
 
 /* update g when the current desktop changes */
 static void update_work_area(Ghandles *g) {
@@ -439,20 +445,23 @@ static void update_work_area(Ghandles *g) {
     Atom act_type;
     int ret, act_fmt;
 
-    ret = XGetWindowProperty(g->display, g->root_win, g->wm_current_desktop,
+    ret = XGetWindowProperty(g->display, g->root_win, g->net_current_desktop,
         0, 1, False, XA_CARDINAL, &act_type, &act_fmt, &nitems, &bytesleft,
         (unsigned char**)&scratch);
-    if (ret != Success || nitems != 1 || act_fmt != 32 || act_type != XA_CARDINAL) {
-        if (None == act_fmt && !act_fmt && !bytesleft) {
+    if (ret != Success || nitems != 1 || act_fmt != 32 ||
+        act_type != XA_CARDINAL || bytesleft) {
+        if (ret == Success && None == act_fmt && !act_fmt && !bytesleft) {
+            if (g->log_level > 0)
+                fprintf(stderr, "Cannot obtain current desktop\n");
             g->work_x = 0;
             g->work_y = 0;
             g->work_width = g->root_width;
             g->work_height = g->root_height;
-            return;
+            goto check_width_height;
         }
         /* Panic!  Serious window manager problem. */
         fputs("PANIC: cannot obtain current desktop\n"
-                "Instead of creating a security hole we will just exit.\n",
+              "Instead of creating a security hole we will just exit.\n",
             stderr);
         exit(1);
     }
@@ -468,31 +477,51 @@ static void update_work_area(Ghandles *g) {
             &nitems, &bytesleft, (unsigned char**)&scratch);
     if (ret != Success || nitems != desktop_coordinates_size || act_fmt != 32 ||
         act_type != XA_CARDINAL) {
-        if (None == act_fmt && !act_fmt && !bytesleft) {
+        if (ret == Success && None == act_fmt && !act_fmt && !bytesleft) {
+            if (g->log_level > 0)
+                fprintf(stderr, "Cannot obtain work area\n");
             g->work_x = 0;
             g->work_y = 0;
             g->work_width = g->root_width;
             g->work_height = g->root_height;
-            return;
+            goto check_width_height;
         }
         /* Panic!  We have no idea where the window should be.  The only safe
          * thing to do is exit. */
-        fputs("PANIC: cannot obtain work area\n"
+        fprintf(stderr,
+                "PANIC: cannot obtain work area:\n"
+                "   ret %d (success %d)\n"
+                "   act_fmt %d (expected 32)\n"
+                "   nitems %lu (expected %lu)\n"
+                "   act_type %lu (expected %lu)\n"
                 "Instead of creating a security hole we will just exit.\n",
-                stderr);
+                ret, Success, act_fmt, nitems,
+                desktop_coordinates_size, act_type, XA_CARDINAL);
         exit(1);
     }
-    for (int s = 0; s < desktop_coordinates_size; ++s) {
+    for (unsigned long s = 0; s < desktop_coordinates_size; ++s) {
         if (scratch[s] > max_display_width) {
             fputs("Absurd work area, crashing\n", stderr);
-            abort();
+            exit(1);
         }
     }
     g->work_x = scratch[0];
     g->work_y = scratch[1];
     g->work_width = scratch[2];
     g->work_height = scratch[3];
+    if (g->log_level > 0)
+        fprintf(stderr, "work area %lu %lu %lu %lu\n",
+                scratch[0], scratch[1], scratch[2], scratch[3]);
+
     XFree(scratch);
+check_width_height:
+    if (g->work_width <= 2 * override_redirect_padding ||
+        g->work_height <= 2 * override_redirect_padding) {
+        /* Work area too small for a border??? */
+        fprintf(stderr, "Work area %dx%d smaller than 2 * border width %d???\n",
+                g->work_width, g->work_height, override_redirect_padding);
+        exit(1);
+    }
 }
 
 /*
@@ -526,7 +555,7 @@ static void intern_global_atoms(Ghandles *const g) {
         { &g->qubes_vmname, "_QUBES_VMNAME" },
         { &g->qubes_vmwindowid, "_QUBES_VMWINDOWID" },
         { &g->net_wm_icon, "_NET_WM_ICON" },
-        { &g->wm_current_desktop, "_NET_CURRENT_DESKTOP" },
+        { &g->net_current_desktop, "_NET_CURRENT_DESKTOP" },
         { &g->wmDeleteMessage, "WM_DELETE_WINDOW" },
     };
     Atom labels[QUBES_ARRAY_SIZE(atoms_to_intern)];
@@ -1407,54 +1436,102 @@ static void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
               vm_window->width, vm_window->height);
 }
 
-
 /* force window to not hide its frame
  * checks if at least border_width is from every screen edge (and fix if not)
  * Exception: allow window to be entirely off the screen */
 static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
             int border_width, const char *caller)
 {
-    int do_move = 0, reason = -1;
-    int x = vm_window->x, y = vm_window->y, w = vm_window->width, h =
-        vm_window->height;
+    int do_move = 0, reason = 0;
 
+    /* Internal consistency checks */
+    if (g->work_width < 2 * border_width ||
+        g->work_height < 2 * border_width) {
+        fputs("BUG: work_width or work_height too small in force_on_screen\n", stderr);
+        abort(); // to get a core dump
+    }
+
+    if (vm_window->width > MAX_WINDOW_WIDTH ||
+        vm_window->height > MAX_WINDOW_HEIGHT) {
+        fputs("BUG: window width or height too large in force_on_screen\n", stderr);
+        abort();
+    }
+    /* end consistency checks */
+
+    int x = vm_window->x, y = vm_window->y,
+        w = vm_window->width, h = vm_window->height;
+
+    /* Check if the window is entirely off-screen */
+    if (x >= g->root_width ||
+        y >= g->root_height ||
+        (x < 0 && x + w <= 0) ||
+        (y < 0 && w + h <= 0)) {
+        if (g->log_level > 0) {
+            fprintf(stderr,
+                    "force_on_screen(from %s) returns 0: window 0x%x, xy %d %d, wh %d %d, root window %d %d borderwidth %d is entirely off-screen\n",
+            caller,
+            (int) vm_window->local_winid, x, y, w, h,
+            g->root_width, g->root_height,
+            border_width);
+        }
+
+        return 0;
+    }
+
+    enum MOVE_REASONS {
+        TOO_WIDE = (1 << 0),
+        TOO_TALL = (1 << 1),
+        LEFT_BORDER_OFF_SCREEN = (1 << 2),
+        TOP_BORDER_OFF_SCREEN = (1 << 3),
+        RIGHT_BORDER_OFF_SCREEN = (1 << 4),
+        BOTTOM_BORDER_OFF_SCREEN = (1 << 5),
+    };
     const int border_x = border_width + g->work_x,
         border_y = border_width + g->work_y,
-        max_width = g->work_width - border_width,
-        max_height = g->work_height - border_width;
-    if (vm_window->x < border_x
-        && vm_window->x + border_width + (int)vm_window->width > 0) {
+        max_width = g->work_width - 2 * border_width,
+        max_height = g->work_height - 2 * border_width;
+    /* Sanitize width and height */
+    if (w > max_width) {
+        vm_window->width = max_width;
+        do_move = 1;
+        reason |= TOO_WIDE;
+    }
+    if (h > max_height) {
+        vm_window->height = max_height;
+        do_move = 1;
+        reason |= TOO_TALL;
+    }
+    /* Sanitize left */
+    if (x < border_x) {
         vm_window->x = border_x;
         do_move = 1;
-        reason = 1;
+        reason |= LEFT_BORDER_OFF_SCREEN;
     }
-    if (vm_window->y < border_y
-        && vm_window->y + border_width + (int)vm_window->width > 0) {
+    /* Sanitize top */
+    if (y < border_y) {
         vm_window->y = border_y;
         do_move = 1;
-        reason = 2;
+        reason |= TOP_BORDER_OFF_SCREEN;
     }
-    /* Note that vm_window->x and vm_window->y have already be sanitized */
-    if (vm_window->x < g->root_width + border_width &&
-        vm_window->x + (int)vm_window->width > max_width) {
-        vm_window->width = max_width - vm_window->x;
+    /* Sanitize right */
+    if (vm_window->x > max_width - (int)vm_window->width) {
+        vm_window->x = max_width - (int)vm_window->width;
         do_move = 1;
-        reason = 3;
+        reason |= RIGHT_BORDER_OFF_SCREEN;
     }
-    if (vm_window->y < g->root_height &&
-        vm_window->y + (int)vm_window->height > max_height) {
-        vm_window->height = max_height - vm_window->y;
+    /* Sanitize bottom */
+    if (vm_window->y > max_height - (int)vm_window->height) {
+        vm_window->y = max_height - (int)vm_window->height;
         do_move = 1;
-        reason = 4;
+        reason |= BOTTOM_BORDER_OFF_SCREEN;
     }
-    if (do_move)
-        if (g->log_level > 0)
-            fprintf(stderr,
-                "force_on_screen(from %s) returns 1 (reason %d): window 0x%x, xy %d %d, wh %d %d, work area %d %d borderwidth %d\n",
-                caller, reason,
-                (int) vm_window->local_winid, x, y, w, h,
-                g->work_width, g->work_height,
-                border_width);
+    if ((do_move || g->log_level > 1) && g->log_level > 0)
+        fprintf(stderr,
+            "force_on_screen(from %s) returns %d (reason %x): window 0x%x, xy %d %d, wh %d %d, work area %d %d %d %d borderwidth %d\n",
+            caller, do_move, reason,
+            (int) vm_window->local_winid, x, y, w, h,
+            g->work_x, g->work_y, g->work_width, g->work_height,
+            border_width);
     return do_move;
 }
 
@@ -1641,8 +1718,8 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
     if (vm_window->override_redirect)
         // do not let menu window hide its color frame by moving outside of the screen
         // if it is located offscreen, then allow negative x/y
-        force_on_screen(g, vm_window, 0,
-                "handle_configure_from_vm");
+        force_on_screen(g, vm_window, override_redirect_padding,
+                        "handle_configure_from_vm");
     moveresize_vm_window(g, vm_window);
 }
 
@@ -2206,7 +2283,8 @@ static void handle_create(Ghandles * g, XID window)
 
     /* do not allow to hide color frame off the screen */
     if (vm_window->override_redirect
-        && force_on_screen(g, vm_window, 0, "handle_create"))
+        && force_on_screen(g, vm_window, override_redirect_padding,
+                           "handle_create"))
         moveresize_vm_window(g, vm_window);
 }
 
@@ -2720,7 +2798,8 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
     XChangeWindowAttributes(g->display, vm_window->local_winid,
                             CWOverrideRedirect, &attr);
     if (vm_window->override_redirect
-        && force_on_screen(g, vm_window, 0, "handle_map"))
+        && force_on_screen(g, vm_window, override_redirect_padding,
+                           "handle_map"))
         moveresize_vm_window(g, vm_window);
     if (vm_window->override_redirect) {
         /* force window update to draw colorful frame, even when VM have not
