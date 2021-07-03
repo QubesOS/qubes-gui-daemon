@@ -2530,8 +2530,12 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
         vm_window->transient_for = transdata;
         XSetTransientForHint(g->display, vm_window->local_winid,
                      transdata->local_winid);
-    } else
+    } else {
+        if (vm_window->transient_for)
+            XDeleteProperty(g->display, vm_window->local_winid,
+                    XA_WM_TRANSIENT_FOR);
         vm_window->transient_for = NULL;
+    }
 
     vm_window->override_redirect =
         validate_override_redirect(g, vm_window, !!(untrusted_txt.override_redirect));
