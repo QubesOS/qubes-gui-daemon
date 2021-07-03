@@ -567,6 +567,7 @@ static void mkghandles(Ghandles * g)
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
     /* get the work area */
+    XSelectInput(g->display, g->root_win, PropertyChangeMask);
     update_work_area(g);
     /* create graphical contexts */
     get_frame_gc(g, g->cmdline_color ? g->cmdline_color : "red");
@@ -625,6 +626,7 @@ void reload(Ghandles * g) {
     XGetWindowAttributes(g->display, g->root_win, &attr);
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
+    update_work_area(g);
 }
 
 /* find if window (given by id) is managed by this guid */
