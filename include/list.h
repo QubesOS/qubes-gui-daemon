@@ -30,3 +30,6 @@ struct genlist *list_new(void);
 struct genlist *list_lookup(struct genlist *l, long key);
 struct genlist *list_insert(struct genlist *l, long key, void *data);
 void list_remove(struct genlist *);
+
+#define list_for_each(iter, list) \
+    for (iter = (list)->next; iter != (list); iter = iter->next)
