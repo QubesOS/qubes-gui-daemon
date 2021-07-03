@@ -526,7 +526,7 @@ static void intern_global_atoms(Ghandles *const g) {
         { &g->qubes_vmname, "_QUBES_VMNAME" },
         { &g->qubes_vmwindowid, "_QUBES_VMWINDOWID" },
         { &g->net_wm_icon, "_NET_WM_ICON" },
-        { &g->wm_current_desktop, "_NET_WM_CURRENT_DESKTOP" },
+        { &g->wm_current_desktop, "_NET_CURRENT_DESKTOP" },
         { &g->wmDeleteMessage, "WM_DELETE_WINDOW" },
     };
     Atom labels[QUBES_ARRAY_SIZE(atoms_to_intern)];
