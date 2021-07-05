@@ -1779,6 +1779,17 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
     if (!vm_window->override_redirect) {
         // Window Manager will take care of the frame...
         border_width = 0;
+    } else if (vm_window->parent) {
+        if (x >= vm_window->parent->x &&
+            y >= vm_window->parent->y &&
+            (int64_t)w + x <= (int64_t)vm_window->parent->width +
+                              vm_window->parent->x &&
+            (int64_t)h + y <= (int64_t)vm_window->parent->height +
+                              vm_window->parent->y) {
+            // Window is contained in another window owned by the same qube,
+            // so no border is needed.
+            border_width = 0;
+        }
     }
 
     if (vm_window->is_docked) {
