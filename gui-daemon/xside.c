@@ -560,7 +560,10 @@ static void mkghandles(Ghandles * g)
     }
     g->screen = DefaultScreen(g->display);
     g->root_win = RootWindow(g->display, g->screen);
-    XGetWindowAttributes(g->display, g->root_win, &attr);
+    if (!XGetWindowAttributes(g->display, g->root_win, &attr)) {
+        fprintf(stderr, "Cannot query window attributes!\n");
+        exit(1);
+    }
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
@@ -2176,7 +2179,7 @@ static void handle_create(Ghandles * g, XID window)
     /* sanitize end */
     vm_window->remote_winid = window;
     if (!list_insert(g->remote2local, window, vm_window)) {
-        fprintf(stderr, "list_insert(g->remote2local failed\n");
+        fprintf(stderr, "list_insert(g->remote2local) failed\n");
         exit(1);
     }
     l = list_lookup(g->remote2local, parent);
@@ -2220,8 +2223,7 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
     if (g->log_level > 0)
         fprintf(stderr, " XDestroyWindow 0x%x\n",
             (int) vm_window->local_winid);
-    if (vm_window->image)
-        release_mapped_mfns(g, vm_window);
+    release_mapped_mfns(g, vm_window);
     l2 = list_lookup(g->wid2windowdata, vm_window->local_winid);
     list_remove(l);
     list_remove(l2);
@@ -2787,7 +2789,7 @@ static void inter_appviewer_lock(Ghandles *g, int mode)
 /* release shared memory connected with given window */
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 {
-    if (g->invisible)
+    if (g->invisible || !vm_window->image)
         return;
     inter_appviewer_lock(g, 1);
     g->shm_args->shmid = vm_window->shminfo.shmid;
@@ -2812,8 +2814,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
     struct shm_args_mfns *shm_args_mfns;
     size_t mfns_len;
 
-    if (vm_window->image)
-        release_mapped_mfns(g, vm_window);
+    release_mapped_mfns(g, vm_window);
     read_struct(g->vchan, untrusted_shmcmd);
     if (!g->in_dom0) {
         fprintf(stderr, "Qube %s (id %d) sent a MSG_MFNDUMP message, but this GUI daemon instance is not running in dom0.\n"
@@ -2980,8 +2981,7 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     struct shm_args_hdr *shm_args = NULL;
     size_t shm_args_len = 0;
 
-    if (vm_window->image)
-        release_mapped_mfns(g, vm_window);
+    release_mapped_mfns(g, vm_window);
 
     VERIFY(untrusted_len >= MSG_WINDOW_DUMP_HDR_LEN);
     read_struct(g->vchan, untrusted_wd_hdr);
@@ -3213,10 +3213,9 @@ static void release_all_mapped_mfns(void)
     for (curr = ghandles.wid2windowdata->next;
          curr != ghandles.wid2windowdata; curr = curr->next) {
         struct windowdata *vm_window = curr->data;
-        if (vm_window->image)
-            /* use ghandles directly, as no other way get it (atexit cannot
-             * pass argument) */
-            release_mapped_mfns(&ghandles, vm_window);
+        /* use ghandles directly, as no other way get it (atexit cannot
+         * pass argument) */
+        release_mapped_mfns(&ghandles, vm_window);
     }
 }
 
