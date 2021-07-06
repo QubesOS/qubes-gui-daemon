@@ -1558,7 +1558,7 @@ static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
 		return;
 	}
 
-	avail = (uint64_t) g->root_width * (uint64_t) g->root_height;
+	avail = (uint64_t) g->work_width * (uint64_t) g->work_height;
 	desired = (uint64_t) vm_window->width * (uint64_t) vm_window->height;
 
 	if (g->override_redirect_protection && req_override_redirect &&
@@ -1569,12 +1569,12 @@ static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
 			fprintf(stderr,
 				"%s unset override_redirect for "
 				"local 0x%x remote 0x%x, "
-				"window w=%u h=%u, root w=%d h=%d\n",
+				"window w=%u h=%u, work w=%d h=%d\n",
 				__func__,
 				(unsigned) vm_window->local_winid,
 				(unsigned) vm_window->remote_winid,
 				vm_window->width, vm_window->height,
-				g->root_width, g->root_height);
+				g->work_width, g->work_height);
 
 		/* Show a message to the user, but do this only once. */
 		if (!warning_shown) {
