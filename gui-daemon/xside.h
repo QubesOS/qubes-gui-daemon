@@ -84,6 +84,8 @@
 #include <libvchan.h>
 #include <X11/Xlib.h>
 #include <X11/extensions/XShm.h>
+#include <xcb/xcb.h>
+#include <xcb/xproto.h>
 
 #define QUBES_POLICY_EVAL_SIMPLE_SOCKET ("/etc/qubes-rpc/" QUBES_SERVICE_EVAL_SIMPLE)
 #define QREXEC_PRELUDE_CLIPBOARD_PASTE (QUBES_SERVICE_EVAL_SIMPLE "+" QUBES_SERVICE_CLIPBOARD_PASTE " dom0 keyword adminvm")
@@ -223,6 +225,7 @@ struct _global_handles {
     bool disable_override_redirect; /* Disable “override redirect” windows */
     char *screensaver_names[MAX_SCREENSAVER_NAMES]; /* WM_CLASS names for windows detected as screensavers */
     Cursor *cursors;  /* preloaded cursors (using XCreateFontCursor) */
+    xcb_connection_t *cb_connection; /**< XCB connection */
     int work_x, work_y, work_width, work_height;  /* do not allow a window to go beyond these bounds */
     Atom qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
     bool in_dom0; /* true if we are in dom0, otherwise false */
