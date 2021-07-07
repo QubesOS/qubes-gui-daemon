@@ -116,7 +116,7 @@ static void print_backtrace(void);
 static void parse_cmdline_prop(Ghandles *g);
 
 static void show_message(Ghandles *g, const char *prefix, const char *msg,
-			 gint timeout)
+                         gint timeout)
 {
     char message[1024];
     NotifyNotification *notify;
@@ -141,7 +141,7 @@ static void show_message(Ghandles *g, const char *prefix, const char *msg,
 
 static void show_error_message(Ghandles *g, const char *msg)
 {
-	show_message(g, "ERROR", msg, NOTIFY_EXPIRES_DEFAULT);
+    show_message(g, "ERROR", msg, NOTIFY_EXPIRES_DEFAULT);
 }
 
 /* ask user when VM sent invalid message */
@@ -358,7 +358,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                     vm_window->x, vm_window->y,
                     vm_window->width,
                     vm_window->height, 0,
-		    CopyFromParent,
+                    CopyFromParent,
                     CopyFromParent,
                     CopyFromParent,
                     CWOverrideRedirect, &attr);
@@ -1459,55 +1459,55 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 }
 
 static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
-				  int req_override_redirect)
+                                  int req_override_redirect)
 {
-	static int warning_shown;
-	uint64_t avail, desired;
-	const char * warning_msg = "This VM has attempted to create a very large window "
-		"in a manner that would have prevented you from closing it and regaining "
-		"the control of Qubes OS\'s graphical user interface.\n\n"
-		"As a protection measure, the \"override_redirect\" flag of the window "
-		"in question has been unset. If this creates unexpected issues in the "
-		"handling of this VM\'s windows, please set \"override_redirect_protection\" "
-		"to \"false\" for this VM in /etc/qubes/guid.conf to disable this protection "
-		"measure and restart the VM.\n\n"
-		"This message will only appear once per VM per session. Please click on this "
-		"notification to close it.";
+    static int warning_shown;
+    uint64_t avail, desired;
+    const char * warning_msg = "This VM has attempted to create a very large window "
+        "in a manner that would have prevented you from closing it and regaining "
+        "the control of Qubes OS\'s graphical user interface.\n\n"
+        "As a protection measure, the \"override_redirect\" flag of the window "
+        "in question has been unset. If this creates unexpected issues in the "
+        "handling of this VM\'s windows, please set \"override_redirect_protection\" "
+        "to \"false\" for this VM in /etc/qubes/guid.conf to disable this protection "
+        "measure and restart the VM.\n\n"
+        "This message will only appear once per VM per session. Please click on this "
+        "notification to close it.";
 
-	req_override_redirect = !!req_override_redirect;
+    req_override_redirect = !!req_override_redirect;
 
-	if (g->disable_override_redirect) {
-		vm_window->override_redirect = 0;
-		return;
-	}
+    if (g->disable_override_redirect) {
+        vm_window->override_redirect = 0;
+        return;
+    }
 
-	avail = (uint64_t) g->root_width * (uint64_t) g->root_height;
-	desired = (uint64_t) vm_window->width * (uint64_t) vm_window->height;
+    avail = (uint64_t) g->root_width * (uint64_t) g->root_height;
+    desired = (uint64_t) vm_window->width * (uint64_t) vm_window->height;
 
-	if (g->override_redirect_protection && req_override_redirect &&
-	    desired > ((avail * MAX_OVERRIDE_REDIRECT_PERCENTAGE) / 100)) {
-		req_override_redirect = 0;
+    if (g->override_redirect_protection && req_override_redirect &&
+        desired > ((avail * MAX_OVERRIDE_REDIRECT_PERCENTAGE) / 100)) {
+        req_override_redirect = 0;
 
-		if (g->log_level > 0)
-			fprintf(stderr,
-				"%s unset override_redirect for "
-				"local 0x%x remote 0x%x, "
-				"window w=%u h=%u, root w=%d h=%d\n",
-				__func__,
-				(unsigned) vm_window->local_winid,
-				(unsigned) vm_window->remote_winid,
-				vm_window->width, vm_window->height,
-				g->root_width, g->root_height);
+        if (g->log_level > 0)
+            fprintf(stderr,
+                    "%s unset override_redirect for "
+                "local 0x%x remote 0x%x, "
+                "window w=%u h=%u, root w=%d h=%d\n",
+                __func__,
+                (unsigned) vm_window->local_winid,
+                (unsigned) vm_window->remote_winid,
+                vm_window->width, vm_window->height,
+                g->root_width, g->root_height);
 
-		/* Show a message to the user, but do this only once. */
-		if (!warning_shown) {
-			show_message(g, "WARNING", warning_msg,
-				     NOTIFY_EXPIRES_NEVER);
-			warning_shown = 1;
-		}
-	}
+        /* Show a message to the user, but do this only once. */
+        if (!warning_shown) {
+            show_message(g, "WARNING", warning_msg,
+                         NOTIFY_EXPIRES_NEVER);
+            warning_shown = 1;
+        }
+    }
 
-	vm_window->override_redirect = req_override_redirect;
+    vm_window->override_redirect = req_override_redirect;
 }
 
 /* handle local Xserver event: XConfigureEvent
@@ -2808,7 +2808,6 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 {
     struct shm_cmd untrusted_shmcmd;
     unsigned num_mfn, off;
-    static char dummybuf[100];
     size_t shm_args_len;
     struct shm_args_hdr *shm_args;
     struct shm_args_mfns *shm_args_mfns;
@@ -2898,7 +2897,10 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
         memset(((uint8_t *) g->shm_args) + shm_args_len, 0,
                SHM_ARGS_SIZE - shm_args_len);
     }
-    vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
+    {
+        static char dummybuf[100];
+        vm_window->shminfo.shmaddr = vm_window->image->data = dummybuf;
+    }
     vm_window->shminfo.readOnly = True;
     shm_attach_failed = false;
     if (!XShmAttach(g->display, &vm_window->shminfo))
@@ -2928,7 +2930,12 @@ static void handle_window_dump_body_grant_refs(Ghandles *g,
     struct shm_args_grant_refs *shm_args_grant;
 
     // We don't have any custom arguments except the variable length refs list.
-    assert(sizeof(struct msg_window_dump_grant_refs) == 0);
+    static_assert(sizeof(struct msg_window_dump_grant_refs) == 0,
+                   "struct def bug");
+
+    // Check that we will not overflow during multiplication
+    static_assert(MAX_GRANT_REFS_COUNT < INT32_MAX / 4096,
+                   "MAX_GRANT_REFS_COUNT too large");
 
     if (untrusted_wd_body_len > MAX_GRANT_REFS_COUNT * SIZEOF_GRANT_REF ||
         untrusted_wd_body_len % SIZEOF_GRANT_REF != 0) {
@@ -2974,18 +2981,15 @@ static void handle_window_dump_body(Ghandles *g, uint32_t wd_type, size_t
 static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
                                uint32_t untrusted_len) {
     struct msg_window_dump_hdr untrusted_wd_hdr;
-    size_t untrusted_wd_body_len;
-    uint32_t wd_type;
     static char dummybuf[100];
-    size_t img_data_size = 0;
     struct shm_args_hdr *shm_args = NULL;
-    size_t shm_args_len = 0;
+    size_t shm_args_len = 0, img_data_size = 0;
 
     release_mapped_mfns(g, vm_window);
 
     VERIFY(untrusted_len >= MSG_WINDOW_DUMP_HDR_LEN);
     read_struct(g->vchan, untrusted_wd_hdr);
-    untrusted_wd_body_len = untrusted_len - MSG_WINDOW_DUMP_HDR_LEN;
+    const size_t untrusted_wd_body_len = untrusted_len - MSG_WINDOW_DUMP_HDR_LEN;
 
     if (g->log_level > 1)
         fprintf(stderr, "MSG_WINDOW_DUMP for 0x%lx(0x%lx): %ux%u, type = %u\n",
@@ -3001,7 +3005,7 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
                 untrusted_wd_hdr.type);
         exit(1);
     }
-    wd_type = untrusted_wd_hdr.type;
+    const uint32_t wd_type = untrusted_wd_hdr.type;
     VERIFY((int) untrusted_wd_hdr.width >= 0
            && (int) untrusted_wd_hdr.height >= 0);
     VERIFY((int) untrusted_wd_hdr.width <= MAX_WINDOW_WIDTH
@@ -3602,7 +3606,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
         case 'K':
             g->kill_on_connect = strtoul(optarg, NULL, 0);
             break;
-	case 'r':
+        case 'r':
             if (!strcmp(optarg, "allow"))
                 g->disable_override_redirect = 0;
             else if (!strcmp(optarg, "disabled"))
