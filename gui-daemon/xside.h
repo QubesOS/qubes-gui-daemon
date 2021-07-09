@@ -168,6 +168,8 @@ struct _global_handles {
     Atom frame_extents; /* Atom: _NET_FRAME_EXTENTS */
     Atom wm_state_maximized_vert; /* Atom: _NET_WM_STATE_MAXIMIZED_VERT */
     Atom wm_state_maximized_horz; /* Atom: _NET_WM_STATE_MAXIMIZED_HORZ */
+    Atom wm_user_time_window; /* Atom: _NET_WM_USER_TIME_WINDOW */
+    Atom wm_user_time; /* Atom: _NET_WM_USER_TIME */
     int shm_major_opcode;   /* MIT-SHM extension opcode */
     /* shared memory handling */
     struct shm_args_hdr *shm_args;    /* shared memory with Xorg */
@@ -195,8 +197,8 @@ struct _global_handles {
     /* counters and other state */
     int clipboard_requested;    /* if clippoard content was requested by dom0 */
     Time clipboard_xevent_time;  /* timestamp of keypress which triggered last copy/paste */
+    Window time_win; /* Window to set _NET_WM_USER_TIME on */
     int windows_count;    /* created window count */
-    struct windowdata *last_input_window;
     /* signal was caught */
     int volatile reload_requested;
     pid_t pulseaudio_pid;
@@ -229,6 +231,7 @@ struct _global_handles {
     int work_x, work_y, work_width, work_height;  /* do not allow a window to go beyond these bounds */
     Atom qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
     bool in_dom0; /* true if we are in dom0, otherwise false */
+    Atom net_supported;
 };
 
 typedef struct _global_handles Ghandles;
