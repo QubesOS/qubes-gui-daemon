@@ -2356,6 +2356,36 @@ static void handle_create(Ghandles * g, XID window)
         moveresize_vm_window(g, vm_window);
 }
 
+/* Check if window (to be destroyed) is not used anywhere. If it is, act
+ * accordingly:
+ *  - if it is a parent for some - terminate abruptly (children should be
+ *    destroyed earlier)
+ *  - if it is a set as transient_for - clear that hint
+ */
+static void check_window_references(Ghandles * g, struct windowdata *vm_window)
+{
+    struct genlist *iter;
+
+    list_for_each(iter, g->wid2windowdata) {
+        struct windowdata *iter_window = iter->data;
+        if (iter_window->parent == vm_window) {
+            fprintf(stderr, "Window 0x%x is still a parent for 0x%x, "
+                    "but VM tried to destroy it\n",
+                   (int)vm_window->local_winid, (int)iter_window->local_winid);
+            fprintf(stderr, "Aborting\n");
+            exit(1);
+        }
+        if (iter_window->transient_for == vm_window) {
+            fprintf(stderr, "Window 0x%x is still set as transient_for "
+                    "for a 0x%x window, but VM tried to destroy it\n",
+                    (int)vm_window->local_winid, (int)iter_window->local_winid);
+            XDeleteProperty(g->display, vm_window->local_winid,
+                    XA_WM_TRANSIENT_FOR);
+            iter_window->transient_for = NULL;
+        }
+    }
+}
+
 /* handle VM message: MSG_DESTROY
  * destroy window locally, as requested */
 static void handle_destroy(Ghandles * g, struct genlist *l)
@@ -2363,6 +2393,9 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
     struct genlist *l2;
     struct windowdata *vm_window = l->data;
     g->windows_count--;
+    /* check if this window is referenced anywhere */
+    check_window_references(g, vm_window);
+    /* then destroy */
     XDestroyWindow(g->display, vm_window->local_winid);
     if (g->log_level > 0)
         fprintf(stderr, " XDestroyWindow 0x%x\n",
@@ -2856,8 +2889,12 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
         vm_window->transient_for = transdata;
         XSetTransientForHint(g->display, vm_window->local_winid,
                      transdata->local_winid);
-    } else
+    } else {
+        if (vm_window->transient_for)
+            XDeleteProperty(g->display, vm_window->local_winid,
+                    XA_WM_TRANSIENT_FOR);
         vm_window->transient_for = NULL;
+    }
 
     set_override_redirect(g, vm_window, !!(untrusted_txt.override_redirect));
     attr.override_redirect = vm_window->override_redirect;
