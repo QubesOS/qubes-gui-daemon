@@ -22,6 +22,7 @@
 
 /* high level documentation is here: https://www.qubes-os.org/doc/gui/ */
 
+#define _GNU_SOURCE 1
 #include <stdio.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -218,28 +219,6 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
     abort();
 }
 
-#ifdef MAKE_X11_ERRORS_FATAL
-/* nothing called from X11 error handler can send X11 requests, so release
- * shared memory and simply forget about the image - the gui daemon will exit
- * shortly anyway.
- */
-static void release_all_shm_no_x11_calls() {
-    struct genlist *curr;
-    if (ghandles.log_level > 1)
-        fprintf(stderr, "release_all_shm_no_x11_calls running\n");
-    print_backtrace();
-    for (curr = ghandles.wid2windowdata->next;
-         curr != ghandles.wid2windowdata; curr = curr->next) {
-        struct windowdata *vm_window = curr->data;
-        if (vm_window->shmid != -1 && vm_window->shmid != INVALID_SHM_ID)
-            shmctl(vm_window->shmid, IPC_RMID, 0);
-        vm_window->shmid = INVALID_SHM_ID;
-    }
-
-}
-#endif
-
-
 static void
 qubes_xcb_handler(Ghandles *g, const char *msg, struct windowdata *vm_window,
                   xcb_generic_error_t *error) {
@@ -248,8 +227,6 @@ qubes_xcb_handler(Ghandles *g, const char *msg, struct windowdata *vm_window,
         msg,
         vm_window->local_winid,
         vm_window->remote_winid);
-    shmctl(vm_window->shmid, IPC_RMID, 0);
-    vm_window->shmid = INVALID_SHM_ID;
     XErrorEvent err = {
        .type = error->response_type,
        .display = g->display,
@@ -284,12 +261,6 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
     }
 
 #ifdef MAKE_X11_ERRORS_FATAL
-    /* The exit(1) below will call release_all_mapped_mfns (registerd with
-     * atexit(3)), which would try to release window images with XShmDetach. We
-     * can't send X11 requests in X11 error handler, so clean window images
-     * without calling to X11. And hope that X server will call XShmDetach
-     * internally when cleaning windows of disconnected client */
-    release_all_shm_no_x11_calls();
     exit(1);
 #endif
     return 0;
@@ -301,14 +272,7 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
  */
 static int x11_io_error_handler(Display * dpy)
 {
-    /* The default error handler below will call exit(1), which will then call
-     * release_all_mapped_mfns (registerd with atexit(3)), which would try to
-     * release window images with XShmDetach.
-     * When the IO error occurs in X11 it is no longer safe/possible to
-     * communicate with the X server. Clean window images without calling to
-     * X11. And hope that X server will call XShmDetach internally when
-     * cleaning windows of disconnected client */
-    release_all_shm_no_x11_calls();
+    print_backtrace();
     if (default_x11_io_error_handler)
         default_x11_io_error_handler(dpy);
     exit(1);
@@ -650,6 +614,10 @@ static void mkghandles(Ghandles * g)
     }
     if (!(g->cb_connection = XGetXCBConnection(g->display))) {
         perror("XGetXCBConnection");
+        exit(1);
+    }
+    if ((g->xen_fd = open("/dev/xen/gntdev", O_PATH|O_CLOEXEC|O_NOCTTY)) < 0) {
+        perror("open /dev/xen/gntdev");
         exit(1);
     }
     g->screen = DefaultScreen(g->display);
@@ -2012,7 +1980,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         return;
     }
     // now known: untrusted_x and untrusted_y are not negative
-    if (vm_window->shmid != INVALID_SHM_ID) {
+    if (vm_window->shmseg != QUBES_NO_SHM_SEGMENT) {
         // image_width and image_height are not negative
         // (checked in handle_mfndump and handle_window_dump)
         x = min(untrusted_x, vm_window->image_width);
@@ -2153,9 +2121,9 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         else if (g->trayicon_mode == TRAY_TINT)
             tint_tray_and_update(g, vm_window, x, y, w, h);
     } else {
-        if (vm_window->shmid != INVALID_SHM_ID) {
+        if (vm_window->shmseg != QUBES_NO_SHM_SEGMENT) {
             put_shm_image(g, vm_window->local_winid, vm_window, x, y, w, h, x, y);
-        } else if (g->screen_window && g->screen_window->shmid != INVALID_SHM_ID) {
+        } else if (g->screen_window && g->screen_window->shmseg != QUBES_NO_SHM_SEGMENT) {
             // vm_window->x+x and vm_window->y+y are the position relative to
             // the screen, while x and y are the position relative to the window
             put_shm_image(g,
@@ -2450,7 +2418,7 @@ static void handle_create(Ghandles * g, XID window)
         perror("calloc(vm_window in handle_create)");
         exit(1);
     }
-    vm_window->shmid = INVALID_SHM_ID;
+    vm_window->shmseg = QUBES_NO_SHM_SEGMENT;
     /*
        vm_window->is_mapped = 0;
        vm_window->local_winid = 0;
@@ -3186,40 +3154,36 @@ static void inter_appviewer_lock(Ghandles *g, int mode)
 /* release shared memory connected with given window */
 static void release_mapped_mfns(Ghandles * g, struct windowdata *vm_window)
 {
-    if (g->invisible || vm_window->shmid == INVALID_SHM_ID)
+    if (g->invisible || vm_window->shmseg == QUBES_NO_SHM_SEGMENT)
         return;
-    if (vm_window->shmid != -1) {
-        inter_appviewer_lock(g, 1);
-        g->shm_args->shmid = vm_window->shmid;
-        xcb_void_cookie_t cookie = check_xcb_void(
-            xcb_shm_detach_checked(g->cb_connection, vm_window->shmseg),
-            "xcb_shm_detach");
-        xcb_aux_sync(g->cb_connection);
-        if (xcb_request_check(g->cb_connection, cookie)) {
-            fputs("SHM detach failed (this is a bug)", stderr);
-            exit(1);
-        }
-        inter_appviewer_lock(g, 0);
-        shmctl(vm_window->shmid, IPC_RMID, 0);
-    }
-    vm_window->shmid = INVALID_SHM_ID;
+    check_xcb_void(
+        xcb_shm_detach(g->cb_connection, vm_window->shmseg),
+        "xcb_shm_detach");
+    vm_window->shmseg = QUBES_NO_SHM_SEGMENT;
 }
 
-static void qubes_shm_attach(Ghandles *g, struct windowdata *const vm_window,
-                             struct shm_args_hdr *const shm_args,
-                             const size_t shm_args_len)
+static void
+qubes_xcb_send_xen_fd(Ghandles *g,
+                      struct windowdata *vm_window,
+                      struct shm_args_hdr *shm_args,
+                      size_t shm_args_len)
 {
     if (g->invisible)
         return;
-    // temporary shmid; see shmoverride/README
-    vm_window->shmid = shmget(IPC_PRIVATE, 1, IPC_CREAT | 0700);
-    if (vm_window->shmid < 0) {
-        perror("shmget");
-        exit(1);
-    }
-    vm_window->shmseg = xcb_generate_id(g->cb_connection);
     shm_args->domid = g->domid;
-    shm_args->shmid = vm_window->shmid;
+    vm_window->shmseg = xcb_generate_id(g->cb_connection);
+    if (vm_window->shmseg == QUBES_NO_SHM_SEGMENT) {
+        fputs("xcb_generate_id returned QUBES_NO_SHM_SEGMENT!\n", stderr);
+        abort();
+    }
+    int dup_fd = fcntl(g->xen_fd, F_DUPFD_CLOEXEC, 3);
+    if (dup_fd < 3) {
+        assert(dup_fd == -1);
+        err(1, "fcntl(F_DUPFD_CLOEXEC)");
+    }
+    if (shm_args_len > SHM_ARGS_SIZE)
+        errx(1, "shm_args_len is %zu, exceeding maximum of %zu", shm_args_len,
+             (size_t)SHM_ARGS_SIZE);
     inter_appviewer_lock(g, 1);
     memcpy(g->shm_args, shm_args, shm_args_len);
     if (shm_args_len < SHM_ARGS_SIZE) {
@@ -3228,18 +3192,16 @@ static void qubes_shm_attach(Ghandles *g, struct windowdata *const vm_window,
     }
     const xcb_void_cookie_t cookie =
         check_xcb_void(
-            xcb_shm_attach_checked(g->cb_connection, vm_window->shmseg,
-                                   vm_window->shmid, true),
-            "xcb_shm_attach_checked");
+            xcb_shm_attach_fd_checked(g->cb_connection, vm_window->shmseg,
+                                      dup_fd, true),
+            "xcb_shm_attach_fd_checked");
     xcb_aux_sync(g->cb_connection);
     xcb_generic_error_t *error = xcb_request_check(g->cb_connection, cookie);
-    g->shm_args->shmid = g->cmd_shmid;
     inter_appviewer_lock(g, 0);
     if (error) {
-        qubes_xcb_handler(g, "xcb_shm_attach", vm_window, error);
-        shmctl(vm_window->shmid, IPC_RMID, 0);
-        vm_window->shmid = INVALID_SHM_ID;
+        qubes_xcb_handler(g, "xcb_shm_attach_fd", vm_window, error);
         free(error);
+        vm_window->shmseg = QUBES_NO_SHM_SEGMENT;
     }
 }
 
@@ -3311,7 +3273,7 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
             (int) vm_window->remote_winid, num_mfn);
         exit(1);
     }
-    qubes_shm_attach(g, vm_window, shm_args, shm_args_len);
+    qubes_xcb_send_xen_fd(g, vm_window, shm_args, shm_args_len);
     free(shm_args);
 }
 
@@ -3369,7 +3331,6 @@ static void handle_window_dump_body(Ghandles *g, uint32_t wd_type, size_t
     }
 }
 
-
 static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
                                uint32_t untrusted_len) {
     struct msg_window_dump_hdr untrusted_wd_hdr;
@@ -3405,8 +3366,6 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     vm_window->image_height = untrusted_wd_hdr.height;
     //VERIFY(untrusted_wd_hdr.bpp == 24);
 
-    vm_window->shmid = -1;
-
     handle_window_dump_body(g, wd_type, untrusted_wd_body_len, &img_data_size,
                             &shm_args, &shm_args_len);
 
@@ -3420,7 +3379,7 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
         exit(1);
     }
 
-    qubes_shm_attach(g, vm_window, shm_args, shm_args_len);
+    qubes_xcb_send_xen_fd(g, vm_window, shm_args, shm_args_len);
     free(shm_args);
 }
 
@@ -3523,17 +3482,26 @@ static void handle_message(Ghandles * g)
     }
 }
 
+/* helper to get a file flag path */
+static char *guid_fs_flag(const char *type, int domid)
+{
+    static char buf[256];
+    snprintf(buf, sizeof(buf), "/run/qubes/guid-%s.%d",
+         type, domid);
+    return buf;
+}
+
+/* remove guid_running file at exit */
+static void unset_alive_flag(void)
+{
+    unlink(guid_fs_flag("running", ghandles.domid));
+}
+
 /* signal handler - connected to SIGTERM */
 static void dummy_signal_handler(int UNUSED(x))
 {
-    /* The exit(0) below will call release_all_mapped_mfns (registerd with
-     * atexit(3)), which would try to release window images with XShmDetach. We
-     * can't send X11 requests if one is currently being handled. Since signals
-     * are asynchronous, we don't know that. Clean window images
-     * without calling to X11. And hope that X server will call XShmDetach
-     * internally when cleaning windows of disconnected client */
-    release_all_shm_no_x11_calls();
-    exit(0);
+    unset_alive_flag();
+    _exit(0);
 }
 
 /* signal handler - connected to SIGHUP */
@@ -3561,22 +3529,6 @@ static void print_backtrace(void)
         free(strings);
     }
 
-}
-
-/* release all windows mapped memory */
-static void release_all_mapped_mfns(void)
-{
-    struct genlist *curr;
-    if (ghandles.log_level > 1)
-        fprintf(stderr, "release_all_mapped_mfns running\n");
-    print_backtrace();
-    for (curr = ghandles.wid2windowdata->next;
-         curr != ghandles.wid2windowdata; curr = curr->next) {
-        struct windowdata *vm_window = curr->data;
-        /* use ghandles directly, as no other way get it (atexit cannot
-         * pass argument) */
-        release_mapped_mfns(&ghandles, vm_window);
-    }
 }
 
 static void send_xconf(Ghandles * g)
@@ -4230,15 +4182,6 @@ static void parse_config(Ghandles * g)
     }
 }
 
-/* helper to get a file flag path */
-static char *guid_fs_flag(const char *type, int domid)
-{
-    static char buf[256];
-    snprintf(buf, sizeof(buf), "/run/qubes/guid-%s.%d",
-         type, domid);
-    return buf;
-}
-
 static int guid_boot_lock = -1;
 
 /* create guid_running file when connected to VM */
@@ -4254,12 +4197,6 @@ static void set_alive_flag(int domid)
     close(fd);
     unlink(guid_fs_flag("booting", domid));
     close(guid_boot_lock);
-}
-
-/* remove guid_running file at exit */
-static void unset_alive_flag(void)
-{
-    unlink(guid_fs_flag("running", ghandles.domid));
 }
 
 void vchan_close()
@@ -4290,7 +4227,6 @@ static void get_boot_lock(int domid)
 }
 
 static void cleanup() {
-    release_all_mapped_mfns();
     XCloseDisplay(ghandles.display);
     unset_alive_flag();
     close(ghandles.inter_appviewer_lock_fd);
@@ -4480,7 +4416,7 @@ int main(int argc, char **argv)
     signal(SIGTERM, dummy_signal_handler);
     signal(SIGUSR1, dummy_signal_handler);
     signal(SIGHUP, sighup_signal_handler);
-    atexit(release_all_mapped_mfns);
+    atexit(print_backtrace);
 
     if (ghandles.kill_on_connect) {
         kill(ghandles.kill_on_connect, SIGUSR1);
