@@ -30,7 +30,7 @@ LIBDIR ?= /usr/lib64
 extra_cflags := -g -O2 -I../include/ -fPIC -Wall -Wextra -Werror \
 		-DBACKEND_VMM_$(BACKEND_VMM) \
 		-DSHMOVERRIDE_LIB_PATH=\"$(LIBDIR)/qubes-gui-daemon/shmoverride.so\" \
-		-I../include
+		-I../include -fvisibility=hidden
 CC=gcc
 
 all: shmoverride.so X-wrapper-qubes
