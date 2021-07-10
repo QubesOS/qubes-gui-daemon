@@ -25,8 +25,11 @@
 #define XC_WANT_COMPAT_MAP_FOREIGN_API
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <string.h>
@@ -35,6 +38,7 @@
 #include <xengnttab.h>
 #include <sys/mman.h>
 #include <alloca.h>
+#include <pthread.h>
 #include <errno.h>
 #include <unistd.h>
 #include <sys/file.h>
@@ -43,9 +47,34 @@
 #include "shm-args.h"
 #include <qubes-gui-protocol.h>
 
-static void *(*real_shmat) (int shmid, const void *shmaddr, int shmflg);
-static int (*real_shmdt) (const void *shmaddr);
-static int (*real_shmctl) (int shmid, int cmd, struct shmid_ds * buf);
+#define QUBES_STRINGIFY(x) QUBES_STRINGIFY_(x)
+#define QUBES_STRINGIFY_(x) #x
+
+#ifdef _STAT_VER
+# define FSTAT __fxstat
+# define FSTAT64 __fxstat64
+# define VER_ARG int ver,
+# define VER ver,
+#else
+# define FSTAT fstat
+# define FSTAT64 fstat64
+# define VER_ARG
+# define VER
+#endif
+
+#define ASM_DEF(ret, name, ...) \
+    __attribute__((visibility("default"))) \
+    ret name(__VA_ARGS__) __asm__(QUBES_STRINGIFY_(name)); \
+    __attribute__((visibility("default"))) \
+    ret name(__VA_ARGS__)
+
+static void *(*real_mmap)(void *shmaddr, size_t len, int prot, int flags,
+           int fd, off_t offset);
+static int (*real_munmap) (void *shmaddr, size_t len);
+static int (*real_fstat64) (VER_ARG int fd, struct stat64 *buf);
+static int (*real_fstat)(VER_ARG int fd, struct stat *buf);
+
+static struct stat global_buf;
 
 static int local_shmid = 0xabcdef;
 static struct shm_args_hdr *shm_args = NULL;
@@ -56,7 +85,6 @@ static xc_interface *xc_hnd;
 static int xc_hnd;
 #endif
 static xengnttab_handle *xgt;
-static int list_len;
 static char __shmid_filename[SHMID_FILENAME_LEN];
 static char *shmid_filename = NULL;
 static int idfd = -1;
@@ -74,19 +102,22 @@ struct grant_refs_info {
 struct info {
     uint32_t type;
     union {
+        uint32_t count;
         struct mfns_info mfns;
         struct grant_refs_info grant;
     } u;
 };
 
-static uint8_t *shmat_mfns(struct shm_args_hdr *shm_args, struct info *info) {
+static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args, struct info *info) {
     uint8_t *map;
     xen_pfn_t *pfntable;
     uint32_t i;
     struct shm_args_mfns *shm_args_mfns = (struct shm_args_mfns *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
 
-    pfntable = alloca(sizeof(xen_pfn_t) * shm_args_mfns->count);
+    pfntable = calloc(sizeof(xen_pfn_t), shm_args_mfns->count);
+    if (!pfntable)
+        return NULL;
     for (i = 0; i < shm_args_mfns->count; i++)
         pfntable[i] = shm_args_mfns->mfns[i];
 
@@ -95,6 +126,7 @@ static uint8_t *shmat_mfns(struct shm_args_hdr *shm_args, struct info *info) {
 
     map = xc_map_foreign_pages(xc_hnd, shm_args->domid, PROT_READ,
                                 pfntable, shm_args_mfns->count);
+    free(pfntable);
     if (map == NULL)
         return NULL;
 
@@ -103,8 +135,8 @@ static uint8_t *shmat_mfns(struct shm_args_hdr *shm_args, struct info *info) {
     return map;
 }
 
-static uint8_t *shmat_grant_refs(struct shm_args_hdr *shm_args,
-                                 struct info *info) {
+static uint8_t *mmap_grant_refs(struct shm_args_hdr *shm_args,
+                                struct info *info) {
     uint8_t *map;
     struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
@@ -118,78 +150,6 @@ static uint8_t *shmat_grant_refs(struct shm_args_hdr *shm_args,
             PROT_READ);
 
     return map;
-}
-
-__attribute__((visibility("default")))
-void *shmat(int shmid, const void *shmaddr, int shmflg)
-{
-    uint8_t *fakeaddr = NULL;
-    struct info *info;
-
-    if (!shm_args || (uint32_t)shmid != shm_args->shmid)
-        return real_shmat(shmid, shmaddr, shmflg);
-
-    info = calloc(1, sizeof(struct info));
-    if (info == NULL)
-        return MAP_FAILED;
-
-    switch (shm_args->type) {
-    case SHM_ARGS_TYPE_MFNS:
-        fakeaddr = shmat_mfns(shm_args, info);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        fakeaddr = shmat_grant_refs(shm_args, info);
-        break;
-    default:
-        errno = EINVAL;
-    }
-    info->type = shm_args->type;
-
-    if (fakeaddr == NULL) {
-        free(info);
-        // errno set by shmat_*
-        return MAP_FAILED;
-    }
-
-    list_insert(addr_list, (long) fakeaddr, info);
-    list_len++;
-    return fakeaddr;
-}
-
-static int shmdt_mfns(void *map, struct info *info) {
-    return munmap(map - info->u.mfns.off, info->u.mfns.count * XC_PAGE_SIZE);
-}
-
-static int shmdt_grant_refs(void *map, struct info *info) {
-    return xengnttab_unmap(xgt, map, info->u.grant.count);
-}
-
-__attribute__((visibility("default")))
-int shmdt(const void *shmaddr)
-{
-    void *addr = (void *) shmaddr; // drop const qualifier
-    struct genlist *item = list_lookup(addr_list, (long) addr);
-    struct info *info;
-    int rc;
-    if (!item)
-        return real_shmdt(shmaddr);
-
-    info = item->data;
-    switch (info->type) {
-    case SHM_ARGS_TYPE_MFNS:
-        rc = shmdt_mfns(addr, info);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        rc = shmdt_grant_refs(addr, info);
-        break;
-    default:
-        errno = EINVAL;
-        rc = -1;
-    }
-
-    list_remove(item);
-    list_len--;
-    return rc;
 }
 
 static size_t shm_segsz_mfns(struct shm_args_hdr *shm_args) {
@@ -206,31 +166,151 @@ static size_t shm_segsz_grant_refs(struct shm_args_hdr *shm_args) {
     return shm_args_grant->count * XC_PAGE_SIZE;
 }
 
-__attribute__((visibility("default")))
-int shmctl(int shmid, int cmd, struct shmid_ds *buf)
+static pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+_Thread_local static bool in_shmoverride = false;
+static void *qubes_mmap64(void *shmaddr, size_t len, int prot, int flags,
+                          int fd, off_t offset)
 {
-    size_t segsz = 0;
-
-    if (!shm_args || (uint32_t)shmid != shm_args->shmid || cmd != IPC_STAT)
-        return real_shmctl(shmid, cmd, buf);
-
-    switch (shm_args->type) {
-    case SHM_ARGS_TYPE_MFNS:
-        segsz = shm_segsz_mfns(shm_args);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        segsz = shm_segsz_grant_refs(shm_args);
-        break;
-    default:
-        errno = EINVAL;
-        return -1;
+    struct info *info = NULL;
+    struct stat64 buf;
+    if (0) {
+        // These are purely for type-checking by the C compiler; they are not
+        // executed at runtime
+        real_mmap = mmap64;
+        real_mmap = mmap;
+        real_mmap = qubes_mmap64;
+        real_fstat64 = FSTAT64;
+        real_fstat = FSTAT;
     }
 
-    memset(&buf->shm_perm, 0, sizeof(buf->shm_perm));
-    buf->shm_perm.mode = 0666;
-    buf->shm_segsz = segsz;
+#if defined MAP_ANON && defined MAP_ANONYMOUS && (MAP_ANONYMOUS) != (MAP_ANON)
+# error header bug (def mismatch)
+#endif
+#ifndef MAP_ANON
+# define MAP_ANON 0
+#endif
+#ifndef MAP_ANONYMOUS
+# define MAP_ANONYMOUS 0
+#endif
+    if ((flags & (MAP_ANON|MAP_ANONYMOUS)) || in_shmoverride)
+        return real_mmap(shmaddr, len, prot, flags, fd, offset);
 
-    return 0;
+    if (real_fstat64(
+#ifdef _STAT_VER
+                _STAT_VER,
+#endif
+                fd, &buf))
+        return MAP_FAILED;
+
+    if (buf.st_dev != global_buf.st_dev ||
+        buf.st_ino != global_buf.st_ino ||
+        buf.st_rdev != global_buf.st_rdev) {
+        return real_mmap(shmaddr, len, prot, flags, fd, offset);
+    }
+
+    if ((prot & (PROT_READ | PROT_WRITE | PROT_EXEC)) != PROT_READ ||
+        flags != MAP_SHARED ||
+        offset != 0) {
+        errno = EINVAL;
+        return MAP_FAILED;
+    }
+
+    info = calloc(1, sizeof(struct info));
+    if (info == NULL)
+        return MAP_FAILED;
+    info->type = shm_args->type;
+    pthread_mutex_lock(&global_mutex);
+    in_shmoverride = true;
+    int saved_errno = EINVAL;
+    uint8_t *fakeaddr = MAP_FAILED;
+
+    switch (info->type) {
+    case SHM_ARGS_TYPE_MFNS:
+        if (len != shm_segsz_mfns(shm_args))
+            goto fail;
+        fakeaddr = mmap_mfns(shm_args, info);
+        break;
+    case SHM_ARGS_TYPE_GRANT_REFS:
+        if (len != shm_segsz_grant_refs(shm_args))
+            goto fail;
+        fakeaddr = mmap_grant_refs(shm_args, info);
+        break;
+    default:
+        goto fail;
+    }
+    saved_errno = errno;
+    if (fakeaddr && fakeaddr != MAP_FAILED) {
+        list_insert(addr_list, (long) fakeaddr, info);
+        info = NULL; // so it will not be freed below
+    } else {
+        fakeaddr = MAP_FAILED;
+    }
+fail:;
+    bool unlock_success = pthread_mutex_unlock(&global_mutex) == 0;
+    assert(unlock_success);
+    free(info);
+    in_shmoverride = false;
+    errno = saved_errno;
+    return fakeaddr;
+}
+
+ASM_DEF(void *, mmap64,
+        void *shmaddr, size_t len, int prot, int flags,
+        int fd, off_t offset)
+{
+    return qubes_mmap64(shmaddr, len, prot, flags, fd, offset);
+}
+
+ASM_DEF(void *, mmap,
+        void *shmaddr, size_t len, int prot, int flags,
+        int fd, off_t offset)
+{
+    return qubes_mmap64(shmaddr, len, prot, flags, fd, offset);
+}
+
+static int munmap_mfns(void *map, struct info *info) {
+    return real_munmap(map - info->u.mfns.off, info->u.mfns.count * XC_PAGE_SIZE);
+}
+
+static int munmap_grant_refs(void *map, struct info *info) {
+    return xengnttab_unmap(xgt, map, info->u.grant.count);
+}
+
+ASM_DEF(int, munmap, void *addr, size_t len)
+{
+    struct info *info;
+    int rc;
+
+    if (in_shmoverride)
+        return real_munmap(addr, len);
+
+    pthread_mutex_lock(&global_mutex);
+    struct genlist *item = list_lookup(addr_list, (uintptr_t) addr);
+    if (!item) {
+        pthread_mutex_unlock(&global_mutex);
+        return real_munmap(addr, len);
+    }
+    in_shmoverride = true;
+
+    info = item->data;
+    switch (info->type) {
+    case SHM_ARGS_TYPE_MFNS:
+        rc = munmap_mfns(addr, info);
+        break;
+    case SHM_ARGS_TYPE_GRANT_REFS:
+        rc = munmap_grant_refs(addr, info);
+        break;
+    default:
+        fprintf(stderr, "shmoverride munmap: strange info->type: %" PRIu32 "\n", info->type);
+        abort();
+    }
+
+    list_remove(item);
+
+    in_shmoverride = false;
+    pthread_mutex_unlock(&global_mutex);
+    return rc;
 }
 
 int get_display(void)
@@ -293,17 +373,84 @@ int get_display(void)
     return 0;
 }
 
+ASM_DEF(int, FSTAT64, VER_ARG int filedes, struct stat64 *buf)
+{
+#ifdef _STAT_VER
+    if (ver != _STAT_VER) {
+        fprintf(stderr,
+                "Wrong _STAT_VER: got %d, expected %d, libc has incompatibly changed\n",
+                ver, _STAT_VER);
+        abort();
+    }
+#endif
+    int res = real_fstat64(VER filedes, buf);
+    if (res ||
+        buf->st_dev != global_buf.st_dev ||
+        buf->st_ino != global_buf.st_ino ||
+        buf->st_rdev != global_buf.st_rdev)
+        return res;
+    switch (shm_args->type) {
+    case SHM_ARGS_TYPE_MFNS:
+        buf->st_size = shm_segsz_mfns(shm_args);
+        return 0;
+    case SHM_ARGS_TYPE_GRANT_REFS:
+        buf->st_size = shm_segsz_grant_refs(shm_args);
+        return 0;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+ASM_DEF(int, FSTAT, VER_ARG int filedes, struct stat *buf) {
+#ifdef _STAT_VER
+    if (ver != _STAT_VER) {
+        fprintf(stderr,
+                "Wrong _STAT_VER: got %d, expected %d, libc has incompatibly changed\n",
+                ver, _STAT_VER);
+        abort();
+    }
+#endif
+    int res = real_fstat(VER filedes, buf);
+    if (res ||
+        buf->st_dev != global_buf.st_dev ||
+        buf->st_ino != global_buf.st_ino ||
+        buf->st_rdev != global_buf.st_rdev)
+        return res;
+    switch (shm_args->type) {
+    case SHM_ARGS_TYPE_MFNS:
+        buf->st_size = shm_segsz_mfns(shm_args);
+        return 0;
+    case SHM_ARGS_TYPE_GRANT_REFS:
+        buf->st_size = shm_segsz_grant_refs(shm_args);
+        return 0;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
 int __attribute__ ((constructor)) initfunc(void)
 {
     int len;
     char idbuf[20];
     unsetenv("LD_PRELOAD");
     fprintf(stderr, "shmoverride constructor running\n");
-    real_shmat = dlsym(RTLD_NEXT, "shmat");
-    real_shmctl = dlsym(RTLD_NEXT, "shmctl");
-    real_shmdt = dlsym(RTLD_NEXT, "shmdt");
-    if (!real_shmat || !real_shmctl || !real_shmdt) {
-        perror("shmoverride: missing shm API");
+    dlerror();
+    if (!(real_mmap = dlsym(RTLD_NEXT, "mmap64"))) {
+        fprintf(stderr, "shmoverride: no mmap64?: %s\n", dlerror());
+        abort();
+    } else if (!(real_fstat = dlsym(RTLD_NEXT, QUBES_STRINGIFY(FSTAT)))) {
+        fprintf(stderr, "shmoverride: no " QUBES_STRINGIFY(FSTAT) "?: %s\n", dlerror());
+        abort();
+    } else if (!(real_fstat64 = dlsym(RTLD_NEXT, QUBES_STRINGIFY(FSTAT64)))) {
+        fprintf(stderr, "shmoverride: no " QUBES_STRINGIFY(FSTAT64) "?: %s\n", dlerror());
+        abort();
+    } else if (!(real_munmap = dlsym(RTLD_NEXT, "munmap"))) {
+        fprintf(stderr, "shmoverride: no munmap?: %s\n", dlerror());
+        abort();
+    } else if (stat("/dev/xen/gntdev", &global_buf)) {
+        perror("stat /dev/xen/gntdev");
         goto cleanup;
     }
     addr_list = list_new();
@@ -364,16 +511,15 @@ int __attribute__ ((constructor)) initfunc(void)
             shmid_filename, strerror(errno));
         goto cleanup;
     }
-    shm_args = real_shmat(local_shmid, 0, 0);
+    shm_args = shmat(local_shmid, 0, 0);
     if (!shm_args) {
-        perror("real_shmat");
+        perror("shmat");
         goto cleanup;
     }
-    shm_args->shmid = local_shmid;
     return 0;
 
 cleanup:
-    fprintf(stderr, "shmoverride: running without override");
+    fprintf(stderr, "shmoverride: running without override\n");
 #ifdef XENCTRL_HAS_XC_INTERFACE
     if (!xc_hnd) {
         xc_interface_close(xc_hnd);
@@ -403,8 +549,8 @@ int __attribute__ ((destructor)) descfunc(void)
         assert(shmid_filename);
         assert(idfd >= 0);
 
-        real_shmdt(shm_args);
-        real_shmctl(local_shmid, IPC_RMID, 0);
+        shmdt(shm_args);
+        shmctl(local_shmid, IPC_RMID, 0);
         close(idfd);
         unlink(shmid_filename);
     }

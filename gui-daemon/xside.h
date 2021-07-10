@@ -1,5 +1,5 @@
-#ifndef _XSIDE_H
-#define _XSIDE_H
+#ifndef QUBES_XSIDE_H
+#define QUBES_XSIDE_H QUBES_XSIDE_H
 /*
  * The Qubes OS Project, http://www.qubes-os.org
  *
@@ -102,8 +102,6 @@ enum trayicon_mode {
     TRAY_TINT,
 };
 
-#define INVALID_SHM_ID (-2) /* shm-id that means “no image” */
-
 /* per-window data */
 struct windowdata {
     unsigned width;
@@ -119,8 +117,7 @@ struct windowdata {
     struct windowdata *parent;    /* parent window */
     struct windowdata *transient_for;    /* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
     int override_redirect;    /* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
-    xcb_shm_seg_t shmseg; /* X Shared Memory segment */
-    int shmid;           /**< System V IPC identifier, or -1 for fd-passing */
+    xcb_shm_seg_t shmseg; /* X Shared Memory segment, or ((xcb_shm_seg_t)-1) if there is none */
     int image_height;    /* size of window content, not always the same as window in dom0! */
     int image_width;
     int have_queued_configure;    /* have configure request been sent to VM - waiting for confirmation */
@@ -237,6 +234,7 @@ struct _global_handles {
     Atom qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
     bool in_dom0; /* true if we are in dom0, otherwise false */
     Atom net_supported;
+    int xen_fd; /* O_PATH file descriptor to /dev/xen/gntdev */
     bool permit_subwindows : 1; /* Permit subwindows */
 };
 
@@ -272,4 +270,6 @@ static inline void put_shm_image(
         "xcb_shm_put_image");
 }
 
-#endif /* _XSIDE_H */
+#define QUBES_NO_SHM_SEGMENT ((xcb_shm_seg_t)-1)
+
+#endif /* QUBES_XSIDE_H */

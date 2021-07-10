@@ -33,23 +33,23 @@
 #define SHM_ARGS_SIZE (SHM_ARGS_NUM_PAGES * 4096)
 
 struct shm_args_hdr {
-    uint32_t shmid;
     uint32_t domid;
     uint32_t type;
 };
 
 enum {
-    SHM_ARGS_TYPE_MFNS,
-    SHM_ARGS_TYPE_GRANT_REFS
+    // do not use 0 here, to help catch bugs
+    SHM_ARGS_TYPE_MFNS = 1000,
+    SHM_ARGS_TYPE_GRANT_REFS = 2000,
 };
 
 struct shm_args_mfns {
     uint32_t count;
     uint32_t off;
-    uint32_t mfns[0];
+    uint32_t mfns[];
 };
 
 struct shm_args_grant_refs {
     uint32_t count;
-    uint32_t refs[0];
+    uint32_t refs[];
 };
