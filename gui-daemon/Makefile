@@ -26,12 +26,12 @@ pkgs := x11 xext x11-xcb xcb glib-2.0 $(VCHAN_PKG) libpng libnotify libconfig
 objs := xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
 	../gui-common/error.o list.o
 extra_cflags := -I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
-		$(shell pkg-config --cflags $(pkgs))
+		$(shell pkg-config --cflags $(pkgs)) -fvisibility=hidden
 LDLIBS := $(shell pkg-config --libs $(pkgs))
 all: qubes-guid # qubes-guid.1
 vpath %.c ../common
 qubes-guid: $(objs)
-	$(CC) -g -pie -o qubes-guid $(objs) -Wall -lm $(LDLIBS) $(LDFLAGS)
+	$(CC) -g -pie -o qubes-guid $(objs) -Wall -lm $(LDLIBS) $(LDFLAGS) -Wl,-Bsymbolic
 
 qubes-guid.1: qubes-guid
 	LC_ALL=C help2man --version-string=`cat ../version` --no-info --name="Qubes GUI daemon" ./qubes-guid  > qubes-guid.1

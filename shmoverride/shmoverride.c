@@ -120,6 +120,7 @@ static uint8_t *shmat_grant_refs(struct shm_args_hdr *shm_args,
     return map;
 }
 
+__attribute__((visibility("default")))
 void *shmat(int shmid, const void *shmaddr, int shmflg)
 {
     uint8_t *fakeaddr = NULL;
@@ -163,6 +164,7 @@ static int shmdt_grant_refs(void *map, struct info *info) {
     return xengnttab_unmap(xgt, map, info->u.grant.count);
 }
 
+__attribute__((visibility("default")))
 int shmdt(const void *shmaddr)
 {
     void *addr = (void *) shmaddr; // drop const qualifier
@@ -204,6 +206,7 @@ static size_t shm_segsz_grant_refs(struct shm_args_hdr *shm_args) {
     return shm_args_grant->count * XC_PAGE_SIZE;
 }
 
+__attribute__((visibility("default")))
 int shmctl(int shmid, int cmd, struct shmid_ds *buf)
 {
     size_t segsz = 0;
