@@ -1,3 +1,30 @@
+qubes-gui-daemon (4.1.14-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Better build system
+  * Reject MSG_MFNDUMP outside of dom0
+
+  [ Marek Marczykowski-Górecki ]
+  * Fix _NET_CURRENT_DESKTOP atom name
+  * Fix monitoring working area changes
+
+  [ Demi Marie Obenour ]
+  * Obtain an XCB connection handle
+  * Remove dependency on libxt
+  * Exit if window attributes cannot be obtained
+  * Fix typo in error string
+  * Move null check to release_mapped_mfns
+  * Avoid rogue screen locking
+  * force_on_screen(): fix calculations
+  * Use work area for available area calculation
+
+  [ Marek Marczykowski-Górecki ]
+  * Add convenient macro for iterating a list
+  * Delete stale WM_TRANSIENT_FOR hint before mapping a window
+  * Check if a window is referenced by another one before destroying it
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Sat, 10 Jul 2021 05:27:16 +0200
+
 qubes-gui-daemon (4.1.13-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
