@@ -31,9 +31,13 @@ help:
 	    echo "make clean                <--- clean all the binary files";\
 	    exit 0;
 
-all: gui-daemon/qubes-guid gui-daemon/qubes-guid.1 shmoverride/shmoverride.so \
+all_targets := gui-daemon/qubes-guid gui-daemon/qubes-guid.1 \
+     shmoverride/shmoverride.so \
      shmoverride/X-wrapper-qubes pulse/pacat-simple-vchan \
      screen-layout-handler/watch-screen-layout-changes
+
+all: $(all_targets)
+.PHONY: $(all_targets) install tar clean help
 
 gui-daemon/qubes-guid gui-daemon/qubes-guid.1:
 	$(MAKE) -C gui-daemon qubes-guid qubes-guid.1
