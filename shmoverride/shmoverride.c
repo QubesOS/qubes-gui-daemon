@@ -226,11 +226,9 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
         return -1;
     }
 
-    memset(&buf->shm_perm, 0, sizeof(buf->shm_perm));
-    buf->shm_perm.mode = 0666;
+    const int res = real_shmctl(shmid, cmd, buf);
     buf->shm_segsz = segsz;
-
-    return 0;
+    return res;
 }
 
 int get_display(void)
