@@ -23,30 +23,28 @@
 
 #define _GNU_SOURCE 1
 #define XC_WANT_COMPAT_MAP_FOREIGN_API
-#include <dlfcn.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <string.h>
+#include <errno.h>
+
+#include <dlfcn.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <string.h>
-#include <malloc.h>
-#include <xenctrl.h>
-#include <xengnttab.h>
 #include <sys/mman.h>
-#include <alloca.h>
-#include <pthread.h>
-#include <errno.h>
 #include <unistd.h>
 #include <sys/file.h>
+
+#include <xenctrl.h>
+#include <xengnttab.h>
 #ifdef NDEBUG
 # error must enable assertions
 #endif
 #include <assert.h>
-#include "list.h"
 #include "shm-args.h"
 #include <qubes-gui-protocol.h>
 
@@ -81,7 +79,6 @@ static struct stat global_buf;
 
 static int local_shmid = 0xabcdef;
 static struct shm_args_hdr *shm_args = NULL;
-static struct genlist *addr_list;
 #ifdef XENCTRL_HAS_XC_INTERFACE
 static xc_interface *xc_hnd;
 #else
@@ -93,25 +90,7 @@ static char *shmid_filename = NULL;
 static int idfd = -1;
 static char display_str[SHMID_DISPLAY_MAXLEN+1] = "";
 
-struct mfns_info {
-    uint32_t count;
-    uint32_t off;
-};
-
-struct grant_refs_info {
-    uint32_t count;
-};
-
-struct info {
-    uint32_t type;
-    union {
-        uint32_t count;
-        struct mfns_info mfns;
-        struct grant_refs_info grant;
-    } u;
-};
-
-static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args, struct info *info) {
+static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args) {
     uint8_t *map;
     xen_pfn_t *pfntable;
     uint32_t i;
@@ -124,9 +103,6 @@ static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args, struct info *info) {
     for (i = 0; i < shm_args_mfns->count; i++)
         pfntable[i] = shm_args_mfns->mfns[i];
 
-    info->u.mfns.count = shm_args_mfns->count;
-    info->u.mfns.off = shm_args_mfns->off;
-
     map = xc_map_foreign_pages(xc_hnd, shm_args->domid, PROT_READ,
                                 pfntable, shm_args_mfns->count);
     free(pfntable);
@@ -138,21 +114,14 @@ static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args, struct info *info) {
     return map;
 }
 
-static uint8_t *mmap_grant_refs(struct shm_args_hdr *shm_args,
-                                struct info *info) {
-    uint8_t *map;
+static uint8_t *mmap_grant_refs(void *shmaddr,
+                                int fd,
+                                size_t len,
+                                struct shm_args_hdr *shm_args) {
     struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
 
-    info->u.grant.count = shm_args_grant->count;
-
-    map = xengnttab_map_domain_grant_refs(xgt,
-            shm_args_grant->count,
-            shm_args->domid,
-            &shm_args_grant->refs[0],
-            PROT_READ);
-
-    return map;
+    return real_mmap(shmaddr, len, PROT_READ, MAP_SHARED, fd, shm_args_grant->off);
 }
 
 static size_t shm_segsz_mfns(struct shm_args_hdr *shm_args) {
@@ -169,13 +138,10 @@ static size_t shm_segsz_grant_refs(struct shm_args_hdr *shm_args) {
     return shm_args_grant->count * XC_PAGE_SIZE;
 }
 
-static pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 _Thread_local static bool in_shmoverride = false;
 static void *qubes_mmap64(void *shmaddr, size_t len, int prot, int flags,
                           int fd, off_t offset)
 {
-    struct info *info = NULL;
     struct stat64 buf;
     if (0) {
         // These are purely for type-checking by the C compiler; they are not
@@ -219,41 +185,28 @@ static void *qubes_mmap64(void *shmaddr, size_t len, int prot, int flags,
         return MAP_FAILED;
     }
 
-    info = calloc(1, sizeof(struct info));
-    if (info == NULL)
-        return MAP_FAILED;
-    info->type = shm_args->type;
-    pthread_mutex_lock(&global_mutex);
     in_shmoverride = true;
-    int saved_errno = EINVAL;
     uint8_t *fakeaddr = MAP_FAILED;
 
-    switch (info->type) {
+    switch (shm_args->type) {
     case SHM_ARGS_TYPE_MFNS:
-        if (len != shm_segsz_mfns(shm_args))
-            goto fail;
-        fakeaddr = mmap_mfns(shm_args, info);
+        if (len == shm_segsz_mfns(shm_args))
+            fakeaddr = mmap_mfns(shm_args);
+        else
+            errno = EINVAL;
         break;
     case SHM_ARGS_TYPE_GRANT_REFS:
-        if (len != shm_segsz_grant_refs(shm_args))
-            goto fail;
-        fakeaddr = mmap_grant_refs(shm_args, info);
+        if (len == shm_segsz_grant_refs(shm_args))
+            fakeaddr = mmap_grant_refs(shmaddr, fd, len, shm_args);
+        else
+            errno = EINVAL;
         break;
     default:
-        goto fail;
+        errno = EINVAL;
     }
-    saved_errno = errno;
-    if (fakeaddr && fakeaddr != MAP_FAILED) {
-        list_insert(addr_list, (long) fakeaddr, info);
-        info = NULL; // so it will not be freed below
-    } else {
+    if (!fakeaddr)
         fakeaddr = MAP_FAILED;
-    }
-fail:
-    assert(pthread_mutex_unlock(&global_mutex) == 0 && "Unlock failure?");
-    free(info);
     in_shmoverride = false;
-    errno = saved_errno;
     return fakeaddr;
 }
 
@@ -271,48 +224,13 @@ ASM_DEF(void *, mmap,
     return qubes_mmap64(shmaddr, len, prot, flags, fd, offset);
 }
 
-static int munmap_mfns(void *map, struct info *info) {
-    return real_munmap(map - info->u.mfns.off, info->u.mfns.count * XC_PAGE_SIZE);
-}
-
-static int munmap_grant_refs(void *map, struct info *info) {
-    return xengnttab_unmap(xgt, map, info->u.grant.count);
-}
-
 __attribute__((visibility("default"))) int munmap(void *addr, size_t len)
 {
-    struct info *info;
-    int rc;
-
-    if (in_shmoverride)
-        return real_munmap(addr, len);
-
-    pthread_mutex_lock(&global_mutex);
-    struct genlist *item = list_lookup(addr_list, (uintptr_t) addr);
-    if (!item) {
-        pthread_mutex_unlock(&global_mutex);
-        return real_munmap(addr, len);
-    }
-    in_shmoverride = true;
-
-    info = item->data;
-    switch (info->type) {
-    case SHM_ARGS_TYPE_MFNS:
-        rc = munmap_mfns(addr, info);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        rc = munmap_grant_refs(addr, info);
-        break;
-    default:
-        fprintf(stderr, "shmoverride munmap: strange info->type: %" PRIu32 "\n", info->type);
+    if (len > SIZE_MAX - XC_PAGE_SIZE)
         abort();
-    }
-
-    list_remove(item);
-
-    in_shmoverride = false;
-    pthread_mutex_unlock(&global_mutex);
-    return rc;
+    const uintptr_t addr_int = (uintptr_t)addr;
+    const uintptr_t rounded_addr = addr_int & ~(uintptr_t)(XC_PAGE_SIZE - 1);
+    return real_munmap((void *)rounded_addr, len + (addr_int - rounded_addr));
 }
 
 int get_display(void)
@@ -455,7 +373,6 @@ int __attribute__ ((constructor)) initfunc(void)
         perror("stat /dev/xen/gntdev");
         goto cleanup;
     }
-    addr_list = list_new();
 #ifdef XENCTRL_HAS_XC_INTERFACE
     xc_hnd = xc_interface_open(NULL, NULL, 0);
     if (!xc_hnd) {
