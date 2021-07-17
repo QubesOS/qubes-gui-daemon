@@ -28,9 +28,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <err.h>
+#include <sys/types.h>
 #include <sys/shm.h>
 #include <sys/file.h>
-#include <sys/types.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -60,6 +61,8 @@
 #include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
 #include <libvchan.h>
+#include <xen/grant_table.h>
+#include <xen/gntdev.h>
 #include "xside.h"
 #include "txrx.h"
 #include "double-buffer.h"
@@ -607,19 +610,14 @@ static void mkghandles(Ghandles * g)
     XWindowAttributes attr;
     int i;
 
-    g->display = XOpenDisplay(NULL);
-    if (!g->display) {
-        perror("XOpenDisplay");
-        exit(1);
-    }
-    if (!(g->cb_connection = XGetXCBConnection(g->display))) {
-        perror("XGetXCBConnection");
-        exit(1);
-    }
-    if ((g->xen_fd = open("/dev/xen/gntdev", O_PATH|O_CLOEXEC|O_NOCTTY)) < 0) {
-        perror("open /dev/xen/gntdev");
-        exit(1);
-    }
+    if (!(g->display = XOpenDisplay(NULL)))
+        err(1, "XOpenDisplay");
+    if (!(g->cb_connection = XGetXCBConnection(g->display)))
+        err(1, "XGetXCBConnection");
+    if ((g->xen_dir_fd = open("/dev/xen", O_DIRECTORY|O_CLOEXEC|O_NOCTTY|O_RDONLY)) == -1)
+        err(1, "open /dev/xen");
+    if ((g->xen_fd = openat(g->xen_dir_fd, "gntdev", O_PATH|O_CLOEXEC|O_NOCTTY)) == -1)
+        err(1, "open /dev/xen/gntdev");
     g->screen = DefaultScreen(g->display);
     g->root_win = RootWindow(g->display, g->screen);
     g->gc = xcb_generate_id(g->cb_connection);
@@ -3175,20 +3173,50 @@ qubes_xcb_send_xen_fd(Ghandles *g,
         fputs("xcb_generate_id returned QUBES_NO_SHM_SEGMENT!\n", stderr);
         abort();
     }
-    int dup_fd = fcntl(g->xen_fd, F_DUPFD_CLOEXEC, 3);
-    if (dup_fd < 3) {
-        assert(dup_fd == -1);
-        err(1, "fcntl(F_DUPFD_CLOEXEC)");
-    }
     if (shm_args_len > SHM_ARGS_SIZE)
         errx(1, "shm_args_len is %zu, exceeding maximum of %zu", shm_args_len,
              (size_t)SHM_ARGS_SIZE);
     inter_appviewer_lock(g, 1);
-    memcpy(g->shm_args, shm_args, shm_args_len);
-    if (shm_args_len < SHM_ARGS_SIZE) {
-        memset(((uint8_t *) g->shm_args) + shm_args_len, 0,
-               SHM_ARGS_SIZE - shm_args_len);
+    int dup_fd;
+    switch (shm_args->type) {
+    case SHM_ARGS_TYPE_MFNS:
+        if ((dup_fd = fcntl(g->xen_fd, F_DUPFD_CLOEXEC, 3)) < 3) {
+            assert(dup_fd == -1);
+            err(1, "fcntl(F_DUPFD_CLOEXEC)");
+        }
+        break;
+    default:
+        fputs("internal wrong command type (this is a bug)\n", stderr);
+        abort();
+    case SHM_ARGS_TYPE_GRANT_REFS:
+        if ((dup_fd = openat(g->xen_dir_fd, "gntdev", O_RDWR|O_CLOEXEC|O_NOCTTY)) == -1)
+            err(1, "open(\"/dev/xen/gntdev\")");
+        struct shm_args_grant_refs *s =
+            (struct shm_args_grant_refs *)((uint8_t *)shm_args + sizeof(struct shm_args_hdr));
+        struct ioctl_gntdev_map_grant_ref *gref = malloc(
+                s->count * sizeof(struct ioctl_gntdev_grant_ref) +
+                offsetof(struct ioctl_gntdev_map_grant_ref, refs));
+        if (!gref)
+            err(1, "malloc failed");
+        gref->count = s->count;
+        gref->pad = 0;
+        gref->index = UINT64_MAX;
+        for (size_t i = 0; i < s->count; ++i) {
+            gref->refs[i].domid = g->domid;
+            gref->refs[i].ref = s->refs[i];
+        }
+        if (ioctl(dup_fd, IOCTL_GNTDEV_MAP_GRANT_REF, gref) != 0)
+            err(1, "ioctl(IOCTL_GNTDEV_MAP_GRANT_REF)");
+        if (gref->index != 0)
+            fprintf(stderr,
+                    "ioctl(IOCTL_GNTDEV_MAP_GRANT_REF) set index to nonzero value %" PRIu64 "\n",
+                    (uint64_t)gref->index);
+        s->off = gref->index;
+        free(gref);
     }
+    memcpy(g->shm_args, shm_args, shm_args_len);
+    memset(((uint8_t *) g->shm_args) + shm_args_len, 0,
+           SHM_ARGS_SIZE - shm_args_len);
     const xcb_void_cookie_t cookie =
         check_xcb_void(
             xcb_shm_attach_fd_checked(g->cb_connection, vm_window->shmseg,

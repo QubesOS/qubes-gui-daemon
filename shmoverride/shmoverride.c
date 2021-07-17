@@ -23,27 +23,24 @@
 
 #define _GNU_SOURCE 1
 #define XC_WANT_COMPAT_MAP_FOREIGN_API
-#include <dlfcn.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <string.h>
+#include <errno.h>
+
+#include <dlfcn.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <string.h>
-#include <malloc.h>
-#include <xenctrl.h>
-#include <xengnttab.h>
 #include <sys/mman.h>
-#include <alloca.h>
-#include <pthread.h>
-#include <errno.h>
 #include <unistd.h>
 #include <sys/file.h>
+#include <xenctrl.h>
+#include <xengnttab.h>
 #include <assert.h>
-#include "list.h"
 #include "shm-args.h"
 #include <qubes-gui-protocol.h>
 
@@ -54,7 +51,7 @@
 # define FSTAT __fxstat
 # define FSTAT64 __fxstat64
 # define VER_ARG int ver,
-# define VER ver,
+# define VER _STAT_VER,
 #else
 # define FSTAT fstat
 # define FSTAT64 fstat64
@@ -75,10 +72,10 @@ static int (*real_fstat64) (VER_ARG int fd, struct stat64 *buf);
 static int (*real_fstat)(VER_ARG int fd, struct stat *buf);
 
 static struct stat global_buf;
+static int gntdev_fd = -1;
 
 static int local_shmid = 0xabcdef;
 static struct shm_args_hdr *shm_args = NULL;
-static struct genlist *addr_list;
 #ifdef XENCTRL_HAS_XC_INTERFACE
 static xc_interface *xc_hnd;
 #else
@@ -90,25 +87,7 @@ static char *shmid_filename = NULL;
 static int idfd = -1;
 static char display_str[SHMID_DISPLAY_MAXLEN+1] = "";
 
-struct mfns_info {
-    uint32_t count;
-    uint32_t off;
-};
-
-struct grant_refs_info {
-    uint32_t count;
-};
-
-struct info {
-    uint32_t type;
-    union {
-        uint32_t count;
-        struct mfns_info mfns;
-        struct grant_refs_info grant;
-    } u;
-};
-
-static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args, struct info *info) {
+static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args) {
     uint8_t *map;
     xen_pfn_t *pfntable;
     uint32_t i;
@@ -121,9 +100,6 @@ static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args, struct info *info) {
     for (i = 0; i < shm_args_mfns->count; i++)
         pfntable[i] = shm_args_mfns->mfns[i];
 
-    info->u.mfns.count = shm_args_mfns->count;
-    info->u.mfns.off = shm_args_mfns->off;
-
     map = xc_map_foreign_pages(xc_hnd, shm_args->domid, PROT_READ,
                                 pfntable, shm_args_mfns->count);
     free(pfntable);
@@ -135,51 +111,43 @@ static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args, struct info *info) {
     return map;
 }
 
-static uint8_t *mmap_grant_refs(struct shm_args_hdr *shm_args,
-                                struct info *info) {
-    uint8_t *map;
+static uint8_t *mmap_grant_refs(void *shmaddr,
+                                int fd,
+                                size_t len,
+                                struct shm_args_hdr *shm_args) {
     struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
 
-    info->u.grant.count = shm_args_grant->count;
-
-    map = xengnttab_map_domain_grant_refs(xgt,
-            shm_args_grant->count,
-            shm_args->domid,
-            &shm_args_grant->refs[0],
-            PROT_READ);
-
-    return map;
+    return real_mmap(shmaddr, len, PROT_READ, MAP_SHARED, fd, shm_args_grant->off);
 }
 
 static size_t shm_segsz_mfns(struct shm_args_hdr *shm_args) {
     struct shm_args_mfns *shm_args_mfns = (struct shm_args_mfns *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
-
+    if (shm_args_mfns->count > MAX_MFN_COUNT)
+        return 0; // this is considered an error
     return shm_args_mfns->count * XC_PAGE_SIZE - shm_args_mfns->off;
 }
 
 static size_t shm_segsz_grant_refs(struct shm_args_hdr *shm_args) {
     struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
-
+    if (shm_args_grant->count > MAX_GRANT_REFS_COUNT)
+        return 0; // this is considered an error
     return shm_args_grant->count * XC_PAGE_SIZE;
 }
 
-static pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 _Thread_local static bool in_shmoverride = false;
-static void *qubes_mmap64(void *shmaddr, size_t len, int prot, int flags,
-                          int fd, off_t offset)
+ASM_DEF(void *, mmap,
+        void *shmaddr, size_t len, int prot, int flags,
+        int fd, off_t offset)
 {
-    struct info *info = NULL;
     struct stat64 buf;
     if (0) {
         // These are purely for type-checking by the C compiler; they are not
         // executed at runtime
         real_mmap = mmap64;
         real_mmap = mmap;
-        real_mmap = qubes_mmap64;
         real_fstat64 = FSTAT64;
         real_fstat = FSTAT;
     }
@@ -203,7 +171,8 @@ static void *qubes_mmap64(void *shmaddr, size_t len, int prot, int flags,
                 fd, &buf))
         return MAP_FAILED;
 
-    if (buf.st_dev != global_buf.st_dev ||
+    if (!S_ISCHR(buf.st_mode) ||
+        buf.st_dev != global_buf.st_dev ||
         buf.st_ino != global_buf.st_ino ||
         buf.st_rdev != global_buf.st_rdev) {
         return real_mmap(shmaddr, len, prot, flags, fd, offset);
@@ -216,101 +185,42 @@ static void *qubes_mmap64(void *shmaddr, size_t len, int prot, int flags,
         return MAP_FAILED;
     }
 
-    info = calloc(1, sizeof(struct info));
-    if (info == NULL)
-        return MAP_FAILED;
-    info->type = shm_args->type;
-    pthread_mutex_lock(&global_mutex);
     in_shmoverride = true;
-    int saved_errno = EINVAL;
     uint8_t *fakeaddr = MAP_FAILED;
 
-    switch (info->type) {
+    switch (shm_args->type) {
     case SHM_ARGS_TYPE_MFNS:
-        if (len != shm_segsz_mfns(shm_args))
-            goto fail;
-        fakeaddr = mmap_mfns(shm_args, info);
+        if (len == shm_segsz_mfns(shm_args))
+            fakeaddr = mmap_mfns(shm_args);
+        else
+            errno = EINVAL;
         break;
     case SHM_ARGS_TYPE_GRANT_REFS:
-        if (len != shm_segsz_grant_refs(shm_args))
-            goto fail;
-        fakeaddr = mmap_grant_refs(shm_args, info);
+        if (len == shm_segsz_grant_refs(shm_args))
+            fakeaddr = mmap_grant_refs(shmaddr, fd, len, shm_args);
+        else
+            errno = EINVAL;
         break;
     default:
-        goto fail;
+        errno = EINVAL;
     }
-    saved_errno = errno;
-    if (fakeaddr && fakeaddr != MAP_FAILED) {
-        list_insert(addr_list, (long) fakeaddr, info);
-        info = NULL; // so it will not be freed below
-    } else {
+    if (!fakeaddr)
         fakeaddr = MAP_FAILED;
-    }
-fail:;
-    bool unlock_success = pthread_mutex_unlock(&global_mutex) == 0;
-    assert(unlock_success);
-    free(info);
     in_shmoverride = false;
-    errno = saved_errno;
     return fakeaddr;
 }
 
-ASM_DEF(void *, mmap64,
+__attribute__((alias("mmap"))) ASM_DEF(void *, mmap64,
         void *shmaddr, size_t len, int prot, int flags,
-        int fd, off_t offset)
-{
-    return qubes_mmap64(shmaddr, len, prot, flags, fd, offset);
-}
-
-ASM_DEF(void *, mmap,
-        void *shmaddr, size_t len, int prot, int flags,
-        int fd, off_t offset)
-{
-    return qubes_mmap64(shmaddr, len, prot, flags, fd, offset);
-}
-
-static int munmap_mfns(void *map, struct info *info) {
-    return real_munmap(map - info->u.mfns.off, info->u.mfns.count * XC_PAGE_SIZE);
-}
-
-static int munmap_grant_refs(void *map, struct info *info) {
-    return xengnttab_unmap(xgt, map, info->u.grant.count);
-}
+        int fd, off_t offset);
 
 ASM_DEF(int, munmap, void *addr, size_t len)
 {
-    struct info *info;
-    int rc;
-
-    if (in_shmoverride)
-        return real_munmap(addr, len);
-
-    pthread_mutex_lock(&global_mutex);
-    struct genlist *item = list_lookup(addr_list, (uintptr_t) addr);
-    if (!item) {
-        pthread_mutex_unlock(&global_mutex);
-        return real_munmap(addr, len);
-    }
-    in_shmoverride = true;
-
-    info = item->data;
-    switch (info->type) {
-    case SHM_ARGS_TYPE_MFNS:
-        rc = munmap_mfns(addr, info);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        rc = munmap_grant_refs(addr, info);
-        break;
-    default:
-        fprintf(stderr, "shmoverride munmap: strange info->type: %" PRIu32 "\n", info->type);
+    if (len > SIZE_MAX - XC_PAGE_SIZE)
         abort();
-    }
-
-    list_remove(item);
-
-    in_shmoverride = false;
-    pthread_mutex_unlock(&global_mutex);
-    return rc;
+    const uintptr_t addr_int = (uintptr_t)addr;
+    const uintptr_t rounded_addr = addr_int & ~(uintptr_t)(XC_PAGE_SIZE - 1);
+    return real_munmap((void *)rounded_addr, len + (addr_int - rounded_addr));
 }
 
 int get_display(void)
@@ -373,62 +283,57 @@ int get_display(void)
     return 0;
 }
 
-ASM_DEF(int, FSTAT64, VER_ARG int filedes, struct stat64 *buf)
-{
-#ifdef _STAT_VER
-    if (ver != _STAT_VER) {
-        fprintf(stderr,
-                "Wrong _STAT_VER: got %d, expected %d, libc has incompatibly changed\n",
-                ver, _STAT_VER);
-        abort();
-    }
-#endif
-    int res = real_fstat64(VER filedes, buf);
-    if (res ||
-        buf->st_dev != global_buf.st_dev ||
-        buf->st_ino != global_buf.st_ino ||
-        buf->st_rdev != global_buf.st_rdev)
-        return res;
+static int assign_off(off_t *off) {
+    size_t s;
     switch (shm_args->type) {
     case SHM_ARGS_TYPE_MFNS:
-        buf->st_size = shm_segsz_mfns(shm_args);
-        return 0;
+        s = shm_segsz_mfns(shm_args);
+        break;
     case SHM_ARGS_TYPE_GRANT_REFS:
-        buf->st_size = shm_segsz_grant_refs(shm_args);
-        return 0;
+        s = shm_segsz_grant_refs(shm_args);
+        break;
     default:
+        s = 0;
+    }
+    if (s) {
+        *off = (off_t)s;
+        return 0;
+    } else {
         errno = EINVAL;
         return -1;
     }
 }
 
-ASM_DEF(int, FSTAT, VER_ARG int filedes, struct stat *buf) {
-#ifdef _STAT_VER
-    if (ver != _STAT_VER) {
-        fprintf(stderr,
-                "Wrong _STAT_VER: got %d, expected %d, libc has incompatibly changed\n",
-                ver, _STAT_VER);
-        abort();
-    }
-#endif
-    int res = real_fstat(VER filedes, buf);
-    if (res ||
-        buf->st_dev != global_buf.st_dev ||
-        buf->st_ino != global_buf.st_ino ||
-        buf->st_rdev != global_buf.st_rdev)
-        return res;
-    switch (shm_args->type) {
-    case SHM_ARGS_TYPE_MFNS:
-        buf->st_size = shm_segsz_mfns(shm_args);
-        return 0;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        buf->st_size = shm_segsz_grant_refs(shm_args);
-        return 0;
-    default:
-        errno = EINVAL;
-        return -1;
-    }
+#define STAT(id)                                          \
+ASM_DEF(int, f ## id, int filedes, struct id *buf) {      \
+    int res = real_f ## id(VER filedes, buf);             \
+    if (res ||                                            \
+        !S_ISCHR(buf->st_mode) ||                         \
+        buf->st_dev != global_buf.st_dev ||               \
+        buf->st_ino != global_buf.st_ino ||               \
+        buf->st_rdev != global_buf.st_rdev)               \
+        return res;                                       \
+    return assign_off(&buf->st_size);                     \
 }
+STAT(stat)
+STAT(stat64)
+#undef STAT
+
+#ifdef _STAT_VER
+#define STAT(id)                                                    \
+ASM_DEF(int, __fx ## id, int ver, int filedes, struct id *buf) {    \
+    if (ver != _STAT_VER) {                                         \
+        fprintf(stderr,                                             \
+                "Wrong _STAT_VER: got %d, expected %d, libc has incompatibly changed\n", \
+                ver, _STAT_VER);                                    \
+        abort();                                                    \
+    }                                                               \
+    return f ## id(filedes, buf);                                   \
+}
+STAT(stat)
+STAT(stat64)
+#undef STAT
+#endif
 
 int __attribute__ ((constructor)) initfunc(void)
 {
@@ -449,11 +354,16 @@ int __attribute__ ((constructor)) initfunc(void)
     } else if (!(real_munmap = dlsym(RTLD_NEXT, "munmap"))) {
         fprintf(stderr, "shmoverride: no munmap?: %s\n", dlerror());
         abort();
-    } else if (stat("/dev/xen/gntdev", &global_buf)) {
+    } else if ((gntdev_fd = open("/dev/xen/gntdev", O_PATH | O_CLOEXEC | O_NOCTTY)) == -1) {
+        perror("open /dev/xen/gntdev");
+        goto cleanup;
+    } else if (real_fstat(VER gntdev_fd, &global_buf)) {
         perror("stat /dev/xen/gntdev");
         goto cleanup;
+    } else if (!S_ISCHR(global_buf.st_mode)) {
+        fprintf(stderr, "/dev/xen/gntdev is not a character special file");
+        goto cleanup;
     }
-    addr_list = list_new();
 #ifdef XENCTRL_HAS_XC_INTERFACE
     xc_hnd = xc_interface_open(NULL, NULL, 0);
     if (!xc_hnd) {
@@ -535,6 +445,10 @@ cleanup:
         close(idfd);
         idfd = -1;
     }
+    if (gntdev_fd >= 0) {
+        close(gntdev_fd);
+        gntdev_fd = -1;
+    }
     if (shmid_filename) {
         unlink(shmid_filename);
         shmid_filename = NULL;
@@ -552,6 +466,7 @@ int __attribute__ ((destructor)) descfunc(void)
         shmdt(shm_args);
         shmctl(local_shmid, IPC_RMID, 0);
         close(idfd);
+        close(gntdev_fd);
         unlink(shmid_filename);
     }
 
