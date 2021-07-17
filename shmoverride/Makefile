@@ -37,7 +37,7 @@ all: shmoverride.so X-wrapper-qubes
 
 shmoverride.so: shmoverride.o ./list.o
 	$(CC) $(CFLAGS) $(extra_cflags) -shared -o shmoverride.so \
-		shmoverride.o list.o -ldl -lxenctrl -lxengnttab
+		shmoverride.o list.o -ldl -lxenctrl -lxengnttab -Wl,-Bsymbolic
 
 vpath %.c ../common
 

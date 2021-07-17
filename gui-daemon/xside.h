@@ -235,6 +235,7 @@ struct _global_handles {
     bool in_dom0; /* true if we are in dom0, otherwise false */
     Atom net_supported;
     int xen_fd; /* O_PATH file descriptor to /dev/xen/gntdev */
+    int xen_dir_fd; /* file descriptor to /dev/xen */
     bool permit_subwindows : 1; /* Permit subwindows */
 };
 
