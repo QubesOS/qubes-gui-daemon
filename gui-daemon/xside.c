@@ -1882,6 +1882,9 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
         hdr.window = 0;
         write_message(g->vchan, hdr, keys);
     } else {
+        if (g->log_level > 0)
+            fprintf(stderr, "Clearing fullscreen flag of window 0x%x as it no longer has focus\n",
+                    (int)ev->window);
         struct msg_window_flags flags = {
             .flags_set = 0,
             .flags_unset = WINDOW_FLAG_FULLSCREEN,
@@ -2128,6 +2131,9 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent *con
                 return;
             g->active_window = active;
             CHECK_NONMANAGED_WINDOW(g, old_active);
+            if (g->log_level > 0)
+                fprintf(stderr, "Clearing fullscreen flag of window 0x%x as it is no longer active\n",
+                        (int)old_active);
             struct msg_window_flags flags = {
                 .flags_set = 0,
                 .flags_unset = WINDOW_FLAG_FULLSCREEN,
