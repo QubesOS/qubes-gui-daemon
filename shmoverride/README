@@ -1,26 +1,22 @@
 	The shmoverride.so library is supposed to be loaded by Xorg server
-(via LD_PRELOAD). It intercepts the shmat, shmdt and shmctl glibc calls, so
-that when XShmAttach is called (by qubes_guid) with a "magic" argument, then 
-instead of attaching regular shared memory, memory from a foreign domain is
-attached via xc_map_foreign_pages. This mechanism is used to map composition
+(via LD_PRELOAD). It intercepts the mmap, munmap, and fstat glibc calls, so
+that when xcb_shm_attach_fd is called (by qubes_guid) with a file descriptor
+pointing to /dev/xen/gntdev, then instead of attaching regular shared memory,
+memory from a foreign domain is attached via xc_map_foreign_pages or
+xengntdev_map_domain_grant_refs. This mechanism is used to map composition
 buffers from a foreign domain into Xorg server.
 	During its init, shmoverride.so creates a shared memory segment
 (cmd_pages) and writes its shmid to /var/run/qubes/shm.id.$DISPLAY. All
 instances of qubes_guid map this segment and communicate with shmoverride.so
 code by setting its fields. When qubes_guid wants its
-XShmAttach(...synth_shmid...) call to be handled by shmoverride.so, it sets the 
-"shmid" field in the cmd_pages shared memory segment to synth_shmid just
-before calling XShmAttach. Function shmat (implemented in shmoverride.so)
-checks whether first argument of shmat is equal to cmd_pages->shmid, and if
-so, calls xc_map_foreign_pages properly (if not, just calls real shmat).
-Other fields in cmd_pages describe which frames are supposed to be mapped 
-and from which domain.
-	Somewhat unfortunately, the Xorg server tracks the already attached shmids.
-Therefore, it is not possible to pass the same "magic" value of synth_shmid
-to XShmAttach(...synth_shmid...). Before each XShmAttach, qubes_guid creates
-a corresponding real shared memory segment, sets cmd_pages->shmid to it, and
-then executes XShmAttach. This segment is destroyed when the corresponding
-backing memory for the composition buffer is released, such as when the window
-is resized or closed. Keeping this additional otherwise-unused segment around
-for the whole life of the actual inter-domain shared-memory being used is
-necessary in order to prevent X from getting confused by shmid reuse.
+xcb_shm_attach_fd(...xen_fd...) call to be handled by shmoverride.so, it passes
+a file descriptor pointing to /dev/xen/gntdev.  fstat (implemented in
+shmoverride.so) checks whether it was passed a file descriptor to
+/dev/xen/gntdev, and if so, sets st_size in the returned `struct stat` to the
+the size memory buffer to map.  The shmoverride.so implementation of mmap()
+calls fstat() on its fifth argument, and checks the st_dev, st_ino, and st_rdev
+fields to determine if a file descriptor to /dev/xen/gntdev was passed.  If so,
+it uses cmd_pages to determine which frames or grant pages should be mapped and
+from which domain.  The munmap() implementation checks if the address is one
+that shmoverride.so had previously mapped, and if so, calls the appropriate Xen
+API functions to release the memory.

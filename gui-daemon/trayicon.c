@@ -24,8 +24,10 @@
 #include <stdio.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <xcb/xcb.h>
 #include <math.h>
 #include "xside.h"
+#include <util.h>
 
 /* initialization required for TRAY_BACKGROUND mode */
 void init_tray_bg(Ghandles *g) {
@@ -45,7 +47,7 @@ void fill_tray_bg_and_update(Ghandles *g, struct windowdata *vm_window,
     size_t data_sz;
     int xp, yp;
 
-    if (!vm_window->image) {
+    if (vm_window->shmseg == QUBES_NO_SHM_SEGMENT) {
         /* TODO: implement screen_window handling */
         return;
     }
@@ -77,10 +79,11 @@ void fill_tray_bg_and_update(Ghandles *g, struct windowdata *vm_window,
                 vm_window->image_width,
                 vm_window->image_height,
                 24);
-    XShmPutImage(g->display, pixmap, g->context,
-            vm_window->image, 0, 0, 0, 0,
-            vm_window->image_width,
-            vm_window->image_height, 0);
+    put_shm_image(g, pixmap, vm_window,
+        0, 0,
+        vm_window->image_width,
+        vm_window->image_height,
+        0, 0);
     XImage *image = XGetImage(g->display, pixmap, 0, 0, w, h,
             0xFFFFFFFF, ZPixmap);
     /* Use top-left corner pixel color as transparency color */
@@ -231,7 +234,7 @@ void tint_tray_and_update(Ghandles *g, struct windowdata *vm_window,
     uint32_t pixel;
     double h_ignore, l, s_ignore;
 
-    if (!vm_window->image) {
+    if (vm_window->shmseg == QUBES_NO_SHM_SEGMENT) {
         /* TODO: implement screen_window handling */
         return;
     }
@@ -245,10 +248,11 @@ void tint_tray_and_update(Ghandles *g, struct windowdata *vm_window,
                 vm_window->image_width,
                 vm_window->image_height,
                 24);
-    XShmPutImage(g->display, pixmap, g->context,
-            vm_window->image, 0, 0, 0, 0,
-            vm_window->image_width,
-            vm_window->image_height, 0);
+    put_shm_image(g, pixmap, vm_window,
+        0, 0,
+        vm_window->image_width,
+        vm_window->image_height,
+        0, 0);
     XImage *image = XGetImage(g->display, pixmap, x, y, w, h,
             0xFFFFFFFF, ZPixmap);
     /* tint image */
