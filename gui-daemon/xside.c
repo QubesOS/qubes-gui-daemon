@@ -1880,6 +1880,12 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
         hdr.type = MSG_KEYMAP_NOTIFY;
         hdr.window = 0;
         write_message(g->vchan, hdr, keys);
+    } else {
+        struct msg_window_flags flags = {
+            .flags_set = 0,
+            .flags_unset = WINDOW_FLAG_FULLSCREEN,
+        };
+        qubes_update_wmflags(g, vm_window, &flags);
     }
     hdr.type = MSG_FOCUS;
     hdr.window = vm_window->remote_winid;
@@ -2108,6 +2114,42 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent *con
     if (ev->window == g->root_win) {
         if (ev->state != PropertyNewValue)
             return;
+        if (ev->atom == g->net_active_window) {
+            /* Activate the window */
+            unsigned long *scratch;
+            unsigned long nitems, bytesleft;
+            Atom act_type;
+            int ret, act_fmt;
+
+            ret = XGetWindowProperty(g->display, g->root_win, g->net_active_window,
+                0, 1, False, XA_WINDOW, &act_type, &act_fmt, &nitems, &bytesleft,
+                (unsigned char**)&scratch);
+            if (ret != Success || nitems != 1 || act_fmt != 32 ||
+                act_type != XA_WINDOW) {
+                if (ret == Success && None == act_fmt && !act_fmt) {
+                    if (g->log_level > 0)
+                        fprintf(stderr, "Cannot obtain active window\n");
+                    return;
+                }
+                /* Panic!  Serious window manager problem. */
+                fputs("PANIC: cannot obtain active window\n"
+                      "Instead of creating a security hole we will just exit.\n",
+                    stderr);
+                exit(1);
+            }
+            Window active = *scratch, old_active = g->active_window;
+            free(scratch);
+            scratch = NULL;
+            if (active == old_active)
+                return;
+            g->active_window = active;
+            CHECK_NONMANAGED_WINDOW(g, old_active);
+            struct msg_window_flags flags = {
+                .flags_set = 0,
+                .flags_unset = WINDOW_FLAG_FULLSCREEN,
+            };
+            qubes_update_wmflags(g, vm_window, &flags);
+        }
         update_work_area(g);
     }
     CHECK_NONMANAGED_WINDOW(g, ev->window);
