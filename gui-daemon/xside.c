@@ -561,6 +561,7 @@ static void intern_global_atoms(Ghandles *const g) {
         { &g->qubes_vmwindowid, "_QUBES_VMWINDOWID" },
         { &g->net_wm_icon, "_NET_WM_ICON" },
         { &g->net_current_desktop, "_NET_CURRENT_DESKTOP" },
+        { &g->net_active_window, "_NET_ACTIVE_WINDOW" },
         { &g->wm_user_time_window, "_NET_WM_USER_TIME_WINDOW" },
         { &g->wm_user_time, "_NET_WM_USER_TIME" },
         { &g->wmDeleteMessage, "WM_DELETE_WINDOW" },
