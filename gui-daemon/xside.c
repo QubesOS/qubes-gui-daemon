@@ -443,82 +443,83 @@ static const long max_display_width = 1UL << 20;
  */
 static const int override_redirect_padding = 0;
 
-/* update g when the current desktop changes */
-static void update_work_area(Ghandles *g) {
+static bool
+qubes_get_cardinal_property(Ghandles *const g, Atom const name, Atom type,
+                            const char *const msg, unsigned long *const out,
+                            unsigned long offset, unsigned long length,
+                            bool forbid_remaining) {
     unsigned long *scratch;
     unsigned long nitems, bytesleft;
     Atom act_type;
     int ret, act_fmt;
-
-    ret = XGetWindowProperty(g->display, g->root_win, g->net_current_desktop,
-        0, 1, False, XA_CARDINAL, &act_type, &act_fmt, &nitems, &bytesleft,
-        (unsigned char**)&scratch);
-    if (ret != Success || nitems != 1 || act_fmt != 32 ||
-        act_type != XA_CARDINAL || bytesleft) {
-        if (ret == Success && None == act_fmt && !act_fmt && !bytesleft) {
+    ret = XGetWindowProperty(g->display, g->root_win, name,
+        offset * length, length, False, type, &act_type, &act_fmt,
+        &nitems, &bytesleft, (unsigned char**)&scratch);
+    bool const trailing_junk = bytesleft && forbid_remaining;
+    if (ret != Success || nitems != length || act_fmt != 32 ||
+        act_type != type || trailing_junk) {
+        if (ret == Success && None == act_fmt && !act_fmt && !trailing_junk) {
             if (g->log_level > 0)
-                fprintf(stderr, "Cannot obtain current desktop\n");
-            g->work_x = 0;
-            g->work_y = 0;
-            g->work_width = g->root_width;
-            g->work_height = g->root_height;
-            goto check_width_height;
+                fprintf(stderr, "Cannot obtain %s\n", msg);
+            return false;
         }
-        /* Panic!  Serious window manager problem. */
-        fputs("PANIC: cannot obtain current desktop\n"
-              "Instead of creating a security hole we will just exit.\n",
-            stderr);
-        exit(1);
-    }
-    if (*scratch > max_display_width) {
-        fputs("Absurd current desktop, crashing\n", stderr);
-        abort();
-    }
-    uint32_t current_desktop = (uint32_t)*scratch;
-    XFree(scratch);
-    ret = XGetWindowProperty(g->display, g->root_win, g->wm_workarea,
-            current_desktop * desktop_coordinates_size,
-            desktop_coordinates_size, False, XA_CARDINAL, &act_type, &act_fmt,
-            &nitems, &bytesleft, (unsigned char**)&scratch);
-    if (ret != Success || nitems != desktop_coordinates_size || act_fmt != 32 ||
-        act_type != XA_CARDINAL) {
-        if (ret == Success && None == act_fmt && !act_fmt && !bytesleft) {
-            if (g->log_level > 0)
-                fprintf(stderr, "Cannot obtain work area\n");
-            g->work_x = 0;
-            g->work_y = 0;
-            g->work_width = g->root_width;
-            g->work_height = g->root_height;
-            goto check_width_height;
-        }
-        /* Panic!  We have no idea where the window should be.  The only safe
-         * thing to do is exit. */
         fprintf(stderr,
-                "PANIC: cannot obtain work area:\n"
+                "PANIC: cannot obtain %s:\n"
                 "   ret %d (success %d)\n"
                 "   act_fmt %d (expected 32)\n"
                 "   nitems %lu (expected %lu)\n"
                 "   act_type %lu (expected %lu)\n"
+                "   bytesleft %lu (expected %lu)\n"
                 "Instead of creating a security hole we will just exit.\n",
-                ret, Success, act_fmt, nitems,
-                desktop_coordinates_size, act_type, XA_CARDINAL);
+                msg, ret, Success, act_fmt, nitems,
+                length, act_type, type, bytesleft, forbid_remaining ? 0 : bytesleft);
         exit(1);
     }
-    for (unsigned long s = 0; s < desktop_coordinates_size; ++s) {
-        if (scratch[s] > max_display_width) {
+    memcpy(out, scratch, length * sizeof(unsigned long));
+    XFree(scratch);
+    return true;
+}
+
+/* update g when the current desktop changes */
+static void update_work_area(Ghandles *g) {
+    unsigned long current_desktop;
+    if (!qubes_get_cardinal_property(g, g->net_current_desktop, XCB_ATOM_CARDINAL,
+                                     "current desktop", &current_desktop,
+                                     0, 1, true)) {
+        g->work_x = 0;
+        g->work_y = 0;
+        g->work_width = g->root_width;
+        g->work_height = g->root_height;
+        goto check_width_height;
+    }
+    if (current_desktop > max_display_width) {
+        fputs("Absurd current desktop, crashing\n", stderr);
+        abort();
+    }
+    unsigned long desktop_size[4];
+    static_assert(QUBES_ARRAY_SIZE(desktop_size) == desktop_coordinates_size, "bug");
+    if (!qubes_get_cardinal_property(g, g->wm_workarea, XCB_ATOM_CARDINAL,
+                            "work area", desktop_size,
+                            current_desktop, QUBES_ARRAY_SIZE(desktop_size), false)) {
+        g->work_x = 0;
+        g->work_y = 0;
+        g->work_width = g->root_width;
+        g->work_height = g->root_height;
+        goto check_width_height;
+    }
+    for (unsigned long s = 0; s < QUBES_ARRAY_SIZE(desktop_size); ++s) {
+        if (desktop_size[s] > max_display_width) {
             fputs("Absurd work area, crashing\n", stderr);
             exit(1);
         }
     }
-    g->work_x = scratch[0];
-    g->work_y = scratch[1];
-    g->work_width = scratch[2];
-    g->work_height = scratch[3];
+    g->work_x = desktop_size[0];
+    g->work_y = desktop_size[1];
+    g->work_width = desktop_size[2];
+    g->work_height = desktop_size[3];
     if (g->log_level > 0)
         fprintf(stderr, "work area %lu %lu %lu %lu\n",
-                scratch[0], scratch[1], scratch[2], scratch[3]);
-
-    XFree(scratch);
+                desktop_size[0], desktop_size[1], desktop_size[2], desktop_size[3]);
 check_width_height:
     if (g->work_width <= 2 * override_redirect_padding ||
         g->work_height <= 2 * override_redirect_padding) {
@@ -2116,30 +2117,13 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent *con
             return;
         if (ev->atom == g->net_active_window) {
             /* Activate the window */
-            unsigned long *scratch;
-            unsigned long nitems, bytesleft;
-            Atom act_type;
-            int ret, act_fmt;
-
-            ret = XGetWindowProperty(g->display, g->root_win, g->net_active_window,
-                0, 1, False, XA_WINDOW, &act_type, &act_fmt, &nitems, &bytesleft,
-                (unsigned char**)&scratch);
-            if (ret != Success || nitems != 1 || act_fmt != 32 ||
-                act_type != XA_WINDOW) {
-                if (ret == Success && None == act_fmt && !act_fmt) {
-                    if (g->log_level > 0)
-                        fprintf(stderr, "Cannot obtain active window\n");
-                    return;
-                }
-                /* Panic!  Serious window manager problem. */
-                fputs("PANIC: cannot obtain active window\n"
-                      "Instead of creating a security hole we will just exit.\n",
-                    stderr);
+            Window active, old_active = g->active_window;
+            if (!qubes_get_cardinal_property(g, g->net_active_window, XCB_ATOM_WINDOW,
+                                             "active window", &active,
+                                             0, 1, false)) {
+                fputs("Cannot obtain active window?\n", stderr);
                 exit(1);
             }
-            Window active = *scratch, old_active = g->active_window;
-            free(scratch);
-            scratch = NULL;
             if (active == old_active)
                 return;
             g->active_window = active;
