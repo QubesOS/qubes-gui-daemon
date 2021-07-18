@@ -1853,6 +1853,10 @@ static void process_xevent_motion(Ghandles * g, const XMotionEvent * ev)
 //      fprintf(stderr, "motion in 0x%x", ev->window);
 }
 
+static void qubes_update_wmflags(Ghandles *const g,
+        struct windowdata *const vm_window,
+        struct msg_window_flags *const msg);
+
 /* handle local Xserver event: FocusIn, FocusOut
  * send to relevant window in VM */
 static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
@@ -2677,7 +2681,12 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
             WINDOW_FLAG_FULLSCREEN |
             WINDOW_FLAG_DEMANDS_ATTENTION);
     /* sanitize end */
+    qubes_update_wmflags(g, vm_window, &msg);
+}
 
+static void qubes_update_wmflags(Ghandles *const g,
+        struct windowdata *const vm_window,
+        struct msg_window_flags *const msg) {
     if (!vm_window->is_mapped) {
         /* for unmapped windows, set property directly; only "set" list is
          * processed (will override property) */
@@ -2685,7 +2694,7 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
         int i = 0;
 
         vm_window->flags_set &= ~(WINDOW_FLAG_FULLSCREEN | WINDOW_FLAG_DEMANDS_ATTENTION);
-        if (msg.flags_set & WINDOW_FLAG_FULLSCREEN) {
+        if (msg->flags_set & WINDOW_FLAG_FULLSCREEN) {
             if (g->allow_fullscreen) {
                 vm_window->flags_set |= WINDOW_FLAG_FULLSCREEN;
                 state_list[i++] = g->wm_state_fullscreen;
@@ -2701,7 +2710,7 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
             }
         } else
             vm_window->fullscreen_maximize_requested = 0;
-        if (msg.flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) {
+        if (msg->flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) {
             vm_window->flags_set |= WINDOW_FLAG_DEMANDS_ATTENTION;
             state_list[i++] = g->wm_state_demands_attention;
         }
@@ -2720,15 +2729,15 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
     } else {
         /* for mapped windows, send message to window manager (via root window) */
         XClientMessageEvent ev;
-        uint32_t flags_all = msg.flags_set | msg.flags_unset;
+        uint32_t flags_all = msg->flags_set | msg->flags_unset;
 
         if (!flags_all)
             /* no change requested */
             return;
 
         // WINDOW_FLAG_FULLSCREEN and WINDOW_FLAG_MINIMIZE are mutually exclusive
-        if (msg.flags_set & WINDOW_FLAG_MINIMIZE)
-            msg.flags_set &= ~WINDOW_FLAG_FULLSCREEN;
+        if (msg->flags_set & WINDOW_FLAG_MINIMIZE)
+            msg->flags_set &= ~WINDOW_FLAG_FULLSCREEN;
 
         memset(&ev, 0, sizeof(ev));
         ev.type = ClientMessage;
@@ -2740,7 +2749,7 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
 
         /* ev.data.l[0]: 1 - add/set property, 0 - remove/unset property */
         if (flags_all & WINDOW_FLAG_FULLSCREEN) {
-            ev.data.l[0] = (msg.flags_set & WINDOW_FLAG_FULLSCREEN) ? 1 : 0;
+            ev.data.l[0] = (msg->flags_set & WINDOW_FLAG_FULLSCREEN) ? 1 : 0;
             if (g->allow_fullscreen) {
                 /* allow entering fullscreen only if g->allow_fullscreen */
                 ev.data.l[1] = g->wm_state_fullscreen;
@@ -2764,17 +2773,16 @@ static void handle_wmflags(Ghandles * g, struct windowdata *vm_window)
                     (SubstructureNotifyMask|SubstructureRedirectMask),
                     (XEvent*) &ev);
         }
-        if (msg.flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) {
-            ev.data.l[0] = (msg.flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) ? 1 : 0;
+        if (msg->flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) {
+            ev.data.l[0] = (msg->flags_set & WINDOW_FLAG_DEMANDS_ATTENTION) ? 1 : 0;
             ev.data.l[1] = g->wm_state_demands_attention;
             ev.data.l[2] = 0;
             XSendEvent(g->display, g->root_win, False,
                     (SubstructureNotifyMask|SubstructureRedirectMask),
                     (XEvent*) &ev);
         }
-        if (msg.flags_set & WINDOW_FLAG_MINIMIZE) {
+        if (msg->flags_set & WINDOW_FLAG_MINIMIZE)
             XIconifyWindow(g->display, vm_window->local_winid, g->screen);
-        }
     }
 }
 
