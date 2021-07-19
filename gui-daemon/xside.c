@@ -580,8 +580,8 @@ static void intern_global_atoms(Ghandles *const g) {
         *atoms_to_intern[i].dest = labels[i];
 }
 
-static bool qubes_get_all_atom_properties(Display *const display,
-        Window const window, Atom property, long **state_list, size_t *items) {
+static bool qubes_get_all_properties(Display *const display,
+        Window const window, Atom property, Atom kind, unsigned long **state_list, size_t *items) {
     assert(state_list && "NULL state_list in qubes_get_all_atom_properties");
     assert(items && "NULL items in qubes_get_all_atom_properties");
     *items = 0;
@@ -589,14 +589,18 @@ static bool qubes_get_all_atom_properties(Display *const display,
     Atom act_type = None;
     int act_fmt = 0, ret;
 retry:
-    /* Ensure we read all of the atoms */
+    /* Ensure we read all of the entries */
     *state_list = NULL;
     ret = XGetWindowProperty(display, window, property,
-            0, (10 * 4 + bytesleft + 3) / 4, False, XA_ATOM, &act_type, &act_fmt,
+            0, (10 * 4 + bytesleft + 3) / 4, False, kind, &act_type, &act_fmt,
             &nitems, &bytesleft, (unsigned char**)state_list);
-    if (ret != Success) {
+    if (ret != Success || act_type != kind) {
         XFree(*state_list);
         *state_list = NULL;
+        if (!act_type)
+            fprintf(stderr, "Requested property did not exist\n");
+        else if (act_type != kind)
+            fprintf(stderr, "Requested a property of type %x, but it was of type %x\n", (int)kind, (int)act_type);
         return false;
     }
     if (bytesleft) {
@@ -688,11 +692,11 @@ static void mkghandles(Ghandles * g)
          */
         g->cursors[i] = (i % 2 == 0) ? XCreateFontCursor(g->display, i) : None;
     }
-    long *state_list;
+    unsigned long *state_list;
     size_t nitems;
     /* Get the stub window for _NET_WM_USER_TIME */
-    if (!qubes_get_all_atom_properties(g->display,
-            g->root_win, g->net_supported, &state_list, &nitems)) {
+    if (!qubes_get_all_properties(g->display,
+            g->root_win, g->net_supported, XA_ATOM, &state_list, &nitems)) {
         fputs("Cannot get properties for global window!\n", stderr);
         exit(1);
     }
@@ -1881,15 +1885,6 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
         hdr.type = MSG_KEYMAP_NOTIFY;
         hdr.window = 0;
         write_message(g->vchan, hdr, keys);
-    } else {
-        if (g->log_level > 0)
-            fprintf(stderr, "Clearing fullscreen flag of window 0x%x as it no longer has focus\n",
-                    (int)ev->window);
-        struct msg_window_flags flags = {
-            .flags_set = 0,
-            .flags_unset = WINDOW_FLAG_FULLSCREEN,
-        };
-        qubes_update_wmflags(g, vm_window, &flags);
     }
     hdr.type = MSG_FOCUS;
     hdr.window = vm_window->remote_winid;
@@ -2107,7 +2102,7 @@ static inline uint32_t flags_from_atom(Ghandles * g, Atom a) {
  * currently only _NET_WM_STATE is examined */
 static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent *const ev)
 {
-    long *state_list;
+    unsigned long *state_list;
     size_t nitems;
     unsigned long i;
     int maximize_flags_seen;
@@ -2119,36 +2114,53 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent *con
         if (ev->state != PropertyNewValue)
             return;
         if (ev->atom == g->net_active_window) {
-            /* Activate the window */
-            Window active, old_active = g->active_window;
-            if (!qubes_get_cardinal_property(g, g->net_active_window, XCB_ATOM_WINDOW,
-                                             "active window", &active,
-                                             0, 1, false)) {
-                fputs("Cannot obtain active window?\n", stderr);
-                exit(1);
+            /* Get all values for this property */
+            if (!qubes_get_all_properties(g->display,
+                    g->root_win, g->net_active_window, XA_WINDOW, &state_list, &nitems)) {
+                /* On error, make all windows non-fullscreen */
+                nitems = 0;
+                state_list = NULL;
             }
-            if (active == old_active)
-                return;
-            g->active_window = active;
-            CHECK_NONMANAGED_WINDOW(g, old_active);
-            if (g->log_level > 0)
-                fprintf(stderr, "Clearing fullscreen flag of window 0x%x as it is no longer active\n",
-                        (int)old_active);
-            struct msg_window_flags flags = {
-                .flags_set = 0,
-                .flags_unset = WINDOW_FLAG_FULLSCREEN,
-            };
-            qubes_update_wmflags(g, vm_window, &flags);
+            struct genlist *iter;
+
+            /* FIXME this is O(n²) */
+            list_for_each(iter, g->wid2windowdata) {
+                struct windowdata *iter_window = iter->data;
+                if (!(iter_window->flags_set & WINDOW_FLAG_FULLSCREEN))
+                    continue;
+                bool active = false;
+                for (size_t i = 0; i < nitems; ++i) {
+                    if (state_list[i] == iter_window->local_winid) {
+                        active = true;
+                        break;
+                    }
+                }
+                if (active)
+                    continue;
+                if (g->log_level > 0)
+                    fprintf(stderr,
+                            "Clearing fullscreen flag of window 0x%x as it is no longer active\n",
+                            (int)(iter_window->local_winid));
+                struct msg_window_flags flags = {
+                    .flags_set = 0,
+                    .flags_unset = WINDOW_FLAG_FULLSCREEN,
+                };
+                /* FIXME do this concurrently using XCB */
+                qubes_update_wmflags(g, iter_window, &flags);
+            }
+            XFree(state_list);
+        } else if (ev->atom == g->net_current_desktop ||
+                   ev->atom == g->wm_workarea) {
+            update_work_area(g);
         }
-        update_work_area(g);
     }
     CHECK_NONMANAGED_WINDOW(g, ev->window);
     if (ev->atom == g->wm_state) {
         if (!vm_window->is_mapped)
             return;
         if (ev->state == PropertyNewValue) {
-            if (!qubes_get_all_atom_properties(g->display,
-                    vm_window->local_winid, g->wm_state, &state_list, &nitems)) {
+            if (!qubes_get_all_properties(g->display,
+                    vm_window->local_winid, g->wm_state, XA_ATOM, &state_list, &nitems)) {
                 if (g->log_level > 0) {
                     fprintf(stderr, "Failed to get 0x%x window state details\n", (int)ev->window);
                     return;
