@@ -79,3 +79,4 @@ clean:
 	(cd shmoverride; $(MAKE) clean)
 	$(MAKE) -C pulse clean
 
+.PHONY: all clean tar install help
