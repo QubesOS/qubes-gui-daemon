@@ -1590,14 +1590,14 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
         reason |= TOP_BORDER_OFF_SCREEN;
     }
     /* Sanitize right */
-    if (vm_window->x > max_width - (int)vm_window->width) {
-        vm_window->x = max_width - (int)vm_window->width;
+    if (vm_window->x > border_x + (max_width - (int)vm_window->width)) {
+        vm_window->x = border_x + (max_width - (int)vm_window->width);
         do_move = 1;
         reason |= RIGHT_BORDER_OFF_SCREEN;
     }
     /* Sanitize bottom */
-    if (vm_window->y > max_height - (int)vm_window->height) {
-        vm_window->y = max_height - (int)vm_window->height;
+    if (vm_window->y > border_y + (max_height - (int)vm_window->height)) {
+        vm_window->y = border_y + (max_height - (int)vm_window->height);
         do_move = 1;
         reason |= BOTTOM_BORDER_OFF_SCREEN;
     }
