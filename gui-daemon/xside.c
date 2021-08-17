@@ -1530,10 +1530,11 @@ static void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window,
             return;
     if (g->log_level > 1) {
         fprintf(stderr,
-            "XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d\n",
+            "XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d workarea x %d y %d width %d height %d\n",
             (int) vm_window->local_winid,
             (int) vm_window->remote_winid, x, y, vm_window->x,
-            vm_window->y, vm_window->width, vm_window->height);
+            vm_window->y, vm_window->width, vm_window->height,
+            g->work_x, g->work_y, g->work_width, g->work_height);
         if (apply_override_redirect)
             fprintf(stderr,
                 "Setting override-redirect(%d) for the above%s\n",
@@ -1552,6 +1553,18 @@ static void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window,
     }
     if (vm_window->is_mapped && apply_override_redirect)
         XMapWindow(g->display, vm_window->local_winid);
+    if (x < 0 || y < 0 ||
+        g->work_width < 0 ||
+        g->work_height < 0 ||
+        (uint32_t)g->work_width < vm_window->width ||
+        (uint32_t)g->work_height < vm_window->height ||
+        (uint32_t)x > g->work_width - vm_window->width ||
+        (uint32_t)y > g->work_height - vm_window->height) {
+        fprintf(stderr, "internal error: moveresize_vm_window: trying to move the window outside of the work area (this is a bug)");
+        abort();
+    }
+    XMoveResizeWindow(g->display, vm_window->local_winid, x, y,
+              g->work_x + vm_window->width, g->work_y + vm_window->height);
 }
 
 /* force window to not hide its frame
