@@ -1116,7 +1116,7 @@ static void send_configure(Ghandles * g, struct windowdata *vm_window, int x, in
         int w, int h)
 {
     struct msg_hdr hdr;
-    struct msg_configure msg;
+    struct msg_configure msg = {0};
     hdr.type = MSG_CONFIGURE;
     hdr.window = vm_window->remote_winid;
     msg.height = h;
