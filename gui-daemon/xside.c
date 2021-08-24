@@ -1910,30 +1910,75 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
                 untrusted_y, untrusted_w, untrusted_h);
         return;
     }
+    // now known: untrusted_x and untrusted_y are not negative
     if (vm_window->image) {
+        // image_width and image_height are not negative
+        // (checked in handle_mfndump and handle_window_dump)
         x = min(untrusted_x, vm_window->image_width);
+        // now: x is not negative and not greater than vm_window->image_width
         y = min(untrusted_y, vm_window->image_height);
+        // now: y is not negative and not greater than vm_window->image_height
         w = min(max(untrusted_w, 0), vm_window->image_width - x);
+        // now: w is not negative and not greater than vm_window->image_width
         h = min(max(untrusted_h, 0), vm_window->image_height - y);
+        // now: h is not negative and not greater than vm_window->image_height
     } else if (g->screen_window) {
         /* update only onscreen window part */
+        // image_width and image_height are not negative
+        // (checked in handle_mfndump and handle_window_dump)
         if (vm_window->x >= g->screen_window->image_width ||
                 vm_window->y >= g->screen_window->image_height)
+            // window is entirely off-screen
             return;
+        // now: vm_window->x is less than g->screen_window->image_width
+        // now: vm_window->y is less than g->screen_window->image_height
+        // now: g->screen_window->image_width - vm_window->x > 0
+        // now: g->screen_window->image_height - vm_window->y > 0
+
         if (vm_window->x < 0 && vm_window->x+untrusted_x < 0)
+            // we know vm_window->x is not less than -MAX_WINDOW_WIDTH, so this
+            // is not UB.
             untrusted_x = -vm_window->x;
+        // untrusted_x + vm_window->x is not negative and untrusted_x is not
+        // negative
+
         if (vm_window->y < 0 && vm_window->y+untrusted_y < 0)
+            // we know vm_window->x is not less than -MAX_WINDOW_WIDTH, so this
+            // is not UB.
             untrusted_y = -vm_window->y;
+        // now: untrusted_y + vm_window->y is not negative and untrusted_y is
+        // not negative
+
+        // vm_window->x is greater than INT_MIN + MAX_WINDOW_WIDTH, so this is not UB
         x = min(untrusted_x, g->screen_window->image_width - vm_window->x);
+        // now: x is not negative and x + vm_window->x is not negative
+        // now: x + vm_window->x is not greater than g->screen_window->image_width
+
+        // vm_window->y is greater than INT_MIN + MAX_WINDOW_HEIGHT, so this is not UB
         y = min(untrusted_y, g->screen_window->image_height - vm_window->y);
+        // now: y is not negative and y + vm_window->y is not negative
+        // now: y + vm_window->y is not greater than g->screen_window->image_height
+
         w = min(max(untrusted_w, 0), g->screen_window->image_width - vm_window->x - x);
+        // now: w is not negative and not greater than g->screen_window->image_width
+
         h = min(max(untrusted_h, 0), g->screen_window->image_height - vm_window->y - y);
+        // now: h is not negative and not greater than g->screen_window->image_height
+
+        // if the requested area is outside of the window, this will be caught
+        // by the code below that checks for frames being overwritten
     } else {
         /* no image to update, will return after possibly drawing a frame */
+        // width and height are not negative
+        // (checked in handle_mfndump and handle_window_dump)
         x = min(untrusted_x, (int)vm_window->width);
+        // now: x is not negative and not greater than vm_window->width
         y = min(untrusted_y, (int)vm_window->height);
+        // now: y is not negative and not greater than vm_window->height
         w = min(max(untrusted_w, 0), (int)vm_window->width - x);
+        // now: w is not negative and not greater than vm_window->width
         h = min(max(untrusted_h, 0), (int)vm_window->height - y);
+        // now: h is not negative and not greater than vm_window->height
     }
 
     /* sanitize end */
@@ -2012,6 +2057,8 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
                     g->context, vm_window->image, x,
                     y, x, y, w, h, 0);
         } else if (g->screen_window && g->screen_window->image) {
+            // vm_window->x+x and vm_window->y+y are the position relative to
+            // the screen, while x and y are the position relative to the window
             XShmPutImage(g->display, vm_window->local_winid,
                     g->context, g->screen_window->image, vm_window->x+x,
                     vm_window->y+y, x, y, w, h, 0);
