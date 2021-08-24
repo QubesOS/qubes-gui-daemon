@@ -1,3 +1,19 @@
+qubes-gui-daemon (4.1.15-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Use -fvisibility=hidden for building C
+  * Add missing .PHONY dependencies
+  * Miscellaneous cleanups; no change in behavior
+
+  [ Marek Marczykowski-Górecki ]
+  * zero-out msg_configure before filling it
+
+  [ Demi Marie Obenour ]
+  * Fix check for right/bottom border off screen
+  * Add comments in do_shm_update
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Tue, 24 Aug 2021 15:01:11 +0200
+
 qubes-gui-daemon (4.1.14-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
