@@ -1363,7 +1363,7 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
     if (g->log_level > 1)
         fprintf(stderr,
             "handle_configure_from_vm, local 0x%x remote 0x%x, %d/%d, was"
-            " %d/%d, ovr=%d, xy %d/%d, was %d/%d\n",
+            " %d/%d, ovr=%d (ignored), xy %d/%d, was %d/%d\n",
             (int) vm_window->local_winid,
             (int) vm_window->remote_winid,
             untrusted_conf.width, untrusted_conf.height,
@@ -1382,6 +1382,8 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
                 min((int) untrusted_conf.x, MAX_WINDOW_WIDTH));
     y = max(-MAX_WINDOW_HEIGHT,
                 min((int) untrusted_conf.y, MAX_WINDOW_HEIGHT));
+    /* ignore override_redirect in MSG_CONFIGURE */
+    untrusted_conf.override_redirect = vm_window->override_redirect;
     /* sanitize end */
     if (vm_window->width != width || vm_window->height != height ||
         vm_window->x != x || vm_window->y != y)
