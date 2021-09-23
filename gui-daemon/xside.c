@@ -1471,8 +1471,11 @@ static int fix_docked_xy(Ghandles * g, struct windowdata *vm_window, const char 
     return ret;
 }
 
-/* undo the calculations that fix_docked_xy did, then perform move&resize */
-static void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
+/*
+ * Undo the calculations that fix_docked_xy did, then perform move&resize.
+ * Optionally apply vm_window->override_redirect. */
+static void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window,
+                                 bool apply_override_redirect)
 {
     int x = 0, y = 0;
     Window win;
@@ -1480,6 +1483,9 @@ static void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
     long *frame_extents; // left, right, top, bottom
     unsigned long nitems, bytesleft;
     int ret, act_fmt;
+    XSetWindowAttributes attr;
+
+    assert(!(vm_window->is_docked && apply_override_redirect));
 
     if (!vm_window->is_docked) {
         /* we have window content coordinates, but XMoveResizeWindow requires
@@ -1502,14 +1508,30 @@ static void moveresize_vm_window(Ghandles * g, struct windowdata *vm_window)
                       vm_window->local_winid, vm_window->x,
                       vm_window->y, &x, &y, &win))
             return;
-    if (g->log_level > 1)
+    if (g->log_level > 1) {
         fprintf(stderr,
             "XMoveResizeWindow local 0x%x remote 0x%x, xy %d %d (vm_window is %d %d) wh %d %d\n",
             (int) vm_window->local_winid,
             (int) vm_window->remote_winid, x, y, vm_window->x,
             vm_window->y, vm_window->width, vm_window->height);
+        if (apply_override_redirect)
+            fprintf(stderr,
+                "Setting override-redirect(%d) for the above%s\n",
+                vm_window->override_redirect, vm_window->is_mapped ? ", with unmap+map" : "");
+    }
+    /* When changing override-redirect of a mapped window, unmap the window
+     * first, to let the window manager notice the change */
+    if (vm_window->is_mapped && apply_override_redirect)
+        XUnmapWindow(g->display, vm_window->local_winid);
     XMoveResizeWindow(g->display, vm_window->local_winid, x, y,
               vm_window->width, vm_window->height);
+    if (apply_override_redirect) {
+        attr.override_redirect = vm_window->override_redirect;
+        XChangeWindowAttributes(g->display, vm_window->local_winid,
+                CWOverrideRedirect, &attr);
+    }
+    if (vm_window->is_mapped && apply_override_redirect)
+        XMapWindow(g->display, vm_window->local_winid);
 }
 
 /* force window to not hide its frame
@@ -1611,8 +1633,8 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
     return do_move;
 }
 
-static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
-                                  int req_override_redirect)
+static int validate_override_redirect(Ghandles * g, struct windowdata *vm_window,
+                                      int req_override_redirect)
 {
     static int warning_shown;
     uint64_t avail, desired;
@@ -1630,15 +1652,12 @@ static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
     req_override_redirect = !!req_override_redirect;
 
     if (g->disable_override_redirect) {
-        vm_window->override_redirect = 0;
-        return;
+        return 0;
     }
 
     /* do not allow override redirect for a docked window */
-    if (vm_window->is_docked) {
-        vm_window->override_redirect = 0;
-        return;
-    }
+    if (vm_window->is_docked)
+        return 0;
 
     /*
      * Do not allow changing override_redirect of a mapped window, but still
@@ -1673,7 +1692,7 @@ static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
         }
     }
 
-    vm_window->override_redirect = req_override_redirect;
+    return req_override_redirect;
 }
 
 /* handle local Xserver event: XConfigureEvent
@@ -1743,7 +1762,7 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
     struct msg_configure untrusted_conf;
     int x, y;
     unsigned width, height;
-    int conf_changed;
+    int conf_changed, override_redirect;
 
     read_struct(g->vchan, untrusted_conf);
     if (g->log_level > 1)
@@ -1776,7 +1795,6 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
         conf_changed = 1;
     else
         conf_changed = 0;
-    set_override_redirect(g, vm_window, !!(untrusted_conf.override_redirect));
 
     /* We do not allow a docked window to change its size, period. */
     if (vm_window->is_docked) {
@@ -1806,12 +1824,20 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
     vm_window->height = height;
     vm_window->x = x;
     vm_window->y = y;
-    if (vm_window->override_redirect)
+    /* verify if the window is (still) entitled for the override-redirect flag */
+    override_redirect =
+        validate_override_redirect(g, vm_window, vm_window->override_redirect);
+    if (override_redirect)
         // do not let menu window hide its color frame by moving outside of the screen
         // if it is located offscreen, then allow negative x/y
         force_on_screen(g, vm_window, override_redirect_padding,
                         "handle_configure_from_vm");
-    moveresize_vm_window(g, vm_window);
+    if (vm_window->override_redirect != override_redirect) {
+        vm_window->override_redirect = override_redirect;
+        moveresize_vm_window(g, vm_window, true);
+    } else {
+        moveresize_vm_window(g, vm_window, false);
+    }
 }
 
 /* handle local Xserver event: EnterNotify, LeaveNotify
@@ -2381,7 +2407,8 @@ static void handle_create(Ghandles * g, XID window)
                            min((int) untrusted_crt.x, MAX_WINDOW_WIDTH));
     vm_window->y = max(-MAX_WINDOW_HEIGHT,
                            min((int) untrusted_crt.y, MAX_WINDOW_HEIGHT));
-    set_override_redirect(g, vm_window, !!(untrusted_crt.override_redirect));
+    vm_window->override_redirect =
+        validate_override_redirect(g, vm_window, !!(untrusted_crt.override_redirect));
     parent = untrusted_crt.parent;
     /* sanitize end */
     vm_window->remote_winid = window;
@@ -2415,7 +2442,7 @@ static void handle_create(Ghandles * g, XID window)
     if (vm_window->override_redirect
         && force_on_screen(g, vm_window, override_redirect_padding,
                            "handle_create"))
-        moveresize_vm_window(g, vm_window);
+        moveresize_vm_window(g, vm_window, false);
 }
 
 /* Check if window (to be destroyed) is not used anywhere. If it is, act
@@ -2960,14 +2987,15 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
         vm_window->transient_for = NULL;
     }
 
-    set_override_redirect(g, vm_window, !!(untrusted_txt.override_redirect));
+    vm_window->override_redirect =
+        validate_override_redirect(g, vm_window, !!(untrusted_txt.override_redirect));
     attr.override_redirect = vm_window->override_redirect;
     XChangeWindowAttributes(g->display, vm_window->local_winid,
                             CWOverrideRedirect, &attr);
     if (vm_window->override_redirect
         && force_on_screen(g, vm_window, override_redirect_padding,
                            "handle_map"))
-        moveresize_vm_window(g, vm_window);
+        moveresize_vm_window(g, vm_window, false);
     if (vm_window->override_redirect) {
         /* force window update to draw colorful frame, even when VM have not
          * sent any content yet */
