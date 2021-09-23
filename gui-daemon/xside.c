@@ -1261,6 +1261,12 @@ static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
 
     req_override_redirect = !!req_override_redirect;
 
+    /* do not allow override redirect for a docked window */
+    if (vm_window->is_docked) {
+        vm_window->override_redirect = 0;
+        return;
+    }
+
     /*
      * Do not allow changing override_redirect of a mapped window, but still
      * force it off if window is getting too big.
@@ -2522,6 +2528,11 @@ static void handle_dock(Ghandles * g, struct windowdata *vm_window)
     if (g->log_level > 0)
         fprintf(stderr, "docking window 0x%x\n",
             (int) vm_window->local_winid);
+    if (vm_window->override_redirect) {
+        fprintf(stderr, "cannot dock override-redirect window 0x%x\n",
+                (int) vm_window->local_winid);
+        return;
+    }
     tray = XGetSelectionOwner(g->display, g->tray_selection);
     if (tray != None) {
         long data[2];
