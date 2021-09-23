@@ -69,7 +69,7 @@
 /* Supported protocol version */
 
 #define PROTOCOL_VERSION_MAJOR 1
-#define PROTOCOL_VERSION_MINOR 4
+#define PROTOCOL_VERSION_MINOR 5
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
@@ -2554,6 +2554,15 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
     list_remove(l2);
     if (vm_window == g->screen_window)
         g->screen_window = NULL;
+    /* Inform the agent that the window has been destroyed.
+     * Mandatory in protocol version 1.5+, and harmless for older
+     * versions. */
+    struct msg_hdr delete_id = {
+        .type = MSG_DESTROY,
+        .window = vm_window->remote_winid,
+        .untrusted_len = 0,
+    };
+    write_struct(g->vchan, delete_id);
     free(vm_window);
 }
 
