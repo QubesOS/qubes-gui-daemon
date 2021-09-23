@@ -26,7 +26,13 @@ pkgs := x11 xext x11-xcb xcb glib-2.0 $(VCHAN_PKG) libpng libnotify libconfig
 objs := xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
 	../gui-common/error.o list.o
 extra_cflags := -I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
-		$(shell pkg-config --cflags $(pkgs)) -fvisibility=hidden
+		$(shell pkg-config --cflags $(pkgs)) \
+		-fvisibility=hidden \
+		-fno-strict-aliasing \
+		-fno-strict-overflow \
+		-fno-delete-null-pointer-checks \
+		-Wp,-D_FORTIFY_SOURCE=2
+
 LDLIBS := $(shell pkg-config --libs $(pkgs))
 all: qubes-guid # qubes-guid.1
 vpath %.c ../common
