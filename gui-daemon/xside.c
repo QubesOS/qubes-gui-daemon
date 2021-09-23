@@ -75,8 +75,8 @@
 
 /* Supported protocol version */
 
-#define PROTOCOL_VERSION_MAJOR 1
-#define PROTOCOL_VERSION_MINOR 5
+#define PROTOCOL_VERSION_MAJOR 1u
+#define PROTOCOL_VERSION_MINOR 5u
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
@@ -99,16 +99,25 @@ static Ghandles ghandles;
  * checks if this window is managed by guid and declares windowdata struct
  * pointer */
 #define CHECK_NONMANAGED_WINDOW(g, id) struct windowdata *vm_window; \
-    if (!(vm_window=check_nonmanaged_window(g, id))) return
+    do if (!(vm_window=check_nonmanaged_window((g), (id)))) return; while (0)
 
 #ifndef min
-#define min(x,y) ((x)>(y)?(y):(x))
+#define min(x,y) ({ \
+    __typeof__(x) _x = (x); \
+    __typeof__(y) _y = (y); \
+    _x > _y ? _y : _x; \
+})
 #endif
 #ifndef max
-#define max(x,y) ((x)<(y)?(y):(x))
+#define max(x,y) ({ \
+    __typeof__(x) _x = (x); \
+    __typeof__(y) _y = (y); \
+    _x < _y ? _y : _x; \
+})
 #endif
+#pragma GCC poison _x _y
 
-#define ignore_result(x) { __typeof__(x) __attribute__((unused)) _ignore=(x);}
+#define ignore_result(x) do { __typeof__(x) __attribute__((unused)) _ignore=(x); } while (0)
 
 static int (*default_x11_io_error_handler)(Display *dpy);
 static void inter_appviewer_lock(Ghandles *g, int mode);
