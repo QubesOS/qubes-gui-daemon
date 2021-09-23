@@ -1634,6 +1634,13 @@ static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
         return;
     }
 
+    /*
+     * Do not allow changing override_redirect of a mapped window, but still
+     * force it off if window is getting too big.
+     */
+    if (vm_window->is_mapped)
+        req_override_redirect = vm_window->override_redirect;
+
     avail = (uint64_t) g->work_width * (uint64_t) g->work_height;
     desired = (uint64_t) vm_window->width * (uint64_t) vm_window->height;
 
@@ -2929,7 +2936,9 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
     read_struct(g->vchan, untrusted_txt);
     if (g->invisible)
         return;
-    vm_window->is_mapped = 1;
+    /* if mapped, don't allow changing attributes */
+    if (vm_window->is_mapped)
+        return;
     if (untrusted_txt.transient_for
         && (trans =
         list_lookup(g->remote2local,
@@ -2959,6 +2968,7 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
         do_shm_update(g, vm_window, 0, 0, vm_window->width, vm_window->height);
     }
 
+    vm_window->is_mapped = 1;
     (void) XMapWindow(g->display, vm_window->local_winid);
 
     if (vm_window->override_redirect) {
