@@ -2515,6 +2515,13 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
     /* if mapped, don't allow changing attributes */
     if (vm_window->is_mapped)
         return;
+    /*
+     * Mapping/unmapping of a docked window should be done via setting
+     * _XEMBED_INFO property. Consider doing this in the future, but definitely
+     * avoid direct action behind embedder backs.
+     */
+    if (vm_window->is_docked)
+        return;
     if (untrusted_txt.transient_for
         && (trans =
         list_lookup(g->remote2local,
@@ -2557,6 +2564,11 @@ static void handle_dock(Ghandles * g, struct windowdata *vm_window)
     if (g->log_level > 0)
         fprintf(stderr, "docking window 0x%x\n",
             (int) vm_window->local_winid);
+    if (vm_window->is_mapped) {
+        fprintf(stderr, "cannot dock mapped window 0x%x\n",
+                (int) vm_window->local_winid);
+        return;
+    }
     if (vm_window->override_redirect) {
         fprintf(stderr, "cannot dock override-redirect window 0x%x\n",
                 (int) vm_window->local_winid);
@@ -2567,8 +2579,8 @@ static void handle_dock(Ghandles * g, struct windowdata *vm_window)
         long data[2];
         XClientMessageEvent msg;
 
-        data[0] = 0;
-        data[1] = 1;
+        data[0] = 0; /* version */
+        data[1] = 1; /* flags: XEMBED_MAPPED */
         XChangeProperty(g->display, vm_window->local_winid,
                 g->xembed_info, g->xembed_info, 32,
                 PropModeReplace, (unsigned char *) data,
@@ -2768,6 +2780,13 @@ static void handle_message(Ghandles * g)
         handle_map(g, vm_window);
         break;
     case MSG_UNMAP:
+        /*
+         * Mapping/unmapping of a docked window should be done via setting
+         * _XEMBED_INFO property. Consider doing this in the future, but definitely
+         * avoid direct action behind embedder backs.
+         */
+        if (vm_window->is_docked)
+            break;
         vm_window->is_mapped = 0;
         (void) XUnmapWindow(g->display, vm_window->local_winid);
         break;
