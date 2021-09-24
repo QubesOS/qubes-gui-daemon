@@ -102,7 +102,7 @@ static void print_backtrace(void);
 static void parse_cmdline_prop(Ghandles *g);
 
 static void show_message(Ghandles *g, const char *prefix, const char *msg,
-			 gint timeout)
+                         gint timeout)
 {
     char message[1024];
     NotifyNotification *notify;
@@ -127,7 +127,7 @@ static void show_message(Ghandles *g, const char *prefix, const char *msg,
 
 static void show_error_message(Ghandles *g, const char *msg)
 {
-	show_message(g, "ERROR", msg, NOTIFY_EXPIRES_DEFAULT);
+    show_message(g, "ERROR", msg, NOTIFY_EXPIRES_DEFAULT);
 }
 
 /* ask user when VM sent invalid message */
@@ -1244,50 +1244,50 @@ static int force_on_screen(Ghandles * g, struct windowdata *vm_window,
 }
 
 static void set_override_redirect(Ghandles * g, struct windowdata *vm_window,
-				  int req_override_redirect)
+                                  int req_override_redirect)
 {
-	static int warning_shown;
-	uint64_t avail, desired;
-	const char * warning_msg = "This VM has attempted to create a very large window "
-		"in a manner that would have prevented you from closing it and regaining "
-		"the control of Qubes OS\'s graphical user interface.\n\n"
-		"As a protection measure, the \"override_redirect\" flag of the window "
-		"in question has been unset. If this creates unexpected issues in the "
-		"handling of this VM\'s windows, please set \"override_redirect_protection\" "
-		"to \"false\" for this VM in /etc/qubes/guid.conf to disable this protection "
-		"measure and restart the VM.\n\n"
-		"This message will only appear once per VM per session. Please click on this "
-		"notification to close it.";
+    static int warning_shown;
+    uint64_t avail, desired;
+    const char * warning_msg = "This VM has attempted to create a very large window "
+        "in a manner that would have prevented you from closing it and regaining "
+        "the control of Qubes OS\'s graphical user interface.\n\n"
+        "As a protection measure, the \"override_redirect\" flag of the window "
+        "in question has been unset. If this creates unexpected issues in the "
+        "handling of this VM\'s windows, please set \"override_redirect_protection\" "
+        "to \"false\" for this VM in /etc/qubes/guid.conf to disable this protection "
+        "measure and restart the VM.\n\n"
+        "This message will only appear once per VM per session. Please click on this "
+        "notification to close it.";
 
-	req_override_redirect = !!req_override_redirect;
+    req_override_redirect = !!req_override_redirect;
 
-	avail = (uint64_t) g->root_width * (uint64_t) g->root_height;
-	desired = (uint64_t) vm_window->width * (uint64_t) vm_window->height;
+    avail = (uint64_t) g->root_width * (uint64_t) g->root_height;
+    desired = (uint64_t) vm_window->width * (uint64_t) vm_window->height;
 
-	if (g->override_redirect_protection && req_override_redirect &&
-	    desired > ((avail * MAX_OVERRIDE_REDIRECT_PERCENTAGE) / 100)) {
-		req_override_redirect = 0;
+    if (g->override_redirect_protection && req_override_redirect &&
+            desired > ((avail * MAX_OVERRIDE_REDIRECT_PERCENTAGE) / 100)) {
+        req_override_redirect = 0;
 
-		if (g->log_level > 0)
-			fprintf(stderr,
-				"%s unset override_redirect for "
-				"local 0x%x remote 0x%x, "
-				"window w=%u h=%u, root w=%d h=%d\n",
-				__func__,
-				(unsigned) vm_window->local_winid,
-				(unsigned) vm_window->remote_winid,
-				vm_window->width, vm_window->height,
-				g->root_width, g->root_height);
+        if (g->log_level > 0)
+            fprintf(stderr,
+                    "%s unset override_redirect for "
+                    "local 0x%x remote 0x%x, "
+                    "window w=%u h=%u, root w=%d h=%d\n",
+                    __func__,
+                    (unsigned) vm_window->local_winid,
+                    (unsigned) vm_window->remote_winid,
+                    vm_window->width, vm_window->height,
+                    g->root_width, g->root_height);
 
-		/* Show a message to the user, but do this only once. */
-		if (!warning_shown) {
-			show_message(g, "WARNING", warning_msg,
-				     NOTIFY_EXPIRES_NEVER);
-			warning_shown = 1;
-		}
-	}
+        /* Show a message to the user, but do this only once. */
+        if (!warning_shown) {
+            show_message(g, "WARNING", warning_msg,
+                    NOTIFY_EXPIRES_NEVER);
+            warning_shown = 1;
+        }
+    }
 
-	vm_window->override_redirect = req_override_redirect;
+    vm_window->override_redirect = req_override_redirect;
 }
 
 /* handle local Xserver event: XConfigureEvent
