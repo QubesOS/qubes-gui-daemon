@@ -354,6 +354,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     else
         parent = g->root_win;
     attr.override_redirect = vm_window->override_redirect;
+    attr.background_pixel = WhitePixel(g->display, DefaultScreen(g->display));
     child_win = XCreateWindow(g->display, parent,
                     vm_window->x, vm_window->y,
                     vm_window->width,
@@ -361,7 +362,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                     CopyFromParent,
                     CopyFromParent,
                     CopyFromParent,
-                    CWOverrideRedirect, &attr);
+                    CWOverrideRedirect | CWBackPixel, &attr);
     /* pass my size hints to the window manager, along with window
        and icon names */
     (void) XSetStandardProperties(g->display, child_win,
