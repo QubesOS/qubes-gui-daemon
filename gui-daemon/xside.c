@@ -1993,9 +1993,10 @@ static void handle_create(Ghandles * g, XID window)
         exit(1);
     }
     l = list_lookup(g->remote2local, parent);
-    if (l)
+    if (l) {
         vm_window->parent = l->data;
-    else
+        vm_window->parent->children_count++;
+    } else
         vm_window->parent = NULL;
     vm_window->transient_for = NULL;
     vm_window->local_winid = mkwindow(&ghandles, vm_window);
@@ -2048,6 +2049,7 @@ static void check_window_references(Ghandles * g, struct windowdata *vm_window)
             iter_window->transient_for = NULL;
         }
     }
+    assert(vm_window->children_count == 0);
 }
 
 /* handle VM message: MSG_DESTROY
@@ -2060,6 +2062,8 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
     /* check if this window is referenced anywhere */
     check_window_references(g, vm_window);
     /* then destroy */
+    if (vm_window->parent)
+        vm_window->parent->children_count--;
     XDestroyWindow(g->display, vm_window->local_winid);
     if (g->log_level > 0)
         fprintf(stderr, " XDestroyWindow 0x%x\n",

@@ -89,6 +89,7 @@ struct windowdata {
     XID remote_winid;    /* window id on VM side */
     Window local_winid;    /* window id on X side */
     Window local_frame_winid; /* window id of frame window created by window manager */
+    int children_count;
     struct windowdata *parent;    /* parent window */
     struct windowdata *transient_for;    /* transient_for hint for WM, see http://tronche.com/gui/x/icccm/sec-4.html#WM_TRANSIENT_FOR */
     int override_redirect;    /* see http://tronche.com/gui/x/xlib/window/attributes/override-redirect.html */
