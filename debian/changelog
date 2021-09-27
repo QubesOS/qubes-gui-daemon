@@ -1,3 +1,18 @@
+qubes-gui-daemon (4.1.16-1) unstable; urgency=medium
+
+  * Ignore override-redirect in MSG_CONFIGURE
+  * Prevent changing override-redirect of a mapped window
+  * Do not allow docked override-redirect windows
+  * Unmap window if really need to change override-redirect flag
+  * Do not allow docking already mapped windows
+  * Add reference counting child windows
+  * Prevent docking or setting override-redirect on a non-toplevel
+    window
+  * Prevent docking or setting override-redirect on window with any
+    child
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 27 Sep 2021 22:33:36 +0200
+
 qubes-gui-daemon (4.1.15-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
