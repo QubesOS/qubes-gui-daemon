@@ -1291,6 +1291,10 @@ static int validate_override_redirect(Ghandles * g, struct windowdata *vm_window
     if (vm_window->parent)
         return 0;
 
+    /* or for a window with any children */
+    if (vm_window->children_count)
+        return 0;
+
     /*
      * Do not allow changing override_redirect of a mapped window, but still
      * force it off if window is getting too big.
@@ -1997,6 +2001,16 @@ static void handle_create(Ghandles * g, XID window)
         exit(1);
     }
     l = list_lookup(g->remote2local, parent);
+    /* prevent using a parent that is either override-redirect, or docked */
+    if (l) {
+        struct windowdata *vm_window_parent = l->data;
+        if (vm_window_parent->override_redirect || vm_window_parent->is_docked) {
+            fprintf(stderr, "Creating 0x%x(0x%x): cannot use parent 0x%x(0x%x) that is either override-redirect or docked\n",
+                    (int) vm_window->local_winid, (int) window,
+                    (int) vm_window_parent->local_winid, (int) parent);
+            l = NULL;
+        }
+    }
     if (l) {
         vm_window->parent = l->data;
         vm_window->parent->children_count++;
@@ -2621,6 +2635,11 @@ static void handle_dock(Ghandles * g, struct windowdata *vm_window)
     }
     if (vm_window->parent) {
         fprintf(stderr, "cannot dock non-top level window 0x%x\n",
+                (int) vm_window->local_winid);
+        return;
+    }
+    if (vm_window->children_count) {
+        fprintf(stderr, "cannot dock a window 0x%x with children\n",
                 (int) vm_window->local_winid);
         return;
     }
