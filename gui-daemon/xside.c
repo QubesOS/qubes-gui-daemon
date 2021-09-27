@@ -1659,6 +1659,10 @@ static int validate_override_redirect(Ghandles * g, struct windowdata *vm_window
     if (vm_window->is_docked)
         return 0;
 
+    /* do not allow override redirect for a non-top-level window */
+    if (vm_window->parent)
+        return 0;
+
     /*
      * Do not allow changing override_redirect of a mapped window, but still
      * force it off if window is getting too big.
@@ -3037,6 +3041,11 @@ static void handle_dock(Ghandles * g, struct windowdata *vm_window)
     }
     if (vm_window->override_redirect) {
         fprintf(stderr, "cannot dock override-redirect window 0x%x\n",
+                (int) vm_window->local_winid);
+        return;
+    }
+    if (vm_window->parent) {
+        fprintf(stderr, "cannot dock non-top level window 0x%x\n",
                 (int) vm_window->local_winid);
         return;
     }
