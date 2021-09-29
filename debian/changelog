@@ -1,3 +1,12 @@
+qubes-gui-daemon (4.1.17-1) unstable; urgency=medium
+
+  * Set window background color to white
+  * Do not ignore MSG_SHMIMAGE for a docked window
+  * Unset override-redirect flag when docking, instead of preventing
+    dock
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Wed, 29 Sep 2021 13:05:15 +0200
+
 qubes-gui-daemon (4.1.16-1) unstable; urgency=medium
 
   * Ignore override-redirect in MSG_CONFIGURE
