@@ -2368,7 +2368,7 @@ static void handle_shmimage(Ghandles * g, struct windowdata *vm_window)
     struct msg_shmimage untrusted_mx;
 
     read_struct(g->vchan, untrusted_mx);
-    if (!vm_window->is_mapped)
+    if (!vm_window->is_mapped && !vm_window->is_docked)
         return;
     if (g->log_level >= 2) {
         fprintf(stderr, "shmimage for 0x%x(remote 0x%x), x: %d, y: %d, w: %d, h: %d\n",
