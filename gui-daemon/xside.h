@@ -232,6 +232,7 @@ struct _global_handles {
     Atom qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
     bool in_dom0; /* true if we are in dom0, otherwise false */
     Atom net_supported;
+    bool permit_subwindows : 1; /* Permit subwindows */
 };
 
 typedef struct _global_handles Ghandles;

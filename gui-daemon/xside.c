@@ -2459,6 +2459,12 @@ static void handle_create(Ghandles * g, XID window)
     /* prevent using a parent that is either override-redirect, or docked */
     if (l) {
         struct windowdata *vm_window_parent = l->data;
+        if (!g->permit_subwindows) {
+            fprintf(stderr, "Creating 0x%x(0x%x): cannot use parent 0x%x(0x%x) as subwindows are disabled.  Aborting\n",
+                    (int) vm_window->local_winid, (int) window,
+                    (int) vm_window_parent->local_winid, (int) parent);
+            exit(1);
+        }
         if (vm_window_parent->override_redirect || vm_window_parent->is_docked) {
             fprintf(stderr, "Creating 0x%x(0x%x): cannot use parent 0x%x(0x%x) that is either override-redirect or docked\n",
                     (int) vm_window->local_winid, (int) window,
@@ -3714,6 +3720,7 @@ struct option longopts[] = {
     { "trayicon-mode", required_argument, NULL, opt_trayicon_mode },
     { "screensaver-name", required_argument, NULL, opt_screensaver_name },
     { "help", no_argument, NULL, 'h' },
+    { "subwindows", required_argument, NULL, 's' },
     { 0, 0, 0, 0 },
 };
 static const char optstring[] = "C:d:t:N:c:l:i:K:vqQnafIp:Th";
@@ -3983,6 +3990,16 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
                 exit(1);
             }
             break;
+        case 's':
+            if (!strcmp(optarg, "allow"))
+                g->permit_subwindows = 1;
+            else if (!strcmp(optarg, "forbid"))
+                g->permit_subwindows = 0;
+            else {
+                fputs("Unsupported argument to --subwindows=\n", stderr);
+                exit(1);
+            }
+            break;
         case 'p':
             if (prop_num >= MAX_EXTRA_PROPS) {
                 fprintf(stderr, "Too many extra properties (-p)\n");
@@ -4154,7 +4171,27 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
         else if (!strcmp(value, "allow"))
             g->disable_override_redirect = 0;
         else {
-            fprintf(stderr, "unsupported value ‘%s’ for override_redirect\n", value);
+            fprintf(stderr,
+                    "unsupported value ‘%s’ for override_redirect (must be ‘disabled’ or ‘allow’\n",
+                    value);
+            exit(1);
+        }
+    }
+
+    if ((setting =
+         config_setting_get_member(group, "subwindows"))) {
+        const char *value;
+        if ((value = config_setting_get_string(setting)) == NULL) {
+            fputs("subwindows must be a string\n", stderr);
+            exit(1);
+        } else if (!strcmp(value, "forbid"))
+            g->permit_subwindows = 0;
+        else if (!strcmp(value, "allow"))
+            g->permit_subwindows = 1;
+        else {
+            fprintf(stderr,
+                    "unsupported value ‘%s’ for subwindows (must be ‘forbid’ or ‘allow’\n",
+                    value);
             exit(1);
         }
     }
