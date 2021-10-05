@@ -340,7 +340,6 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 {
     char *gargv[1] = { NULL };
     Window child_win;
-    Window parent;
     XSizeHints my_size_hints;    /* hints for the window manager */
     int i;
     XSetWindowAttributes attr;
@@ -349,13 +348,9 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     my_size_hints.width = vm_window->width;
     my_size_hints.height = vm_window->height;
 
-    if (vm_window->parent)
-        parent = vm_window->parent->local_winid;
-    else
-        parent = g->root_win;
     attr.override_redirect = vm_window->override_redirect;
     attr.background_pixel = WhitePixel(g->display, DefaultScreen(g->display));
-    child_win = XCreateWindow(g->display, parent,
+    child_win = XCreateWindow(g->display, g->root_win,
                     vm_window->x, vm_window->y,
                     vm_window->width,
                     vm_window->height, 0,
@@ -1415,8 +1410,7 @@ static void process_xevent_reparent(Ghandles *g, XReparentEvent *ev) {
      * window is reparented back into original structure (window manager
      * restart?)
      */
-    if ((vm_window->parent && ev->parent == vm_window->parent->local_winid) ||
-        (!vm_window->parent && ev->parent == g->root_win))
+    if (ev->parent == g->root_win)
         vm_window->local_frame_winid = 0;
     else
         vm_window->local_frame_winid = ev->parent;
@@ -1660,14 +1654,6 @@ static int validate_override_redirect(Ghandles * g, struct windowdata *vm_window
     if (vm_window->is_docked)
         return 0;
 
-    /* do not allow override redirect for a non-top-level window */
-    if (vm_window->parent)
-        return 0;
-
-    /* or for a window with any children */
-    if (vm_window->children_count)
-        return 0;
-
     /*
      * Do not allow changing override_redirect of a mapped window, but still
      * force it off if window is getting too big.
@@ -1729,12 +1715,8 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
      */
     if (!ev->send_event && vm_window->local_frame_winid) {
         /* needs to translate coordinates */
-        Window parent, child;
-        if (vm_window->parent)
-            parent = vm_window->parent->local_winid;
-        else
-            parent = g->root_win;
-        XTranslateCoordinates(g->display, ev->window, parent,
+        Window child;
+        XTranslateCoordinates(g->display, ev->window, g->root_win,
                 0, 0, &x, &y, &child);
         if (g->log_level > 1)
             fprintf(stderr, "  translated to %d/%d\n", x, y);
@@ -2429,26 +2411,17 @@ static void handle_create(Ghandles * g, XID window)
     /* prevent using a parent that is either override-redirect, or docked */
     if (l) {
         struct windowdata *vm_window_parent = l->data;
-        if (vm_window_parent->override_redirect || vm_window_parent->is_docked) {
-            fprintf(stderr, "Creating 0x%x(0x%x): cannot use parent 0x%x(0x%x) that is either override-redirect or docked\n",
-                    (int) vm_window->local_winid, (int) window,
-                    (int) vm_window_parent->local_winid, (int) parent);
-            l = NULL;
-        }
+        fprintf(stderr, "Creating 0x%x(0x%x): cannot use parent 0x%x(0x%x) as subwindows are disabled.  Aborting\n",
+                (int) vm_window->local_winid, (int) window,
+                (int) vm_window_parent->local_winid, (int) parent);
+        exit(1);
     }
-    if (l) {
-        vm_window->parent = l->data;
-        vm_window->parent->children_count++;
-    } else
-        vm_window->parent = NULL;
     vm_window->transient_for = NULL;
     vm_window->local_winid = mkwindow(&ghandles, vm_window);
     if (g->log_level > 0)
         fprintf(stderr,
-            "Created 0x%x(0x%x) parent 0x%x(0x%x) ovr=%d x/y %d/%d w/h %d/%d\n",
+            "Created 0x%x(0x%x) ovr=%d x/y %d/%d w/h %d/%d\n",
             (int) vm_window->local_winid, (int) window,
-            (int) (vm_window->parent ? vm_window->parent->
-                   local_winid : 0), (unsigned) parent,
             vm_window->override_redirect,
             vm_window->x, vm_window->y,
             vm_window->width, vm_window->height);
@@ -2467,8 +2440,6 @@ static void handle_create(Ghandles * g, XID window)
 
 /* Check if window (to be destroyed) is not used anywhere. If it is, act
  * accordingly:
- *  - if it is a parent for some - terminate abruptly (children should be
- *    destroyed earlier)
  *  - if it is a set as transient_for - clear that hint
  */
 static void check_window_references(Ghandles * g, struct windowdata *vm_window)
@@ -2477,13 +2448,6 @@ static void check_window_references(Ghandles * g, struct windowdata *vm_window)
 
     list_for_each(iter, g->wid2windowdata) {
         struct windowdata *iter_window = iter->data;
-        if (iter_window->parent == vm_window) {
-            fprintf(stderr, "Window 0x%x is still a parent for 0x%x, "
-                    "but VM tried to destroy it\n",
-                   (int)vm_window->local_winid, (int)iter_window->local_winid);
-            fprintf(stderr, "Aborting\n");
-            exit(1);
-        }
         if (iter_window->transient_for == vm_window) {
             fprintf(stderr, "Window 0x%x is still set as transient_for "
                     "for a 0x%x window, but VM tried to destroy it\n",
@@ -2493,7 +2457,6 @@ static void check_window_references(Ghandles * g, struct windowdata *vm_window)
             iter_window->transient_for = NULL;
         }
     }
-    assert(vm_window->children_count == 0);
 }
 
 /* handle VM message: MSG_DESTROY
@@ -2506,8 +2469,6 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
     /* check if this window is referenced anywhere */
     check_window_references(g, vm_window);
     /* then destroy */
-    if (vm_window->parent)
-        vm_window->parent->children_count--;
     XDestroyWindow(g->display, vm_window->local_winid);
     if (g->log_level > 0)
         fprintf(stderr, " XDestroyWindow 0x%x\n",
@@ -2937,7 +2898,7 @@ static void restack_windows(Ghandles *g, struct windowdata *vm_window)
 
     XQueryTree(
         g->display,
-        vm_window->parent ? vm_window->parent->local_winid : g->root_win,
+        g->root_win,
         &root, &parent, &children_list, &children_count);
 
     if (!children_list) {
@@ -3064,16 +3025,6 @@ static void handle_dock(Ghandles * g, struct windowdata *vm_window)
         XChangeWindowAttributes(g->display, vm_window->local_winid,
                 CWOverrideRedirect, &attr);
         vm_window->override_redirect = 0;
-    }
-    if (vm_window->parent) {
-        fprintf(stderr, "cannot dock non-top level window 0x%x\n",
-                (int) vm_window->local_winid);
-        return;
-    }
-    if (vm_window->children_count) {
-        fprintf(stderr, "cannot dock a window 0x%x with children\n",
-                (int) vm_window->local_winid);
-        return;
     }
     tray = XGetSelectionOwner(g->display, g->tray_selection);
     if (tray != None) {
