@@ -1755,6 +1755,17 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
     } else
         fix_docked_xy(g, vm_window, "process_xevent_configure");
 
+    if (vm_window->override_redirect
+        && force_on_screen(g, vm_window, override_redirect_padding,
+                           "handle_map")) {
+        if (g->log_level > 0)
+            fprintf(stderr,
+                    "Something moved/resized override-redirect window "
+                    "0x%lx(0x%lx) outside of allowed area, moving it back\n",
+                    vm_window->local_winid, vm_window->remote_winid);
+        moveresize_vm_window(g, vm_window, false);
+    }
+
 // if AppVM has not unacknowledged previous resize msg, do not send another one
     if (vm_window->have_queued_configure)
         return;
