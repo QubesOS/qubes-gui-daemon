@@ -238,4 +238,33 @@ struct _global_handles {
 
 typedef struct _global_handles Ghandles;
 
+#define ASSERT_HEIGHT_UNSIGNED(h)                                                      \
+    do {                                                                               \
+        __typeof__(h) _h = (h);                                                        \
+        static_assert((__typeof__(h))(-1) > 1, "must use an unsigned type for " #h);   \
+        assert(_h <= MAX_WINDOW_HEIGHT && "excessive height must be rejected earlier");\
+    } while (0)
+
+#define ASSERT_WIDTH_UNSIGNED(w)                                                       \
+    do {                                                                               \
+        __typeof__(w) _w = (w);                                                        \
+        static_assert((__typeof__(w))(-1) > 1, "must use an unsigned type for " #w);   \
+        assert(_w <= MAX_WINDOW_WIDTH && "excessive width must be rejected earlier");  \
+    } while (0)
+
+#define ASSERT_HEIGHT(h)                                                               \
+    do {                                                                               \
+        __typeof__(h) _h = (h);                                                        \
+        assert(_h >= 0 && "negative height must be rejected earlier");                 \
+        assert(_h <= MAX_WINDOW_HEIGHT && "excessive height must be rejected earlier");\
+    } while (0)
+
+#define ASSERT_WIDTH(w)                                                                \
+    do {                                                                               \
+        __typeof__(w) _w = (w);                                                        \
+        assert(_w >= 0 && "negative width must be rejected earlier");                  \
+        assert(_w <= MAX_WINDOW_WIDTH && "excessive width must be rejected earlier");  \
+    } while (0)
+#pragma GCC poison _w _h
+
 #endif /* _XSIDE_H */
