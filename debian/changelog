@@ -1,3 +1,10 @@
+qubes-gui-daemon (4.1.18-1) unstable; urgency=medium
+
+  * rpm: add BR python3-setuptools
+  * xside: move override-redirect windows back to allowed area
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Thu, 14 Oct 2021 18:46:36 +0200
+
 qubes-gui-daemon (4.1.17-1) unstable; urgency=medium
 
   * Set window background color to white
