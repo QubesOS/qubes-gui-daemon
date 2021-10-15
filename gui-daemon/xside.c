@@ -1764,6 +1764,7 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
                     "0x%lx(0x%lx) outside of allowed area, moving it back\n",
                     vm_window->local_winid, vm_window->remote_winid);
         moveresize_vm_window(g, vm_window, false);
+        XFlush(g->display);
     }
 
 // if AppVM has not unacknowledged previous resize msg, do not send another one
