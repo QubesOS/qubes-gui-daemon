@@ -10,6 +10,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
+#include <assert.h>
 
 int main(int argc, char **argv) {
     sigset_t sigmask;
@@ -52,6 +53,8 @@ int main(int argc, char **argv) {
         int layout_changed;
         XEvent ev;
         fd_set in_fds;
+        assert(sigfd >= 0 && sigfd < FD_SETSIZE && "sigfd too large");
+        assert(x11_fd >= 0 && x11_fd < FD_SETSIZE && "x11_fd too large");
         FD_ZERO(&in_fds);
         FD_SET(sigfd, &in_fds);
         FD_SET(x11_fd, &in_fds);

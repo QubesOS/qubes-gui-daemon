@@ -26,6 +26,7 @@
 #include <sys/select.h>
 #include <errno.h>
 #include "double-buffer.h"
+#include <assert.h>
 
 void (*vchan_at_eof)(void) = NULL;
 int vchan_is_closed = 0;
@@ -116,10 +117,12 @@ int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int nfd, int *fd, fd_set * r
     FD_ZERO(&rfds);
     for (i = 0; i < nfd; i++) {
         int cfd = fd[i];
+        assert(cfd >= 0 && cfd < FD_SETSIZE && "bad external file descriptor number");
         FD_SET(cfd, &rfds);
         if (cfd > max)
             max = cfd;
     }
+    assert(vfd >= 0 && vfd < FD_SETSIZE && "bad vchan file descriptor number");
     FD_SET(vfd, &rfds);
     if (vfd > max)
         max = vfd;
