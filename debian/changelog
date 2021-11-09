@@ -1,3 +1,11 @@
+qubes-gui-daemon (4.1.19-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Flush after emergency move
+  * Add FD_SETSIZE assertions
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Tue, 09 Nov 2021 06:42:28 +0100
+
 qubes-gui-daemon (4.1.18-1) unstable; urgency=medium
 
   * rpm: add BR python3-setuptools
