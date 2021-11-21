@@ -54,7 +54,7 @@ BuildRequires:	libXrandr-devel
 BuildRequires:	libconfig-devel
 BuildRequires:	libpng-devel
 BuildRequires:	libnotify-devel
-%if x%{?backend_vmm} == xxen
+%if "%{?backend_vmm}" == "xen"
 BuildRequires:  xen-devel
 %endif
 BuildRequires:	qubes-db-devel
