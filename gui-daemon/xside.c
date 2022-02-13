@@ -2514,7 +2514,6 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
 {
     struct genlist *l2;
     struct windowdata *vm_window = l->data;
-    g->windows_count--;
     /* check if this window is referenced anywhere */
     check_window_references(g, vm_window);
     /* then destroy */
