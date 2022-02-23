@@ -2318,8 +2318,15 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 }
 
 static void process_xievent(Ghandles * g, XIDeviceEvent event) {
-    switch (event->evtype)
+    switch (event.evtype)
     {
+        case XI_RawButtonPress:
+        case XI_RawButtonRelease:
+        case XI_RawMotion:
+        case XI_RawKeyPress:
+        case XI_RawKeyRelease:
+            // TODO: handle raw events, no flags on raw events
+            break;
         case XI_KeyPress:
         case XI_KeyRelease:
             printf("    flags: %s\n", (event->flags & XIKeyRepeat) ?  "repeat" : "");
