@@ -172,6 +172,7 @@ struct _global_handles {
     Atom wm_user_time_window; /* Atom: _NET_WM_USER_TIME_WINDOW */
     Atom wm_user_time; /* Atom: _NET_WM_USER_TIME */
     int shm_major_opcode;   /* MIT-SHM extension opcode */
+    int xi_opcode; /* XInput opcode, for repeat flags and such */
     /* shared memory handling */
     struct shm_args_hdr *shm_args;    /* shared memory with Xorg */
     uint32_t cmd_shmid;        /* shared memory id - received from shmoverride.so through shm.id.$DISPLAY file */

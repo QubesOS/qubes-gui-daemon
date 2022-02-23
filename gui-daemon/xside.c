@@ -47,6 +47,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
 #include <X11/extensions/shmproto.h>
+#include <X11/extensions/XInput2.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 #include <X11/Xlib-xcb.h>
@@ -65,6 +66,7 @@
 #include "trayicon.h"
 #include "shm-args.h"
 #include "util.h"
+#include "xinput.h"
 
 /* Supported protocol version */
 
@@ -378,6 +380,9 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
                 FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
+    
+    // TODO: select XI events here
+
     XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
     if (g->icon_data) {
         XChangeProperty(g->display, child_win, g->net_wm_icon, XA_CARDINAL, 32,
@@ -638,6 +643,9 @@ static void mkghandles(Ghandles * g)
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
+    if (!XQueryExtension(g->display, "XInputExtension", &g->xi_opcode, &ev_base, &err_base)) {
+        fprintf(stderr, "X Input extension not available.\n");
+    }
     /* get the work area */
     XSelectInput(g->display, g->root_win, PropertyChangeMask);
     update_work_area(g);
@@ -2309,66 +2317,92 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 
 }
 
+static void process_xievent(Ghandles * g, XIDeviceEvent event) {
+    switch (event->evtype)
+    {
+        case XI_KeyPress:
+        case XI_KeyRelease:
+            printf("    flags: %s\n", (event->flags & XIKeyRepeat) ?  "repeat" : "");
+            // TODO: handle events
+            break;
+        case XI_ButtonPress:
+        case XI_ButtonRelease:
+        case XI_Motion:
+            printf("    flags: %s\n", (event->flags & XIPointerEmulated) ?  "emulated" : "");
+            // TODO: handle events
+            break;
+    }
+}
+
 /* dispatch local Xserver event */
 static void process_xevent(Ghandles * g)
 {
     XEvent event_buffer;
+    XGenericEventCookie *cookie = (XGenericEventCookie*)&event_buffer.xcookie;
+    // XIDeviceEvent xi_event;
     XNextEvent(g->display, &event_buffer);
-    switch (event_buffer.type) {
-    case KeyPress:
-    case KeyRelease:
-        process_xevent_keypress(g, (XKeyEvent *) & event_buffer);
-        break;
-    case ReparentNotify:
-        process_xevent_reparent(g, (XReparentEvent *) &event_buffer);
-        break;
-    case ConfigureNotify:
-        process_xevent_configure(g, (XConfigureEvent *) &
-                     event_buffer);
-        break;
-    case ButtonPress:
-    case ButtonRelease:
-        process_xevent_button(g, (XButtonEvent *) & event_buffer);
-        break;
-    case MotionNotify:
-        process_xevent_motion(g, (XMotionEvent *) & event_buffer);
-        break;
-    case EnterNotify:
-    case LeaveNotify:
-        process_xevent_crossing(g,
-                    (XCrossingEvent *) & event_buffer);
-        break;
-    case FocusIn:
-    case FocusOut:
-        process_xevent_focus(g,
-                     (XFocusChangeEvent *) & event_buffer);
-        break;
-    case Expose:
-        process_xevent_expose(g, (XExposeEvent *) & event_buffer);
-        break;
-    case MapNotify:
-        process_xevent_mapnotify(g, (XMapEvent *) & event_buffer);
-        break;
-    case PropertyNotify:
-        process_xevent_propertynotify(g, (XPropertyEvent *) & event_buffer);
-        break;
-    case ClientMessage:
-//              fprintf(stderr, "xclient, atom=%s\n",
-//                      XGetAtomName(g->display,
-//                                   event_buffer.xclient.message_type));
-        if (event_buffer.xclient.message_type == g->xembed_message) {
-            process_xevent_xembed(g, (XClientMessageEvent *) &
-                          event_buffer);
-        } else if ((Atom)event_buffer.xclient.data.l[0] ==
-               g->wmDeleteMessage) {
-            if (g->log_level > 0)
-                fprintf(stderr, "close for 0x%x\n",
-                    (int) event_buffer.xclient.window);
-            process_xevent_close(g,
-                         event_buffer.xclient.window);
+    if (XGetEventData(g->display, cookie) &&
+            cookie->type == GenericEvent &&
+            cookie->extension == g->xi_opcode) {
+        XIDeviceEvent xi_event = *(XIDeviceEvent*)&event_buffer;
+        process_xievent(g, xi_event);
+    } else {
+        switch (event_buffer.type) {
+        case KeyPress:
+        case KeyRelease:
+            process_xevent_keypress(g, (XKeyEvent *) & event_buffer);
+            break;
+        case ReparentNotify:
+            process_xevent_reparent(g, (XReparentEvent *) &event_buffer);
+            break;
+        case ConfigureNotify:
+            process_xevent_configure(g, (XConfigureEvent *) &
+                        event_buffer);
+            break;
+        case ButtonPress:
+        case ButtonRelease:
+            process_xevent_button(g, (XButtonEvent *) & event_buffer);
+            break;
+        case MotionNotify:
+            process_xevent_motion(g, (XMotionEvent *) & event_buffer);
+            break;
+        case EnterNotify:
+        case LeaveNotify:
+            process_xevent_crossing(g,
+                        (XCrossingEvent *) & event_buffer);
+            break;
+        case FocusIn:
+        case FocusOut:
+            process_xevent_focus(g,
+                        (XFocusChangeEvent *) & event_buffer);
+            break;
+        case Expose:
+            process_xevent_expose(g, (XExposeEvent *) & event_buffer);
+            break;
+        case MapNotify:
+            process_xevent_mapnotify(g, (XMapEvent *) & event_buffer);
+            break;
+        case PropertyNotify:
+            process_xevent_propertynotify(g, (XPropertyEvent *) & event_buffer);
+            break;
+        case ClientMessage:
+    //              fprintf(stderr, "xclient, atom=%s\n",
+    //                      XGetAtomName(g->display,
+    //                                   event_buffer.xclient.message_type));
+            if (event_buffer.xclient.message_type == g->xembed_message) {
+                process_xevent_xembed(g, (XClientMessageEvent *) &
+                            event_buffer);
+            } else if ((Atom)event_buffer.xclient.data.l[0] ==
+                g->wmDeleteMessage) {
+                if (g->log_level > 0)
+                    fprintf(stderr, "close for 0x%x\n",
+                        (int) event_buffer.xclient.window);
+                process_xevent_close(g,
+                            event_buffer.xclient.window);
+            }
+            break;
+        default:;
         }
-        break;
-    default:;
     }
 }
 
