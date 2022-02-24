@@ -22,6 +22,7 @@
 
 /* high level documentation is here: https://www.qubes-os.org/doc/gui/ */
 
+#include <X11/extensions/XInput2.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -374,7 +375,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                (const unsigned char *)&g->time_win,
                1);
     (void) XSelectInput(g->display, child_win,
-                ExposureMask | KeyPressMask | KeyReleaseMask |
+                ExposureMask |
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
                 FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
@@ -2314,6 +2315,13 @@ static void process_xevent(Ghandles * g)
 {
     XEvent event_buffer;
     XNextEvent(g->display, &event_buffer);
+    bool is_xinput_event = false;
+    
+    if (event_buffer.type == GenericEvent &&
+            event_buffer.xcookie.extension == g->xi_opcode) {
+        is_xinput_event = (XIDeviceEvent*)&event_buffer;
+    }
+
     switch (event_buffer.type) {
     case KeyPress:
     case KeyRelease:
