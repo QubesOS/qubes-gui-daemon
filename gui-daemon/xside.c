@@ -383,7 +383,6 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     
     // select xinput events
     XIEventMask xi_mask;
-    int use_root = 0;
     xi_mask.deviceid = XIAllDevices;
     xi_mask.mask_len = XIMaskLen(XI_LASTEVENT);
     xi_mask.mask = calloc(xi_mask.mask_len, sizeof(char));
@@ -2378,11 +2377,13 @@ static XKeyEvent xkeyevent_from_xinput_event(const XIDeviceEvent* xi_event) {
 static void process_xevent(Ghandles * g)
 {
     XEvent event_buffer;
+    XGenericEventCookie *cookie = (XGenericEventCookie*)&event_buffer.xcookie;
     XNextEvent(g->display, &event_buffer);
     
-    if (event_buffer.type == GenericEvent &&
-            event_buffer.xcookie.extension == g->xi_opcode) {
-        XIDeviceEvent* xi_event = (XIDeviceEvent*)&event_buffer;
+    if (XGetEventData(g->display, cookie) &&
+            cookie->type == GenericEvent &&
+            cookie->extension == g->xi_opcode) {
+        XIDeviceEvent* xi_event = cookie->data; // from test_xi2.c in xinput cli utility
         switch (xi_event->evtype) {
         case XI_KeyPress:
         case XI_KeyRelease:
