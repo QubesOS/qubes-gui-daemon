@@ -2377,7 +2377,7 @@ static XKeyEvent xkeyevent_from_xinput_event(const XIDeviceEvent* xi_event) {
 static void process_xevent(Ghandles * g)
 {
     XEvent event_buffer;
-    XGenericEventCookie *cookie = (XGenericEventCookie*)&event_buffer.xcookie;
+    XGenericEventCookie *cookie = &event_buffer.xcookie;
     XNextEvent(g->display, &event_buffer);
     
     if (XGetEventData(g->display, cookie) &&
@@ -2392,6 +2392,7 @@ static void process_xevent(Ghandles * g)
             process_xevent_keypress(g, &fake_event);
             break;
         }
+        XFreeEventData(g->display, cookie);
     } else {
         switch (event_buffer.type) {
         case ReparentNotify:
