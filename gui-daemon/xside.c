@@ -381,7 +381,16 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
                 FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
     
-    // TODO: select XI events here
+    // select xinput events
+    XIEventMask xi_mask;
+    int use_root = 0;
+    xi_mask.deviceid = XIAllDevices;
+    xi_mask.mask_len = XIMaskLen(XI_LASTEVENT);
+    xi_mask.mask = calloc(xi_mask.mask_len, sizeof(char));
+    XISetMask(xi_mask.mask, XI_KeyPress);
+    XISetMask(xi_mask.mask, XI_KeyRelease);
+    XISelectEvents(g->display, child_win, &xi_mask, 1);
+
 
     XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
     if (g->icon_data) {
@@ -644,7 +653,7 @@ static void mkghandles(Ghandles * g)
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
     if (!XQueryExtension(g->display, "XInputExtension", &g->xi_opcode, &ev_base, &err_base)) {
-        fprintf(stderr, "X Input extension not available.\n");
+        fprintf(stderr, "X Input extension not available. Key press events not available. Upgrade your X11 server now.\n");
     }
     /* get the work area */
     XSelectInput(g->display, g->root_win, PropertyChangeMask);
@@ -2317,6 +2326,7 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 
 }
 
+// reference code for handling xi2 events
 // static void process_xievent(Ghandles * g, XIDeviceEvent event) {
 //     switch (event.evtype)
 //     {
@@ -2325,7 +2335,6 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 //         case XI_RawMotion:
 //         case XI_RawKeyPress:
 //         case XI_RawKeyRelease:
-//             // TODO: handle raw events, no flags on raw events
 //             break;
 //         case XI_KeyPress:
 //         case XI_KeyRelease:
@@ -2341,6 +2350,30 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 //     }
 // }
 
+static XKeyEvent xkeyevent_from_xinput_event(const XIDeviceEvent* xi_event) {
+    XKeyEvent fake_event;
+    switch (xi_event->evtype) {
+    case XI_KeyPress: fake_event.type = KeyPress; break;
+    case XI_KeyRelease: fake_event.type = KeyRelease; break;
+    default: assert(false); // stop immediately
+    }
+    fake_event.serial = xi_event->serial;
+    fake_event.send_event = false;
+    fake_event.display = xi_event->display;
+    fake_event.window = xi_event->event;
+    fake_event.root = xi_event->root;
+    fake_event.subwindow = xi_event->child; // from Manual page XKeyEvent(3)
+    fake_event.time = xi_event->time;
+    fake_event.x = xi_event->event_x;
+    fake_event.y = xi_event->event_y;
+    fake_event.x_root = xi_event->root_x;
+    fake_event.y_root = xi_event->root_y;
+    fake_event.state = xi_event->mods.effective;
+    fake_event.keycode = xi_event->detail;
+    fake_event.same_screen = true; // don't know how to fill this
+    return fake_event;
+}
+
 /* dispatch local Xserver event */
 static void process_xevent(Ghandles * g)
 {
@@ -2354,7 +2387,8 @@ static void process_xevent(Ghandles * g)
         case XI_KeyPress:
         case XI_KeyRelease:
             if (xi_event && xi_event->flags & XIKeyRepeat) break; // don't send key repeat events
-            process_xevent_keypress(g, xi_event);
+            XKeyEvent fake_event = xkeyevent_from_xinput_event(xi_event);
+            process_xevent_keypress(g, &fake_event);
             break;
         }
     } else {
