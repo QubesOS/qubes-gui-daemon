@@ -22,7 +22,6 @@
 
 /* high level documentation is here: https://www.qubes-os.org/doc/gui/ */
 
-#include <X11/extensions/XInput2.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
