@@ -49,6 +49,7 @@ BuildRequires:	pkgconfig(x11-xcb)
 BuildRequires:	pkgconfig(xcb)
 BuildRequires:	libXext-devel
 BuildRequires:	libXrandr-devel
+BuildRequires:	libXi-devel
 BuildRequires:	libconfig-devel
 BuildRequires:	libpng-devel
 BuildRequires:	libnotify-devel
