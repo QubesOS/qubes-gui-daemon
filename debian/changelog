@@ -1,3 +1,20 @@
+qubes-gui-daemon (4.1.20-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Remove windows_count from Ghandles
+
+  [ logoerthiner1 ]
+  * Update pacat-simple-vchan.c
+  * Apply suggestions from code review
+
+  [ Marco De Donno ]
+  * Typo in the help of the Makefile
+
+  [ Demi Marie Obenour ]
+  * Log invalid desktop or work area before exiting
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Tue, 01 Mar 2022 04:07:14 +0100
+
 qubes-gui-daemon (4.1.19-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
