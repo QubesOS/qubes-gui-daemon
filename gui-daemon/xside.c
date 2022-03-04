@@ -22,6 +22,7 @@
 
 /* high level documentation is here: https://www.qubes-os.org/doc/gui/ */
 
+#include <X11/extensions/XI2.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -387,6 +388,16 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     xi_mask.mask = calloc(xi_mask.mask_len, sizeof(char));
     XISetMask(xi_mask.mask, XI_KeyPress);
     XISetMask(xi_mask.mask, XI_KeyRelease);
+    XISetMask(xi_mask.mask, XI_ButtonPress);
+    XISetMask(xi_mask.mask, XI_ButtonRelease);
+    XISetMask(xi_mask.mask, XI_Motion);
+    XISetMask(xi_mask.mask, XI_RawKeyPress);
+    XISetMask(xi_mask.mask, XI_RawKeyRelease);
+    XISetMask(xi_mask.mask, XI_RawButtonPress);
+    XISetMask(xi_mask.mask, XI_RawButtonRelease);
+    XISetMask(xi_mask.mask, XI_RawMotion);
+    XISetMask(xi_mask.mask, XI_FocusIn);
+    XISetMask(xi_mask.mask, XI_FocusOut);
     XISelectEvents(g->display, child_win, &xi_mask, 1);
 
 
@@ -1333,6 +1344,53 @@ static void update_wm_user_time(Ghandles *const g, const Window window,
             32, PropModeReplace,
             (const unsigned char *)&time,
             1);
+}
+
+static XID get_remote_winid(Ghandles * g, XID local_winid) {
+    if (!local_winid) return 0;
+    struct windowdata *vm_window;
+    vm_window=check_nonmanaged_window(g, local_winid);
+    if (!vm_window) return 0;
+    return vm_window->remote_winid;
+}
+
+/* handle local XInput events:
+   - RawKeyPress
+   - RawKeyRelease
+   - RawButtonPress
+   - RawButtonRelease
+   - RawMotion
+   - KeyPress
+   - KeyRelease
+   - ButtonPress
+   - ButtonRelease
+   - Motion
+   - FocusIn
+   - FocusOut
+ */
+static void process_xievent(Ghandles * g, XIDeviceEvent ev) {
+    struct msg_hdr hdr;
+    ev.event = get_remote_winid(g, ev.event);
+    if (!ev.event) return; // don't handle non-managed window
+    ev.root = get_remote_winid(g, ev.root);
+    ev.child = 0; // child/embeded window (those who don't take focus) aren't mapped in dom0
+    // TODO: get child window id
+    ev.serial = 0; // remote VM should set this; maybe SendEvent will set this?
+    ev.display = 0; // no pointer address to memory
+    update_wm_user_time(g, ev.event, ev.time);
+    ev.time = 0; // remote VM can set this
+    // video games need device ID to tell different input devices apart
+    // TODO: anonymize this somehow?
+    // ev->deviceid = 0;
+    // ev->sourceid = 0;
+    
+    // TODO: don't send special keypress
+    // ideally XFCE should handle this, not this program
+    // if (is_special_keypress(g, ev, vm_window->remote_winid))
+    //     return;
+    hdr.type = MSG_XINPUT;
+    hdr.window = ev.event;
+    write_message(g->vchan, hdr, ev);
 }
 
 /* handle local Xserver event: XKeyEvent
@@ -2348,28 +2406,22 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 //     }
 // }
 
-static XKeyEvent xkeyevent_from_xinput_event(const XIDeviceEvent* xi_event) {
-    XKeyEvent fake_event;
-    switch (xi_event->evtype) {
-    case XI_KeyPress: fake_event.type = KeyPress; break;
-    case XI_KeyRelease: fake_event.type = KeyRelease; break;
-    default: assert(false); // stop immediately
+static bool is_xinput_event_type_raw(int ev_type) {
+    switch (ev_type) {
+    case XI_RawKeyPress:
+    case XI_RawKeyRelease:
+    case XI_RawButtonPress:
+    case XI_RawButtonRelease:
+    case XI_RawMotion:
+        return true;
+    case XI_KeyPress:
+    case XI_KeyRelease:
+    case XI_ButtonPress:
+    case XI_ButtonRelease:
+    case XI_Motion:
+        return false;
+    default: assert(false); // Unexpected event type
     }
-    fake_event.serial = xi_event->serial;
-    fake_event.send_event = false;
-    fake_event.display = xi_event->display;
-    fake_event.window = xi_event->event;
-    fake_event.root = xi_event->root;
-    fake_event.subwindow = xi_event->child; // from Manual page XKeyEvent(3)
-    fake_event.time = xi_event->time;
-    fake_event.x = xi_event->event_x;
-    fake_event.y = xi_event->event_y;
-    fake_event.x_root = xi_event->root_x;
-    fake_event.y_root = xi_event->root_y;
-    fake_event.state = xi_event->mods.effective;
-    fake_event.keycode = xi_event->detail;
-    fake_event.same_screen = true; // don't know how to fill this
-    return fake_event;
 }
 
 /* dispatch local Xserver event */
@@ -2382,12 +2434,26 @@ static void process_xevent(Ghandles * g)
             cookie->type == GenericEvent &&
             cookie->extension == g->xi_opcode) {
         XIDeviceEvent* xi_event = cookie->data; // from test_xi2.c in xinput cli utility
+
         switch (xi_event->evtype) {
-        case XI_KeyPress:
-        case XI_KeyRelease:
-            if (xi_event && xi_event->flags & XIKeyRepeat) break; // don't send key repeat events
-            XKeyEvent fake_event = xkeyevent_from_xinput_event(xi_event);
-            process_xevent_keypress(g, &fake_event);
+        case XI_FocusIn:
+            g->focused_remote_winid = xi_event->event;
+            process_xievent(g, *xi_event);
+            break;
+        case XI_FocusOut:
+            if (g->focused_remote_winid == xi_event->event)
+                g->focused_remote_winid = 0; // load-compare-store in single thread is fine?
+            process_xievent(g, *xi_event);
+            break;
+        default:
+            // only send raw events to focused window
+            if (is_xinput_event_type_raw(xi_event->evtype)) {
+                if (g->focused_remote_winid == xi_event->event) {
+                    process_xievent(g, *xi_event);
+                }
+            } else {
+                process_xievent(g, *xi_event);
+            }
             break;
         }
         XFreeEventData(g->display, cookie);

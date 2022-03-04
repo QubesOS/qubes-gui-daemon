@@ -140,6 +140,7 @@ struct extra_prop {
 };
 
 /* global variables
+ * One for one VM
  * keep them in this struct for readability
  */
 struct _global_handles {
@@ -201,6 +202,7 @@ struct _global_handles {
     Time clipboard_xevent_time;  /* timestamp of keypress which triggered last copy/paste */
     Window time_win; /* Window to set _NET_WM_USER_TIME on */
     int windows_count;    /* created window count */
+    XID focused_remote_winid; /* focused window; assumed that only one window can be focused, thus receive raw input*/
     /* signal was caught */
     int volatile reload_requested;
     pid_t pulseaudio_pid;
