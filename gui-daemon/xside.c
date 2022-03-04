@@ -2391,30 +2391,6 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 
 }
 
-// reference code for handling xi2 events
-// static void process_xievent(Ghandles * g, XIDeviceEvent event) {
-//     switch (event.evtype)
-//     {
-//         case XI_RawButtonPress:
-//         case XI_RawButtonRelease:
-//         case XI_RawMotion:
-//         case XI_RawKeyPress:
-//         case XI_RawKeyRelease:
-//             break;
-//         case XI_KeyPress:
-//         case XI_KeyRelease:
-//             printf("    flags: %s\n", (event->flags & XIKeyRepeat) ?  "repeat" : "");
-//             // TODO: handle events
-//             break;
-//         case XI_ButtonPress:
-//         case XI_ButtonRelease:
-//         case XI_Motion:
-//             printf("    flags: %s\n", (event->flags & XIPointerEmulated) ?  "emulated" : "");
-//             // TODO: handle events
-//             break;
-//     }
-// }
-
 static bool is_xinput_event_type_raw(int ev_type) {
     switch (ev_type) {
     case XI_RawKeyPress:
