@@ -375,7 +375,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                (const unsigned char *)&g->time_win,
                1);
     (void) XSelectInput(g->display, child_win,
-                ExposureMask |
+                ExposureMask | KeyPressMask | KeyReleaseMask |
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
                 FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
@@ -2378,7 +2378,6 @@ static void process_xevent(Ghandles * g)
     XEvent event_buffer;
     XGenericEventCookie *cookie = &event_buffer.xcookie;
     XNextEvent(g->display, &event_buffer);
-    
     if (XGetEventData(g->display, cookie) &&
             cookie->type == GenericEvent &&
             cookie->extension == g->xi_opcode) {
@@ -2394,6 +2393,10 @@ static void process_xevent(Ghandles * g)
         XFreeEventData(g->display, cookie);
     } else {
         switch (event_buffer.type) {
+        case KeyPress:
+        case KeyRelease:
+            process_xevent_keypress(g, (XKeyEvent *) & event_buffer);
+            break;
         case ReparentNotify:
             process_xevent_reparent(g, (XReparentEvent *) &event_buffer);
             break;
@@ -2443,7 +2446,6 @@ static void process_xevent(Ghandles * g)
                             event_buffer.xclient.window);
             }
             break;
-        default:;
         }
     }
 }
