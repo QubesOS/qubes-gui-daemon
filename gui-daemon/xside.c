@@ -459,7 +459,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 }
 
 static const unsigned long desktop_coordinates_size = 4;
-static const long max_display_width = 1UL << 20;
+static const unsigned long max_display_width = 1UL << 20;
 
 /*
  * Padding enforced between override-redirect windows and the edge of
@@ -495,8 +495,9 @@ static void update_work_area(Ghandles *g) {
         exit(1);
     }
     if (*scratch > max_display_width) {
-        fputs("Absurd current desktop, crashing\n", stderr);
-        abort();
+        fprintf(stderr, "Absurd current desktop (display width %lu exceeds "
+                "limit %lu), exiting\n", *scratch, max_display_width);
+        exit(1);
     }
     uint32_t current_desktop = (uint32_t)*scratch;
     XFree(scratch);
@@ -530,7 +531,15 @@ static void update_work_area(Ghandles *g) {
     }
     for (unsigned long s = 0; s < desktop_coordinates_size; ++s) {
         if (scratch[s] > max_display_width) {
-            fputs("Absurd work area, crashing\n", stderr);
+            fprintf(stderr,
+                    "PANIC: invalid work area:\n"
+                    "     x: %1$lu (limit %5$lu)\n"
+                    "     y: %2$lu (limit %5$lu)\n"
+                    " width: %3$lu (limit %5$lu)\n"
+                    "height: %4$lu (limit %5$lu)\n"
+                    "Exiting!\n",
+                    scratch[0], scratch[1], scratch[2], scratch[3],
+                    max_display_width);
             exit(1);
         }
     }
@@ -2658,7 +2667,6 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
 {
     struct genlist *l2;
     struct windowdata *vm_window = l->data;
-    g->windows_count--;
     /* check if this window is referenced anywhere */
     check_window_references(g, vm_window);
     /* then destroy */
