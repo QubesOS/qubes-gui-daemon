@@ -378,7 +378,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 ExposureMask |
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
-                FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
+                StructureNotifyMask | PropertyChangeMask);
     
     // select xinput events
     XIEventMask xi_mask;
@@ -387,6 +387,8 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     xi_mask.mask = calloc(xi_mask.mask_len, sizeof(char));
     XISetMask(xi_mask.mask, XI_KeyPress);
     XISetMask(xi_mask.mask, XI_KeyRelease);
+    XISetMask(xi_mask.mask, XI_FocusIn);
+    XISetMask(xi_mask.mask, XI_FocusOut);
     XISelectEvents(g->display, child_win, &xi_mask, 1);
 
 
@@ -448,7 +450,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
 }
 
 static const unsigned long desktop_coordinates_size = 4;
-static const long max_display_width = 1UL << 20;
+static const unsigned long max_display_width = 1UL << 20;
 
 /*
  * Padding enforced between override-redirect windows and the edge of
@@ -484,8 +486,9 @@ static void update_work_area(Ghandles *g) {
         exit(1);
     }
     if (*scratch > max_display_width) {
-        fputs("Absurd current desktop, crashing\n", stderr);
-        abort();
+        fprintf(stderr, "Absurd current desktop (display width %lu exceeds "
+                "limit %lu), exiting\n", *scratch, max_display_width);
+        exit(1);
     }
     uint32_t current_desktop = (uint32_t)*scratch;
     XFree(scratch);
@@ -519,7 +522,15 @@ static void update_work_area(Ghandles *g) {
     }
     for (unsigned long s = 0; s < desktop_coordinates_size; ++s) {
         if (scratch[s] > max_display_width) {
-            fputs("Absurd work area, crashing\n", stderr);
+            fprintf(stderr,
+                    "PANIC: invalid work area:\n"
+                    "     x: %1$lu (limit %5$lu)\n"
+                    "     y: %2$lu (limit %5$lu)\n"
+                    " width: %3$lu (limit %5$lu)\n"
+                    "height: %4$lu (limit %5$lu)\n"
+                    "Exiting!\n",
+                    scratch[0], scratch[1], scratch[2], scratch[3],
+                    max_display_width);
             exit(1);
         }
     }
@@ -1929,13 +1940,13 @@ static void process_xevent_motion(Ghandles * g, const XMotionEvent * ev)
 //      fprintf(stderr, "motion in 0x%x", ev->window);
 }
 
-/* handle local Xserver event: FocusIn, FocusOut
+/* handle local XInput event: FocusIn, FocusOut
  * send to relevant window in VM */
-static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
+static void process_xievent_focus(Ghandles * g, const XILeaveEvent * ev)
 {
     struct msg_hdr hdr;
     struct msg_focus k;
-    CHECK_NONMANAGED_WINDOW(g, ev->window);
+    CHECK_NONMANAGED_WINDOW(g, ev->event);
 
     /* Ignore everything other than normal, non-temporary focus change. In
      * practice it ignores NotifyGrab and NotifyUngrab. VM does not have any
@@ -1945,8 +1956,8 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
      */
     if (ev->mode != NotifyNormal && ev->mode != NotifyWhileGrabbed)
         return;
-
-    if (ev->type == FocusIn) {
+    // it's unclear why XI has it's own set of constant names, despite having the same value
+    if (ev->type == XI_FocusIn) {
         char keys[32];
         XQueryKeymap(g->display, keys);
         hdr.type = MSG_KEYMAP_NOTIFY;
@@ -2378,17 +2389,31 @@ static void process_xevent(Ghandles * g)
     XEvent event_buffer;
     XGenericEventCookie *cookie = &event_buffer.xcookie;
     XNextEvent(g->display, &event_buffer);
-    
     if (XGetEventData(g->display, cookie) &&
             cookie->type == GenericEvent &&
             cookie->extension == g->xi_opcode) {
-        XIDeviceEvent* xi_event = cookie->data; // from test_xi2.c in xinput cli utility
+        XIEvent* xi_event = cookie->data; // from test_xi2.c in xinput cli utility
+
+        XIDeviceEvent * xi_device = (XIDeviceEvent *)xi_event;
+        XILeaveEvent * xi_leave = (XILeaveEvent *)xi_event;
         switch (xi_event->evtype) {
+        // ideally raw input events are better, but I'm relying on X server's built-in event filtering and routing feature here
         case XI_KeyPress:
         case XI_KeyRelease:
-            if (xi_event && xi_event->flags & XIKeyRepeat) break; // don't send key repeat events
-            XKeyEvent fake_event = xkeyevent_from_xinput_event(xi_event);
+            if (g->focused_remote_winid != xi_device->event) break; // don't send to unfocused window
+            if (xi_device && xi_device->flags & XIKeyRepeat) break; // don't send key repeat events
+            XKeyEvent fake_event = xkeyevent_from_xinput_event(xi_device);
             process_xevent_keypress(g, &fake_event);
+            break;
+        case XI_FocusIn:
+        case XI_FocusOut:
+            if (xi_leave->evtype == XI_FocusIn) {
+                g->focused_remote_winid = xi_leave->event;
+            } else {
+                if (g->focused_remote_winid == xi_leave->event)
+                    g->focused_remote_winid = 0; // load-compare-store in single thread is fine?
+            }
+            process_xievent_focus(g, xi_leave);
             break;
         }
         XFreeEventData(g->display, cookie);
@@ -2412,11 +2437,6 @@ static void process_xevent(Ghandles * g)
         case LeaveNotify:
             process_xevent_crossing(g,
                         (XCrossingEvent *) & event_buffer);
-            break;
-        case FocusIn:
-        case FocusOut:
-            process_xevent_focus(g,
-                        (XFocusChangeEvent *) & event_buffer);
             break;
         case Expose:
             process_xevent_expose(g, (XExposeEvent *) & event_buffer);
@@ -2443,7 +2463,6 @@ static void process_xevent(Ghandles * g)
                             event_buffer.xclient.window);
             }
             break;
-        default:;
         }
     }
 }
@@ -2590,7 +2609,6 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
 {
     struct genlist *l2;
     struct windowdata *vm_window = l->data;
-    g->windows_count--;
     /* check if this window is referenced anywhere */
     check_window_references(g, vm_window);
     /* then destroy */
