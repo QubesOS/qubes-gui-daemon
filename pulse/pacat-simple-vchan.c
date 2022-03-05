@@ -617,7 +617,7 @@ fail:
 static int create_pidfile(int domid, char **pidfile_path, int *pidfile_fd)
 {
     int fd, ret;
-    char pid_s[16];
+    char pid_s[16] = { 0 };
 
     if (asprintf(pidfile_path, PACAT_PIDFILE_PATH_TPL, domid) < 0) {
         pacat_log("Failed to construct pidfile path, out of memory?");
@@ -738,7 +738,8 @@ static void control_socket_callback(pa_mainloop_api *UNUSED(a),
 
 static int setup_control(struct userdata *u) {
     int socket_fd = -1;
-    struct sockaddr_un addr;
+    /* better safe than sorry - zero initialize the buffer */
+    struct sockaddr_un addr = { 0 };
 
     socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (socket_fd == -1) {
@@ -752,6 +753,9 @@ static int setup_control(struct userdata *u) {
         pacat_log("VM name too long");
         goto fail;
     }
+    /* without this line, the bind() fails in many linux versions
+       with Invalid Argument, and mic cannot attach */
+    addr.sun_family = AF_UNIX;
 
     /* ignore result */
     unlink(addr.sun_path);

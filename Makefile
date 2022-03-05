@@ -27,7 +27,7 @@ export LIBDIR CFLAGS
 help:
 	@echo "Qubes GUI main Makefile:" ;\
 	    echo "make all                  <--- build binaries";\
-	    echo "make all                  <--- install files into \$$DESTDIR";\
+	    echo "make install              <--- install files into \$$DESTDIR";\
 	    echo "make clean                <--- clean all the binary files";\
 	    exit 0;
 
