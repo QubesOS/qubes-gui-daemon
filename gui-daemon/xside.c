@@ -47,6 +47,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
 #include <X11/extensions/shmproto.h>
+#include <X11/extensions/XI2.h>
 #include <X11/extensions/XInput2.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
@@ -378,7 +379,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 ExposureMask |
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
-                FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
+                StructureNotifyMask | PropertyChangeMask);
     
     // select xinput events
     XIEventMask xi_mask;
@@ -387,6 +388,8 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     xi_mask.mask = calloc(xi_mask.mask_len, sizeof(char));
     XISetMask(xi_mask.mask, XI_KeyPress);
     XISetMask(xi_mask.mask, XI_KeyRelease);
+    XISetMask(xi_mask.mask, XI_FocusIn);
+    XISetMask(xi_mask.mask, XI_FocusOut);
     XISelectEvents(g->display, child_win, &xi_mask, 1);
 
 
@@ -1255,7 +1258,7 @@ static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
 /* check and handle guid-special keys
  * currently only for inter-vm clipboard copy
  */
-static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
+static int is_special_keypress(Ghandles * g, const XIDeviceEvent * ev, XID remote_winid)
 {
     struct msg_hdr hdr;
     char *data;
@@ -1263,8 +1266,8 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
     Time clipboard_file_xevent_time;
 
     /* copy */
-    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->copy_seq_mask
-        && ev->keycode == XKeysymToKeycode(g->display, g->copy_seq_key)) {
+    if (((int)ev->mods.effective & SPECIAL_KEYS_MASK) == g->copy_seq_mask
+        && ev->detail == XKeysymToKeycode(g->display, g->copy_seq_key)) {
         if (ev->type != KeyPress)
             return 1;
         g->clipboard_xevent_time = ev->time;
@@ -1285,8 +1288,8 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
     }
 
     /* paste */
-    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->paste_seq_mask
-        && ev->keycode == XKeysymToKeycode(g->display, g->paste_seq_key)) {
+    if (((int)ev->mods.effective & SPECIAL_KEYS_MASK) == g->paste_seq_mask
+        && ev->detail == XKeysymToKeycode(g->display, g->paste_seq_key)) {
         if (ev->type != KeyPress)
             return 1;
         inter_appviewer_lock(g, 1);
@@ -1344,22 +1347,22 @@ static void update_wm_user_time(Ghandles *const g, const Window window,
             1);
 }
 
-/* handle local Xserver event: XKeyEvent
+/* handle local XInput event
  * send it to relevant window in VM
  */
-static void process_xevent_keypress(Ghandles * g, const XKeyEvent * ev)
+static void process_xievent_keypress(Ghandles * g, const XIDeviceEvent * ev)
 {
     struct msg_hdr hdr;
     struct msg_keypress k;
-    CHECK_NONMANAGED_WINDOW(g, ev->window);
-    update_wm_user_time(g, ev->window, ev->time);
+    CHECK_NONMANAGED_WINDOW(g, ev->event);
+    update_wm_user_time(g, ev->event, ev->time);
     if (is_special_keypress(g, ev, vm_window->remote_winid))
         return;
-    k.type = ev->type;
-    k.x = ev->x;
-    k.y = ev->y;
-    k.state = ev->state;
-    k.keycode = ev->keycode;
+    k.type = ev->evtype; // ev->type is always Generic Event
+    k.x = ev->event_x;
+    k.y = ev->event_y;
+    k.state = ev->mods.effective;
+    k.keycode = ev->detail;
     hdr.type = MSG_KEYPRESS;
     hdr.window = vm_window->remote_winid;
     write_message(g->vchan, hdr, k);
@@ -1940,13 +1943,13 @@ static void process_xevent_motion(Ghandles * g, const XMotionEvent * ev)
 
 /* handle local Xserver event: FocusIn, FocusOut
  * send to relevant window in VM */
-static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
+static void process_xievent_focus(Ghandles * g, const XILeaveEvent * ev)
 {
     struct msg_hdr hdr;
     struct msg_focus k;
-    CHECK_NONMANAGED_WINDOW(g, ev->window);
+    CHECK_NONMANAGED_WINDOW(g, ev->event);
 
-    if (ev->type == FocusIn) {
+    if (ev->type == XI_FocusIn) {
         char keys[32];
         XQueryKeymap(g->display, keys);
         hdr.type = MSG_KEYMAP_NOTIFY;
@@ -1955,10 +1958,7 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
     }
     hdr.type = MSG_FOCUS;
     hdr.window = vm_window->remote_winid;
-    k.type = ev->type;
-    /* override NotifyWhileGrabbed with NotifyNormal b/c VM shouldn't care
-     * about window manager details during focus switching
-     */
+    k.type = ev->evtype;
     k.mode = ev->mode;
     k.detail = ev->detail;
     write_message(g->vchan, hdr, k);
@@ -2348,29 +2348,29 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 //     }
 // }
 
-static XKeyEvent xkeyevent_from_xinput_event(const XIDeviceEvent* xi_event) {
-    XKeyEvent fake_event;
-    switch (xi_event->evtype) {
-    case XI_KeyPress: fake_event.type = KeyPress; break;
-    case XI_KeyRelease: fake_event.type = KeyRelease; break;
-    default: assert(false); // stop immediately
-    }
-    fake_event.serial = xi_event->serial;
-    fake_event.send_event = false;
-    fake_event.display = xi_event->display;
-    fake_event.window = xi_event->event;
-    fake_event.root = xi_event->root;
-    fake_event.subwindow = xi_event->child; // from Manual page XKeyEvent(3)
-    fake_event.time = xi_event->time;
-    fake_event.x = xi_event->event_x;
-    fake_event.y = xi_event->event_y;
-    fake_event.x_root = xi_event->root_x;
-    fake_event.y_root = xi_event->root_y;
-    fake_event.state = xi_event->mods.effective;
-    fake_event.keycode = xi_event->detail;
-    fake_event.same_screen = true; // don't know how to fill this
-    return fake_event;
-}
+// static XKeyEvent xkeyevent_from_xinput_event(const XIDeviceEvent* xi_event) {
+//     XKeyEvent fake_event;
+//     switch (xi_event->evtype) {
+//     case XI_KeyPress: fake_event.type = KeyPress; break;
+//     case XI_KeyRelease: fake_event.type = KeyRelease; break;
+//     default: assert(false); // stop immediately
+//     }
+//     fake_event.serial = xi_event->serial;
+//     fake_event.send_event = false;
+//     fake_event.display = xi_event->display;
+//     fake_event.window = xi_event->event;
+//     fake_event.root = xi_event->root;
+//     fake_event.subwindow = xi_event->child; // from Manual page XKeyEvent(3)
+//     fake_event.time = xi_event->time;
+//     fake_event.x = xi_event->event_x;
+//     fake_event.y = xi_event->event_y;
+//     fake_event.x_root = xi_event->root_x;
+//     fake_event.y_root = xi_event->root_y;
+//     fake_event.state = xi_event->mods.effective;
+//     fake_event.keycode = xi_event->detail;
+//     fake_event.same_screen = true; // don't know how to fill this
+//     return fake_event;
+// }
 
 /* dispatch local Xserver event */
 static void process_xevent(Ghandles * g)
@@ -2389,15 +2389,16 @@ static void process_xevent(Ghandles * g)
         // ideally raw input events are better, but I'm relying on X server's built-in event filtering and routing feature here
         case XI_KeyPress:
         case XI_KeyRelease:
-            if (g->focused_remote_winid != xi_device->event) break; // don't send to unfocused window
             if (xi_device && xi_device->flags & XIKeyRepeat) break; // don't send key repeat events
-            XKeyEvent fake_event = xkeyevent_from_xinput_event(xi_device);
-            process_xevent_keypress(g, &fake_event);
+            process_xievent_keypress(g, xi_device);
+            break;
+        case XI_FocusIn:
+        case XI_FocusOut:
+            process_xievent_focus(g, xi_leave);
             break;
         }
         XFreeEventData(g->display, cookie);
     } else {
-        XID wid;
         switch (event_buffer.type) {
         case ReparentNotify:
             process_xevent_reparent(g, (XReparentEvent *) &event_buffer);
@@ -2417,18 +2418,6 @@ static void process_xevent(Ghandles * g)
         case LeaveNotify:
             process_xevent_crossing(g,
                         (XCrossingEvent *) & event_buffer);
-            break;
-        case FocusIn:
-        case FocusOut:
-            wid = ((XFocusChangeEvent *) & event_buffer)->window;
-            if (event_buffer.type == FocusIn) {
-                g->focused_remote_winid = wid;
-            } else {
-                if (g->focused_remote_winid == wid)
-                    g->focused_remote_winid = 0; // load-compare-store in single thread is fine?
-            }
-            process_xevent_focus(g,
-                        (XFocusChangeEvent *) & event_buffer);
             break;
         case Expose:
             process_xevent_expose(g, (XExposeEvent *) & event_buffer);

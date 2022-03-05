@@ -201,7 +201,6 @@ struct _global_handles {
     int clipboard_requested;    /* if clippoard content was requested by dom0 */
     Time clipboard_xevent_time;  /* timestamp of keypress which triggered last copy/paste */
     Window time_win; /* Window to set _NET_WM_USER_TIME on */
-    XID focused_remote_winid; /* focused window; assumed that only one window can be focused, thus receive raw input*/
 
     /* signal was caught */
     int volatile reload_requested;
