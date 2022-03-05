@@ -1948,14 +1948,6 @@ static void process_xievent_focus(Ghandles * g, const XILeaveEvent * ev)
     struct msg_focus k;
     CHECK_NONMANAGED_WINDOW(g, ev->event);
 
-    /* Ignore everything other than normal, non-temporary focus change. In
-     * practice it ignores NotifyGrab and NotifyUngrab. VM does not have any
-     * way to grab focus in dom0, so it shouldn't care about those events. Grab
-     * is used by window managers during task switching (either classic task
-     * switcher, or KDE "present windows" feature).
-     */
-    if (ev->mode != NotifyNormal && ev->mode != NotifyWhileGrabbed)
-        return;
     // it's unclear why XI has it's own set of constant names, despite having the same value
     if (ev->type == XI_FocusIn) {
         char keys[32];
