@@ -1962,7 +1962,7 @@ static void process_xievent_focus(Ghandles * g, const XILeaveEvent * ev)
     /* override NotifyWhileGrabbed with NotifyNormal b/c VM shouldn't care
      * about window manager details during focus switching
      */
-    k.mode = NotifyNormal;
+    k.mode = ev->mode;
     k.detail = ev->detail;
     write_message(g->vchan, hdr, k);
 }
