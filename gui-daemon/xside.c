@@ -378,7 +378,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 ExposureMask |
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
-                StructureNotifyMask | PropertyChangeMask);
+                FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
     
     // select xinput events
     XIEventMask xi_mask;
@@ -387,8 +387,6 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     xi_mask.mask = calloc(xi_mask.mask_len, sizeof(char));
     XISetMask(xi_mask.mask, XI_KeyPress);
     XISetMask(xi_mask.mask, XI_KeyRelease);
-    XISetMask(xi_mask.mask, XI_FocusIn);
-    XISetMask(xi_mask.mask, XI_FocusOut);
     XISelectEvents(g->display, child_win, &xi_mask, 1);
 
 
@@ -1940,16 +1938,15 @@ static void process_xevent_motion(Ghandles * g, const XMotionEvent * ev)
 //      fprintf(stderr, "motion in 0x%x", ev->window);
 }
 
-/* handle local XInput event: FocusIn, FocusOut
+/* handle local Xserver event: FocusIn, FocusOut
  * send to relevant window in VM */
-static void process_xievent_focus(Ghandles * g, const XILeaveEvent * ev)
+static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
 {
     struct msg_hdr hdr;
     struct msg_focus k;
-    CHECK_NONMANAGED_WINDOW(g, ev->event);
+    CHECK_NONMANAGED_WINDOW(g, ev->window);
 
-    // it's unclear why XI has it's own set of constant names, despite having the same value
-    if (ev->type == XI_FocusIn) {
+    if (ev->type == FocusIn) {
         char keys[32];
         XQueryKeymap(g->display, keys);
         hdr.type = MSG_KEYMAP_NOTIFY;
@@ -2397,19 +2394,10 @@ static void process_xevent(Ghandles * g)
             XKeyEvent fake_event = xkeyevent_from_xinput_event(xi_device);
             process_xevent_keypress(g, &fake_event);
             break;
-        case XI_FocusIn:
-        case XI_FocusOut:
-            if (xi_leave->evtype == XI_FocusIn) {
-                g->focused_remote_winid = xi_leave->event;
-            } else {
-                if (g->focused_remote_winid == xi_leave->event)
-                    g->focused_remote_winid = 0; // load-compare-store in single thread is fine?
-            }
-            process_xievent_focus(g, xi_leave);
-            break;
         }
         XFreeEventData(g->display, cookie);
     } else {
+        XID wid;
         switch (event_buffer.type) {
         case ReparentNotify:
             process_xevent_reparent(g, (XReparentEvent *) &event_buffer);
@@ -2429,6 +2417,18 @@ static void process_xevent(Ghandles * g)
         case LeaveNotify:
             process_xevent_crossing(g,
                         (XCrossingEvent *) & event_buffer);
+            break;
+        case FocusIn:
+        case FocusOut:
+            wid = ((XFocusChangeEvent *) & event_buffer)->window;
+            if (event_buffer.type == FocusIn) {
+                g->focused_remote_winid = wid;
+            } else {
+                if (g->focused_remote_winid == wid)
+                    g->focused_remote_winid = 0; // load-compare-store in single thread is fine?
+            }
+            process_xevent_focus(g,
+                        (XFocusChangeEvent *) & event_buffer);
             break;
         case Expose:
             process_xevent_expose(g, (XExposeEvent *) & event_buffer);
