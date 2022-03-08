@@ -1268,7 +1268,7 @@ static int is_special_keypress(Ghandles * g, const XIDeviceEvent * ev, XID remot
     /* copy */
     if (((int)ev->mods.effective & SPECIAL_KEYS_MASK) == g->copy_seq_mask
         && ev->detail == XKeysymToKeycode(g->display, g->copy_seq_key)) {
-        if (ev->type != KeyPress)
+        if (ev->evtype != KeyPress)
             return 1;
         g->clipboard_xevent_time = ev->time;
         if (g->qrexec_clipboard) {
@@ -1290,7 +1290,7 @@ static int is_special_keypress(Ghandles * g, const XIDeviceEvent * ev, XID remot
     /* paste */
     if (((int)ev->mods.effective & SPECIAL_KEYS_MASK) == g->paste_seq_mask
         && ev->detail == XKeysymToKeycode(g->display, g->paste_seq_key)) {
-        if (ev->type != KeyPress)
+        if (ev->evtype != KeyPress)
             return 1;
         inter_appviewer_lock(g, 1);
         clipboard_file_xevent_time = get_clipboard_file_xevent_timestamp();
@@ -2384,17 +2384,16 @@ static void process_xevent(Ghandles * g)
         XIEvent* xi_event = cookie->data; // from test_xi2.c in xinput cli utility
 
         XIDeviceEvent * xi_device = (XIDeviceEvent *)xi_event;
-        XILeaveEvent * xi_leave = (XILeaveEvent *)xi_event;
         switch (xi_event->evtype) {
         // ideally raw input events are better, but I'm relying on X server's built-in event filtering and routing feature here
         case XI_KeyPress:
         case XI_KeyRelease:
-            if (xi_device && xi_device->flags & XIKeyRepeat) break; // don't send key repeat events
+            if (xi_device && (xi_device->flags & XIKeyRepeat)) break; // don't send key repeat events
             process_xievent_keypress(g, xi_device);
             break;
         case XI_FocusIn:
         case XI_FocusOut:
-            process_xievent_focus(g, xi_leave);
+            process_xievent_focus(g, (XILeaveEvent *)xi_event);
             break;
         }
         XFreeEventData(g->display, cookie);
