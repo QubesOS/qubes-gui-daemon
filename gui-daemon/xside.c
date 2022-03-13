@@ -506,24 +506,33 @@ static void update_work_area(Ghandles *g) {
                 desktop_coordinates_size, act_type, XA_CARDINAL);
         exit(1);
     }
+    bool bad_work_area = false;
     for (unsigned long s = 0; s < desktop_coordinates_size; ++s) {
         if (scratch[s] > max_display_width) {
             fprintf(stderr,
-                    "PANIC: invalid work area:\n"
-                    "     x: %1$lu (limit %5$lu)\n"
-                    "     y: %2$lu (limit %5$lu)\n"
-                    " width: %3$lu (limit %5$lu)\n"
-                    "height: %4$lu (limit %5$lu)\n"
-                    "Exiting!\n",
+                    "WARNING: invalid work area (window manager bug?):\n"
+                    "      x: %1$lu (limit %5$lu)\n"
+                    "      y: %2$lu (limit %5$lu)\n"
+                    "  width: %3$lu (limit %5$lu)\n"
+                    " height: %4$lu (limit %5$lu)\n"
+                    "Using old values:\n"
+                    "      x: %6$d\n"
+                    "      y: %7$d\n"
+                    "  width: %8$d\n"
+                    " height: %9$d\n",
                     scratch[0], scratch[1], scratch[2], scratch[3],
-                    max_display_width);
-            exit(1);
+                    max_display_width,
+                    g->work_x, g->work_y, g->work_width, g->work_height);
+            bad_work_area = true;
+            break;
         }
     }
-    g->work_x = scratch[0];
-    g->work_y = scratch[1];
-    g->work_width = scratch[2];
-    g->work_height = scratch[3];
+    if (!bad_work_area) {
+        g->work_x = scratch[0];
+        g->work_y = scratch[1];
+        g->work_width = scratch[2];
+        g->work_height = scratch[3];
+    }
     if (g->log_level > 0)
         fprintf(stderr, "work area %lu %lu %lu %lu\n",
                 scratch[0], scratch[1], scratch[2], scratch[3]);
