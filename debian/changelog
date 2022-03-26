@@ -1,3 +1,10 @@
+qubes-gui-daemon (4.1.21-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Ignore bad work areas
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Sat, 26 Mar 2022 14:28:38 +0100
+
 qubes-gui-daemon (4.1.20-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
