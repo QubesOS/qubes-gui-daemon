@@ -22,6 +22,8 @@
 #
 #
 
+%define backend_vmm @BACKEND_VMM@
+
 Name:		qubes-gui-daemon
 Version:	@VERSION@
 Release:	1%{dist}
@@ -52,7 +54,9 @@ BuildRequires:	libXrandr-devel
 BuildRequires:	libconfig-devel
 BuildRequires:	libpng-devel
 BuildRequires:	libnotify-devel
-BuildRequires:	xen-devel
+%if "%{?backend_vmm}" == "xen"
+BuildRequires:  xen-devel
+%endif
 BuildRequires:	qubes-db-devel
 BuildRequires:	help2man
 BuildRequires:	gcc
