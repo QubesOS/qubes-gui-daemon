@@ -1,0 +1,11 @@
+host:
+  rpm:
+    spec:
+    - rpm_spec/gui-daemon.spec
+vm:
+  rpm:
+    spec:
+    - rpm_spec/gui-daemon.spec
+  deb:
+    build:
+    - debian
