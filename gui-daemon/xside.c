@@ -274,6 +274,14 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
          * handled in handle_mfndump/handle_window_dump */
         return 0;
     }
+
+    char error_msg[1024];
+    XGetErrorText(ev->display, ev->error_code, error_msg, sizeof(error_msg));
+    int now = (int) time(NULL); // truncate
+    fprintf(stderr, "[%d] Encountered X Error:\n", now);
+    fprintf(stderr, error_msg);
+    
+
 #ifdef MAKE_X11_ERRORS_FATAL
     /* The exit(1) below will call release_all_mapped_mfns (registerd with
      * atexit(3)), which would try to release window images with XShmDetach. We
@@ -393,7 +401,12 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     XISetMask(xi_mask.mask, XI_KeyRelease);
     XISetMask(xi_mask.mask, XI_FocusIn);
     XISetMask(xi_mask.mask, XI_FocusOut);
-    XISelectEvents(g->display, child_win, &xi_mask, 1);
+    
+    int err = XISelectEvents(g->display, child_win, &xi_mask, 1);
+    if (err) {
+        fprintf(stderr, "Failed to subscribe to XI events. ErrCode: %d\n", err);
+        exit(1);
+    }
     free(xi_mask.mask);
     XSync(g->display, False);
 
@@ -1409,7 +1422,6 @@ static void process_xevent_button(Ghandles * g, const XButtonEvent * ev)
     update_wm_user_time(g, ev->window, ev->time);
 
     k.type = ev->type;
-
     k.x = ev->x;
     k.y = ev->y;
     k.state = ev->state;
@@ -1901,7 +1913,11 @@ static void send_keymap_notify(Ghandles * g)
 {
     struct msg_hdr hdr;
     char keys[32];
-    XQueryKeymap(g->display, keys);
+    int err = XQueryKeymap(g->display, keys);
+    if (err) {
+        fprintf(stderr, "XQueryKeymap failed: %d.\n", err);
+        return; // non fatal
+    }
     hdr.type = MSG_KEYMAP_NOTIFY;
     hdr.window = 0;
     write_message(g->vchan, hdr, keys);
