@@ -744,7 +744,8 @@ void reload(Ghandles * g) {
 
     g->screen = DefaultScreen(g->display);
     g->root_win = RootWindow(g->display, g->screen);
-    XGetWindowAttributes(g->display, g->root_win, &attr);
+    if (!XGetWindowAttributes(g->display, g->root_win, &attr))
+        errx(1, "Cannot query root window attributes!");
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
     update_work_area(g);
@@ -3600,7 +3601,8 @@ static void send_xconf(Ghandles * g)
 {
     struct msg_xconf xconf;
     XWindowAttributes attr;
-    XGetWindowAttributes(g->display, g->root_win, &attr);
+    if (!XGetWindowAttributes(g->display, g->root_win, &attr))
+        errx(1, "Cannot query root window attributes!");
     xconf.w = _VIRTUALX(attr.width);
     xconf.h = attr.height;
     xconf.depth = attr.depth;
