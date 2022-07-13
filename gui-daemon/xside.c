@@ -3503,6 +3503,7 @@ static void handle_message(Ghandles * g)
             break;
         vm_window->is_mapped = 0;
         (void) XUnmapWindow(g->display, vm_window->local_winid);
+        release_mapped_mfns(g, vm_window);
         break;
     case MSG_CONFIGURE:
         handle_configure_from_vm(g, vm_window);
