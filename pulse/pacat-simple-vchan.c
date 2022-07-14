@@ -731,6 +731,7 @@ static void control_socket_callback(pa_mainloop_api *UNUSED(a),
         ret = read(client_fd, command_buffer+command_len, sizeof(command_buffer)-command_len);
         if (ret < 0) {
             pacat_log("Control client read failed: %s", strerror(errno));
+            return;
         }
         command_len += ret;
         if (ret == 0)
