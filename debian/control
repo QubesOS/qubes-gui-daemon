@@ -36,18 +36,28 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends}
 Recommends:
- qubes-gui-daemon-pulseaudio
+ qubes-audio-daemon
 Provides: ${diverted-files}
 Conflicts: ${diverted-files}
 Description: Qubes GUI virtualization (GUI VM side)
  The Qubes GUI virtualization infrastructure that needs to be installed in GUI
  VM.
 
-Package: qubes-gui-daemon-pulseaudio
+Package: qubes-audio-daemon
 Architecture: any
 Depends:
  pulseaudio,
  ${shlibs:Depends},
  ${misc:Depends}
+Replaces: qubes-gui-daemon-pulseaudio (<< 4.1.21~)
+Breaks: qubes-gui-daemon-pulseaudio (<< 4.1.21~)
 Description: Qubes audio virtualization (GUI/Audio VM side)
  The GUI/Audio VM side of Qubes audio virtualization.
+
+Package: qubes-gui-daemon-pulseaudio
+Architecture: any
+Depends:
+ qubes-audio-daemon,
+ ${misc:Depends}
+Description: transitional package
+ This is a transitional package. It can safely be removed.
