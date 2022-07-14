@@ -1,6 +1,6 @@
 VCHAN_PKG = $(if $(BACKEND_VMM),vchan-$(BACKEND_VMM),vchan)
 CC ?= gcc
-CFLAGS += -Wall -Wextra -Werror -g -O2
+CFLAGS += -Wall -Wextra -Werror -g -O2 -D_GNU_SOURCE=
 VCHANLIBS=`pkg-config --libs $(VCHAN_PKG)`
 VCHANCFLAGS=`pkg-config --cflags $(VCHAN_PKG)`
 GLIBCFLAGS=`pkg-config --cflags glib-2.0`
