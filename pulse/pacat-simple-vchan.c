@@ -747,9 +747,9 @@ static int setup_control(struct userdata *u) {
         goto fail;
     }
 
-    if (snprintf(addr.sun_path, sizeof(addr.sun_path),
+    if ((size_t)snprintf(addr.sun_path, sizeof(addr.sun_path),
                 "/var/run/qubes/audio-control.%s", u->name)
-            >= (int)sizeof(addr.sun_path)) {
+            >= sizeof(addr.sun_path)) {
         pacat_log("VM name too long");
         goto fail;
     }
