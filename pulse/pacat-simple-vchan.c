@@ -57,6 +57,7 @@
 #include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <err.h>
 
 #include <pulse/pulseaudio.h>
 #include <pulse/error.h>
@@ -828,6 +829,13 @@ static void control_cleanup(struct userdata *u) {
         qdb_close(u->qdb);
 }
 
+static _Noreturn void usage(char *arg0) {
+    fprintf(stderr, "usage: %s [-l] [--] domid domname\n",
+            arg0 ? arg0 : "pacat-simple-vchan");
+    fprintf(stderr, "  -l - low-latency mode (higher CPU usage)\n");
+    exit(1);
+}
+
 int main(int argc, char *argv[])
 {
     struct timeval tv;
@@ -835,43 +843,34 @@ int main(int argc, char *argv[])
     pa_glib_mainloop* m = NULL;
     pa_time_event *time_event = NULL;
     char *server = NULL;
-    char *domname = NULL;
     int domid = -1;
     char *pidfile_path;
     int pidfile_fd;
-    int i;
+    int i = 1;
 
-    if (argc <= 2) {
-        fprintf(stderr, "usage: %s [-l] domid domname\n", argv[0]);
-        fprintf(stderr, "  -l - low-latency mode (higher CPU usage)\n");
-        exit(1);
+    if (argc <= 2 || argc > 5)
+        usage(argv[0]);
+    if (!strcmp(argv[i], "-l")) {
+        bufattr = &custom_bufattr;
+        i++;
     }
-    for (i=1; i<argc; i++) {
-        if (argv[i][0] == '-') {
-            switch (argv[i][1]) {
-                case 'l':
-                    bufattr = &custom_bufattr;
-                    break;
-                default:
-                    fprintf(stderr, "Invalid option: %c\n", argv[i][1]);
-                    exit(1);
-            }
-        } else {
-            if (domid < 0)
-                domid = atoi(argv[i]);
-            else 
-                domname = argv[i];
-        }
-    }
-    if (domid < 0) { /* not-a-number returns 0 */
-        fprintf(stderr, "invalid domid\n");
-        exit(1);
-    }
-    if (!domname) {
-        fprintf(stderr, "missing domname\n");
-        exit(1);
-    }
-
+    if (!strcmp(argv[i], "--"))
+        i++;
+    if (argc - i != 2)
+        usage(argv[0]);
+    const char *domid_str = argv[i], *domname = argv[i + 1];
+    char *endptr;
+    errno = 0;
+    long l_domid = strtol(domid_str, &endptr, 10);
+    /* 0x7FF0 is DOMID_FIRST_RESERVED */
+    if (l_domid < 0 || l_domid >= 0x7FF0 || errno == ERANGE)
+        errx(1, "domid %ld out of range 0 through %d inclusive", l_domid,
+                0x7FF0 - 1);
+    domid = l_domid;
+    if (errno)
+        err(1, "invalid domid %s", domid_str);
+    if (*endptr)
+        errx(1, "trailing junk after domid %s", domid_str);
     if (create_pidfile(domid, &pidfile_path, &pidfile_fd) < 0)
         /* error already printed by create_pidfile() */
         exit(1);
