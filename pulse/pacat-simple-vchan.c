@@ -195,27 +195,34 @@ static void start_drain(struct userdata *u, pa_stream *s) {
 
 static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_length)
 {
-    int l = 0;
-    size_t index, buffer_length;
+    int l = 0, space_in_vchan;
+    size_t buffer_length;
     void *buffer = NULL;
     assert(s);
 
-    if (!libvchan_data_ready(u->play_ctrl) || !max_length)
+    if (!max_length)
         return;
 
-    buffer_length = max_length;
+    if ((space_in_vchan = libvchan_data_ready(u->play_ctrl)) < 0) {
+        pacat_log("libvchan_data_ready() failed: return value %d", space_in_vchan);
+        quit(u, 1);
+        return;
+    }
 
-    if (pa_stream_begin_write(s, &buffer, &buffer_length) < 0) {
+    buffer_length = (size_t)space_in_vchan > max_length ? max_length : (size_t)space_in_vchan;
+    if (!buffer_length)
+        return;
+
+    if (pa_stream_begin_write(s, &buffer, &buffer_length) || !buffer) {
         pacat_log("pa_stream_begin_write() failed: %s", pa_strerror(pa_context_errno(u->context)));
         quit(u, 1);
         return;
     }
-    index = 0;
 
-    while (libvchan_data_ready(u->play_ctrl) && buffer_length > 0) {
-        l = libvchan_read(u->play_ctrl, buffer + index, buffer_length);
+    if (buffer_length) {
+        l = libvchan_read(u->play_ctrl, buffer, buffer_length);
         if (l < 0) {
-            pacat_log("vchan read failed");
+            pacat_log("libvchan_read() failed: return value %d", l);
             quit(u, 1);
             return;
         }
@@ -224,12 +231,12 @@ static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_l
             quit(u, 0);
             return;
         }
-        buffer_length -= l;
-        index += l;
-    }
-
-    if (index) {
-        if (pa_stream_write(s, buffer, index, NULL, 0, PA_SEEK_RELATIVE) < 0) {
+        if ((size_t)l != buffer_length) {
+            pacat_log("unexpected short vchan read: expected %zu, got %d", buffer_length, l);
+            quit(u, 1);
+            return;
+        }
+        if (pa_stream_write(s, buffer, buffer_length, NULL, 0, PA_SEEK_RELATIVE) < 0) {
             pacat_log("pa_stream_write() failed: %s", pa_strerror(pa_context_errno(u->context)));
             quit(u, 1);
             return;
