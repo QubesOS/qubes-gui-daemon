@@ -742,6 +742,9 @@ static void control_socket_callback(pa_mainloop_api *UNUSED(a),
         new_rec_allowed = 0;
     } else if (strncmp(command_buffer, "audio-input 1\n", command_len) == 0) {
         new_rec_allowed = 1;
+    } else {
+        pacat_log("Invalid command buffer");
+        return;
     }
     if (new_rec_allowed != -1) {
         g_mutex_lock(&u->prop_mutex);
