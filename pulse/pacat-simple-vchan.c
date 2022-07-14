@@ -736,7 +736,7 @@ static void control_socket_callback(pa_mainloop_api *UNUSED(a),
         command_len += ret;
         if (ret == 0)
             break;
-    } while (!memchr(command_buffer, '\n', command_len));
+    } while (!memchr(command_buffer + (command_len-ret), '\n', ret));
 
     if (strncmp(command_buffer, "audio-input 0\n", command_len) == 0) {
         new_rec_allowed = 0;
