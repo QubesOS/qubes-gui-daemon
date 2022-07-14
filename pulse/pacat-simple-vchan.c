@@ -48,6 +48,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <stdbool.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -257,14 +258,16 @@ static void stream_write_callback(pa_stream *s, size_t length, void *userdata) {
     process_playback_data(u, s, length);
 }
 
-static void send_rec_data(pa_stream *s, struct userdata *u) {
-    int l;
+static void send_rec_data(pa_stream *s, struct userdata *u, bool discard_overrun) {
     const void *rec_buffer;
     size_t rec_buffer_length;
-    int rec_buffer_index;
+    int l, vchan_buffer_space;
 
     assert(s);
     assert(u);
+
+    if (!u->rec_allowed)
+        return;
 
     if (pa_stream_readable_size(s) <= 0)
         return;
@@ -274,18 +277,36 @@ static void send_rec_data(pa_stream *s, struct userdata *u) {
         quit(u, 1);
         return;
     }
-    rec_buffer_index = 0;
+    if (!rec_buffer)
+        return;
 
-    while (rec_buffer_length > 0 && u->rec_allowed) {
-        /* can block */
-        if ((l=libvchan_write(u->rec_ctrl, rec_buffer + rec_buffer_index, rec_buffer_length)) < 0) {
-            pacat_log("libvchan_write failed");
-            quit(u, 1);
-            return;
-        }
-        rec_buffer_length -= l;
-        rec_buffer_index += l;
+    if ((vchan_buffer_space = libvchan_buffer_space(u->rec_ctrl)) < 0) {
+        pacat_log("libvchan_buffer_space failed");
+        quit(u, 1);
+        return;
     }
+
+    if (rec_buffer_length > (size_t)vchan_buffer_space) {
+        if (!discard_overrun)
+            return;
+        size_t bytes_to_discard = rec_buffer_length - (size_t)vchan_buffer_space;
+        pacat_log("Overrun: discarding %zu bytes", bytes_to_discard);
+        rec_buffer += bytes_to_discard;
+        rec_buffer_length = (size_t)vchan_buffer_space;
+    }
+
+    if ((l=libvchan_write(u->rec_ctrl, rec_buffer, rec_buffer_length)) < 0) {
+        pacat_log("libvchan_write failed: return value %d", l);
+        quit(u, 1);
+        return;
+    }
+
+    if ((size_t)l != rec_buffer_length) {
+        pacat_log("unexpected short vchan write: expected %zu, got %d", rec_buffer_length, l);
+        quit(u, 1);
+        return;
+    }
+
     pa_stream_drop(s);
 }
 
@@ -296,7 +317,7 @@ static void stream_read_callback(pa_stream *s, size_t length, void *userdata) {
     assert(s);
     assert(length > 0);
 
-    send_rec_data(s, u);
+    send_rec_data(s, u, true);
 }
 
 /* vchan event */
@@ -373,9 +394,7 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
         }
     }
     /* send the data if space is available */
-    if (libvchan_buffer_space(u->rec_ctrl)) {
-        send_rec_data(u->rec_stream, u);
-    }
+    send_rec_data(u->rec_stream, u, false);
 }
 
 /* This routine is called whenever the stream state changes */
