@@ -73,7 +73,7 @@
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
-      PROTOCOL_VERSION_MINOR <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
+      3 <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
 #  error Incompatible qubes-gui-protocol.h.
 #endif
 
