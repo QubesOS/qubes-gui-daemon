@@ -752,7 +752,7 @@ static void control_socket_callback(pa_mainloop_api *UNUSED(a),
         if (u->rec_allowed && u->rec_requested) {
             pacat_log("Recording start");
             pa_stream_cork(u->rec_stream, 0, NULL, NULL);
-        } else if (!u->rec_allowed &&
+        } else if (!u->rec_allowed && u->rec_stream &&
                 (u->rec_requested || !pa_stream_is_corked(u->rec_stream))) {
             pacat_log("Recording stop");
             pa_stream_cork(u->rec_stream, 1, NULL, NULL);
