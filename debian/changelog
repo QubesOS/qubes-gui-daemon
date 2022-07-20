@@ -1,3 +1,29 @@
+qubes-gui-daemon (4.1.22-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Add some hardening CFLAGS
+  * Disable subwindows by default
+  * Add documentation for various guid.conf options
+
+  [ Frédéric Pierret (fepitre) ]
+  * Drop Travis CI
+  * Add Qubes Builder v2 integration
+  * .qubesbuilder: replace 'spec' by 'build'
+
+  [ M. Vefa Bicakci ]
+  * Release MFNs for unmapped windows as well
+
+  [ unman ]
+  * Rename Debian packages for consistency
+
+  [ Demi Marie Obenour ]
+  * Check the return value of snprintf()
+  * Check XGetWindowAttributes return value
+  * Bidirectional GUI protocol negotiation
+  * Allow using older qubes-gui-protocol.h
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Wed, 20 Jul 2022 12:12:18 +0200
+
 qubes-gui-daemon (4.1.21-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
