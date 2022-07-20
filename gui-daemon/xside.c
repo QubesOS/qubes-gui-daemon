@@ -69,11 +69,11 @@
 /* Supported protocol version */
 
 #define PROTOCOL_VERSION_MAJOR 1
-#define PROTOCOL_VERSION_MINOR 3
-#define PROTOCOL_VERSION (PROTOCOL_VERSION_MAJOR << 16 | PROTOCOL_VERSION_MINOR)
+#define PROTOCOL_VERSION_MINOR 4
+#define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
-      PROTOCOL_VERSION_MINOR <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
+      3 <= QUBES_GUID_PROTOCOL_VERSION_MINOR)
 #  error Incompatible qubes-gui-protocol.h.
 #endif
 
@@ -744,7 +744,8 @@ void reload(Ghandles * g) {
 
     g->screen = DefaultScreen(g->display);
     g->root_win = RootWindow(g->display, g->screen);
-    XGetWindowAttributes(g->display, g->root_win, &attr);
+    if (!XGetWindowAttributes(g->display, g->root_win, &attr))
+        errx(1, "Cannot query root window attributes!");
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
     update_work_area(g);
@@ -1311,7 +1312,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
             if (len > 0) {
                 /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
                    of the blob, be aware when working with old implementations. */
-                if (g->agent_version < 0x00010002)
+                if (g->protocol_version < PROTOCOL_VERSION(1, 2))
                     hdr.window = len;
                 else
                     hdr.window = remote_winid;
@@ -3601,7 +3602,14 @@ static void send_xconf(Ghandles * g)
 {
     struct msg_xconf xconf;
     XWindowAttributes attr;
-    XGetWindowAttributes(g->display, g->root_win, &attr);
+    if (!XGetWindowAttributes(g->display, g->root_win, &attr))
+        errx(1, "Cannot query root window attributes!");
+    if (g->protocol_version >= PROTOCOL_VERSION(1, 4)) {
+        /* Bidirectional protocol negotiation is supported */
+        _Static_assert(sizeof g->protocol_version == 4,
+                       "g->protocol_version must be a uint32_t");
+        write_struct(g->vchan, g->protocol_version);
+    }
     xconf.w = _VIRTUALX(attr.width);
     xconf.h = attr.height;
     xconf.depth = attr.depth;
@@ -3620,30 +3628,32 @@ static void get_protocol_version(Ghandles * g)
     version_major = untrusted_version >> 16;
     version_minor = untrusted_version & 0xffff;
 
-    if (version_major == PROTOCOL_VERSION_MAJOR &&
-            version_minor <= PROTOCOL_VERSION_MINOR) {
+    if (version_major == PROTOCOL_VERSION_MAJOR) {
         /* agent is compatible */
-        g->agent_version = version_major << 16 | version_minor;
+        g->protocol_version = PROTOCOL_VERSION(version_major, min(version_minor, PROTOCOL_VERSION_MINOR));
         return;
     }
-    if (version_major < PROTOCOL_VERSION_MAJOR)
+    if (version_major < PROTOCOL_VERSION_MAJOR) {
         /* agent is too old */
-        snprintf(message, sizeof message, "%s %s \""
+        if ((unsigned)snprintf(message, sizeof message, "%s %s \""
                 "The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
                 "To start and access the VM or template without GUI virtualization, use the following commands:\n"
                 "qvm-start --no-guid vmname\n"
                 "qvm-console-dispvm vmname\"",
                 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
                 g->use_kdialog ? "--sorry" : "--error --text ",
-                g->vmname, version_major, version_minor);
-    else
+                g->vmname, version_major, version_minor) >= sizeof message)
+            abort();
+    } else {
         /* agent is too new */
-        snprintf(message, sizeof message, "%s %s \""
+        if ((unsigned)snprintf(message, sizeof message, "%s %s \""
                 "The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
                 "To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
                 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
                 g->use_kdialog ? "--sorry" : "--error --text ",
-                version_major, version_minor, g->vmname);
+                version_major, version_minor, g->vmname) >= sizeof message)
+            abort();
+    }
     ignore_result(system(message));
     exit(1);
 }
