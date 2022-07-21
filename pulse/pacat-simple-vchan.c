@@ -285,7 +285,7 @@ static void send_rec_data(pa_stream *s, struct userdata *u, bool discard_overrun
         return;
     }
 
-    if (rec_buffer_length > (size_t)vchan_buffer_space) {
+    if (u->never_block && rec_buffer_length > (size_t)vchan_buffer_space) {
         if (!discard_overrun)
             return;
         size_t bytes_to_discard = rec_buffer_length - (size_t)vchan_buffer_space;
@@ -294,8 +294,8 @@ static void send_rec_data(pa_stream *s, struct userdata *u, bool discard_overrun
         rec_buffer_length = (size_t)vchan_buffer_space;
     }
 
-    if ((l=libvchan_write(u->rec_ctrl, rec_buffer, rec_buffer_length)) < 0) {
-        pacat_log("libvchan_write failed: return value %d", l);
+    if ((l=libvchan_send(u->rec_ctrl, rec_buffer, rec_buffer_length)) < 0) {
+        pacat_log("libvchan_send failed: return value %d", l);
         quit(u, 1);
         return;
     }
@@ -929,7 +929,7 @@ int main(int argc, char *argv[])
         perror("setuid");
         exit(1);
     }
-
+    u.never_block = libvchan_buffer_space(u.rec_ctrl) > 8192;
     u.proplist = pa_proplist_new();
     pa_proplist_sets(u.proplist, PA_PROP_APPLICATION_NAME, u.name);
     pa_proplist_sets(u.proplist, PA_PROP_MEDIA_NAME, u.name);

@@ -34,6 +34,7 @@ struct userdata {
     char *qdb_path;
     int control_socket_fd;
     pa_io_event* control_socket_event;
+    bool never_block;
 };
 
 void pacat_log(const char *fmt, ...);
