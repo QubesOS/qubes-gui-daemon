@@ -5,7 +5,7 @@ VCHANLIBS=`pkg-config --libs $(VCHAN_PKG)`
 VCHANCFLAGS=`pkg-config --cflags $(VCHAN_PKG)`
 GLIBCFLAGS=`pkg-config --cflags glib-2.0`
 GLIBLIBS=`pkg-config --libs glib-2.0`
-all: module-vchan-sink.so pacat-simple-vchan
+all: pacat-simple-vchan
 pacat-simple-vchan.o: pacat-simple-vchan.c
 	$(CC) $(CFLAGS) -c $(VCHANCFLAGS) -I. $(GLIBCFLAGS) pacat-simple-vchan.c
 pacat-simple-vchan: pacat-simple-vchan.o
