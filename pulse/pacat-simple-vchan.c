@@ -286,7 +286,7 @@ static void send_rec_data(pa_stream *s, struct userdata *u, bool discard_overrun
             return;
         }
 
-        if (u->never_block && rec_buffer_length > (size_t)vchan_buffer_space) {
+        if (rec_buffer_length > (size_t)vchan_buffer_space) {
             if (!discard_overrun)
                 return;
             size_t bytes_to_discard = rec_buffer_length - (size_t)vchan_buffer_space;
@@ -297,7 +297,7 @@ static void send_rec_data(pa_stream *s, struct userdata *u, bool discard_overrun
     }
 
     while (rec_buffer_length > 0) {
-        /* can block */
+        /* can block if u->never_block is not set */
         if ((l=libvchan_write(u->rec_ctrl, rec_buffer + rec_buffer_index, rec_buffer_length)) < 0) {
             pacat_log("libvchan_write failed: return value %d", l);
             quit(u, 1);
