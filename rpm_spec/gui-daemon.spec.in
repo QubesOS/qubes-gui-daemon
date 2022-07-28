@@ -86,7 +86,11 @@ policy files etc.
 %package -n qubes-audio-daemon
 Summary:	The Qubes AUDIO virtualization
 Requires:	pulseaudio-libs
+%if 0%{?fedora} >= 35
+Requires:	pulseaudio-daemon
+%else
 Requires:	pulseaudio
+%endif
 Requires:	libconfig
 Requires:	qubes-libvchan-@BACKEND_VMM@
 Requires:   qubes-utils >= 3.1.0
