@@ -140,6 +140,7 @@ struct extra_prop {
 };
 
 /* global variables
+ * One for one VM
  * keep them in this struct for readability
  */
 struct _global_handles {
@@ -172,6 +173,7 @@ struct _global_handles {
     Atom wm_user_time_window; /* Atom: _NET_WM_USER_TIME_WINDOW */
     Atom wm_user_time; /* Atom: _NET_WM_USER_TIME */
     int shm_major_opcode;   /* MIT-SHM extension opcode */
+    int xi_opcode; /* XInput opcode, for repeat flags and such */
     /* shared memory handling */
     struct shm_args_hdr *shm_args;    /* shared memory with Xorg */
     uint32_t cmd_shmid;        /* shared memory id - received from shmoverride.so through shm.id.$DISPLAY file */
@@ -200,6 +202,7 @@ struct _global_handles {
     int clipboard_requested;    /* if clippoard content was requested by dom0 */
     Time clipboard_xevent_time;  /* timestamp of keypress which triggered last copy/paste */
     Window time_win; /* Window to set _NET_WM_USER_TIME on */
+
     /* signal was caught */
     int volatile reload_requested;
     pid_t pulseaudio_pid;
