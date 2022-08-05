@@ -47,8 +47,6 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/XShm.h>
 #include <X11/extensions/shmproto.h>
-#include <X11/extensions/XI2.h>
-#include <X11/extensions/XInput2.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 #include <X11/Xlib-xcb.h>
@@ -274,14 +272,6 @@ int x11_error_handler(Display * dpy, XErrorEvent * ev)
          * handled in handle_mfndump/handle_window_dump */
         return 0;
     }
-
-    char error_msg[1024];
-    XGetErrorText(ev->display, ev->error_code, error_msg, sizeof(error_msg));
-    int now = (int) time(NULL); // truncate
-    fprintf(stderr, "[%d] Encountered X Error:\n", now);
-    fprintf(stderr, error_msg);
-    
-
 #ifdef MAKE_X11_ERRORS_FATAL
     /* The exit(1) below will call release_all_mapped_mfns (registerd with
      * atexit(3)), which would try to release window images with XShmDetach. We
@@ -384,33 +374,10 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                (const unsigned char *)&g->time_win,
                1);
     (void) XSelectInput(g->display, child_win,
-                ExposureMask |
+                ExposureMask | KeyPressMask | KeyReleaseMask |
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
-                StructureNotifyMask | PropertyChangeMask);
-    
-    // select xinput events
-    XIEventMask xi_mask;
-    xi_mask.deviceid = XIAllMasterDevices; // https://stackoverflow.com/questions/44095001/getting-double-rawkeypress-events-using-xinput2
-    xi_mask.mask_len = XIMaskLen(XI_LASTEVENT);
-    if (!(xi_mask.mask = calloc(xi_mask.mask_len, sizeof(char)))) {
-        fputs("Out of memory!\n", stderr);
-        exit(1);
-    }
-    XISetMask(xi_mask.mask, XI_KeyPress);
-    XISetMask(xi_mask.mask, XI_KeyRelease);
-    XISetMask(xi_mask.mask, XI_FocusIn);
-    XISetMask(xi_mask.mask, XI_FocusOut);
-    
-    int err = XISelectEvents(g->display, child_win, &xi_mask, 1);
-    if (err) {
-        fprintf(stderr, "Failed to subscribe to XI events. ErrCode: %d\n", err);
-        exit(1);
-    }
-    free(xi_mask.mask);
-    XSync(g->display, False);
-
-
+                FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
     XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
     if (g->icon_data) {
         XChangeProperty(g->display, child_win, g->net_wm_icon, XA_CARDINAL, 32,
@@ -689,10 +656,6 @@ static void mkghandles(Ghandles * g)
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
-    if (!XQueryExtension(g->display, "XInputExtension", &g->xi_opcode, &ev_base, &err_base)) {
-        fprintf(stderr, "X Input extension not available. Key press events not available. Upgrade your X11 server now.\n");
-        exit(1);
-    }
     /* get the work area */
     XSelectInput(g->display, g->root_win, PropertyChangeMask);
     update_work_area(g);
@@ -1287,7 +1250,7 @@ static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
 /* check and handle guid-special keys
  * currently only for inter-vm clipboard copy
  */
-static int is_special_keypress(Ghandles * g, const XIDeviceEvent * ev, XID remote_winid)
+static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
 {
     struct msg_hdr hdr;
     char *data;
@@ -1295,9 +1258,9 @@ static int is_special_keypress(Ghandles * g, const XIDeviceEvent * ev, XID remot
     Time clipboard_file_xevent_time;
 
     /* copy */
-    if (((int)ev->mods.effective & SPECIAL_KEYS_MASK) == g->copy_seq_mask
-        && ev->detail == XKeysymToKeycode(g->display, g->copy_seq_key)) {
-        if (ev->evtype != KeyPress)
+    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->copy_seq_mask
+        && ev->keycode == XKeysymToKeycode(g->display, g->copy_seq_key)) {
+        if (ev->type != KeyPress)
             return 1;
         g->clipboard_xevent_time = ev->time;
         if (g->qrexec_clipboard) {
@@ -1317,9 +1280,9 @@ static int is_special_keypress(Ghandles * g, const XIDeviceEvent * ev, XID remot
     }
 
     /* paste */
-    if (((int)ev->mods.effective & SPECIAL_KEYS_MASK) == g->paste_seq_mask
-        && ev->detail == XKeysymToKeycode(g->display, g->paste_seq_key)) {
-        if (ev->evtype != KeyPress)
+    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->paste_seq_mask
+        && ev->keycode == XKeysymToKeycode(g->display, g->paste_seq_key)) {
+        if (ev->type != KeyPress)
             return 1;
         inter_appviewer_lock(g, 1);
         clipboard_file_xevent_time = get_clipboard_file_xevent_timestamp();
@@ -1376,25 +1339,22 @@ static void update_wm_user_time(Ghandles *const g, const Window window,
             1);
 }
 
-/* handle local XInput event
+/* handle local Xserver event: XKeyEvent
  * send it to relevant window in VM
  */
-static void process_xievent_keypress(Ghandles * g, const XIDeviceEvent * ev)
+static void process_xevent_keypress(Ghandles * g, const XKeyEvent * ev)
 {
     struct msg_hdr hdr;
     struct msg_keypress k;
-    CHECK_NONMANAGED_WINDOW(g, ev->event);
-    // yes, ev->event is the window number
-    update_wm_user_time(g, ev->event, ev->time);
-    if (ev->flags & XIKeyRepeat)
-        return; // don't send key repeat events    
+    CHECK_NONMANAGED_WINDOW(g, ev->window);
+    update_wm_user_time(g, ev->window, ev->time);
     if (is_special_keypress(g, ev, vm_window->remote_winid))
         return;
-    k.type = ev->evtype; // ev->type is always Generic Event
-    k.x = ev->event_x;
-    k.y = ev->event_y;
-    k.state = ev->mods.effective;
-    k.keycode = ev->detail;
+    k.type = ev->type;
+    k.x = ev->x;
+    k.y = ev->y;
+    k.state = ev->state;
+    k.keycode = ev->keycode;
     hdr.type = MSG_KEYPRESS;
     hdr.window = vm_window->remote_winid;
     write_message(g->vchan, hdr, k);
@@ -1432,6 +1392,7 @@ static void process_xevent_button(Ghandles * g, const XButtonEvent * ev)
     update_wm_user_time(g, ev->window, ev->time);
 
     k.type = ev->type;
+
     k.x = ev->x;
     k.y = ev->y;
     k.state = ev->state;
@@ -1919,20 +1880,6 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
     }
 }
 
-static void send_keymap_notify(Ghandles * g)
-{
-    struct msg_hdr hdr;
-    char keys[32];
-    int err = XQueryKeymap(g->display, keys);
-    if (err) {
-        fprintf(stderr, "XQueryKeymap failed: %d.\n", err);
-        return; // non fatal
-    }
-    hdr.type = MSG_KEYMAP_NOTIFY;
-    hdr.window = 0;
-    write_message(g->vchan, hdr, keys);
-}
-
 /* handle local Xserver event: EnterNotify, LeaveNotify
  * send it to VM, but alwo we use it to fix docked
  * window position */
@@ -1943,7 +1890,11 @@ static void process_xevent_crossing(Ghandles * g, const XCrossingEvent * ev)
     CHECK_NONMANAGED_WINDOW(g, ev->window);
 
     if (ev->type == EnterNotify) {
-        send_keymap_notify(g);
+        char keys[32];
+        XQueryKeymap(g->display, keys);
+        hdr.type = MSG_KEYMAP_NOTIFY;
+        hdr.window = 0;
+        write_message(g->vchan, hdr, keys);
     }
     /* move tray to correct position in VM */
     if (vm_window->is_docked &&
@@ -1984,20 +1935,35 @@ static void process_xevent_motion(Ghandles * g, const XMotionEvent * ev)
 
 /* handle local Xserver event: FocusIn, FocusOut
  * send to relevant window in VM */
-static void process_xievent_focus(Ghandles * g, const XILeaveEvent * ev)
+static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
 {
     struct msg_hdr hdr;
     struct msg_focus k;
-    CHECK_NONMANAGED_WINDOW(g, ev->event);
-    update_wm_user_time(g, ev->event, ev->time);
+    CHECK_NONMANAGED_WINDOW(g, ev->window);
 
-    if (ev->type == XI_FocusIn) {
-        send_keymap_notify(g);
+    /* Ignore everything other than normal, non-temporary focus change. In
+     * practice it ignores NotifyGrab and NotifyUngrab. VM does not have any
+     * way to grab focus in dom0, so it shouldn't care about those events. Grab
+     * is used by window managers during task switching (either classic task
+     * switcher, or KDE "present windows" feature).
+     */
+    if (ev->mode != NotifyNormal && ev->mode != NotifyWhileGrabbed)
+        return;
+
+    if (ev->type == FocusIn) {
+        char keys[32];
+        XQueryKeymap(g->display, keys);
+        hdr.type = MSG_KEYMAP_NOTIFY;
+        hdr.window = 0;
+        write_message(g->vchan, hdr, keys);
     }
     hdr.type = MSG_FOCUS;
     hdr.window = vm_window->remote_winid;
-    k.type = ev->evtype;
-    k.mode = ev->mode;
+    k.type = ev->type;
+    /* override NotifyWhileGrabbed with NotifyNormal b/c VM shouldn't care
+     * about window manager details during focus switching
+     */
+    k.mode = NotifyNormal;
     k.detail = ev->detail;
     write_message(g->vchan, hdr, k);
 }
@@ -2347,7 +2313,11 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
     } else if (ev->data.l[1] == XEMBED_FOCUS_IN) {
         struct msg_hdr hdr;
         struct msg_focus k;
-        send_keymap_notify(g);
+        char keys[32];
+        XQueryKeymap(g->display, keys);
+        hdr.type = MSG_KEYMAP_NOTIFY;
+        hdr.window = 0;
+        write_message(g->vchan, hdr, keys);
         hdr.type = MSG_FOCUS;
         hdr.window = vm_window->remote_winid;
         k.type = FocusIn;
@@ -2362,72 +2332,62 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 static void process_xevent(Ghandles * g)
 {
     XEvent event_buffer;
-    XGenericEventCookie *cookie = &event_buffer.xcookie;
     XNextEvent(g->display, &event_buffer);
-    if (XGetEventData(g->display, cookie) &&
-            cookie->type == GenericEvent &&
-            cookie->extension == g->xi_opcode) {
-        XIEvent* xi_event = cookie->data; // from test_xi2.c in xinput cli utility
-
-        switch (xi_event->evtype) {
-        // ideally raw input events are better, but I'm relying on X server's built-in event filtering and routing feature here
-        case XI_KeyPress:
-        case XI_KeyRelease:
-            process_xievent_keypress(g, (XIDeviceEvent *)xi_event);
-            break;
-        case XI_FocusIn:
-        case XI_FocusOut:
-            process_xievent_focus(g, (XILeaveEvent *)xi_event);
-            break;
+    switch (event_buffer.type) {
+    case KeyPress:
+    case KeyRelease:
+        process_xevent_keypress(g, (XKeyEvent *) & event_buffer);
+        break;
+    case ReparentNotify:
+        process_xevent_reparent(g, (XReparentEvent *) &event_buffer);
+        break;
+    case ConfigureNotify:
+        process_xevent_configure(g, (XConfigureEvent *) &
+                     event_buffer);
+        break;
+    case ButtonPress:
+    case ButtonRelease:
+        process_xevent_button(g, (XButtonEvent *) & event_buffer);
+        break;
+    case MotionNotify:
+        process_xevent_motion(g, (XMotionEvent *) & event_buffer);
+        break;
+    case EnterNotify:
+    case LeaveNotify:
+        process_xevent_crossing(g,
+                    (XCrossingEvent *) & event_buffer);
+        break;
+    case FocusIn:
+    case FocusOut:
+        process_xevent_focus(g,
+                     (XFocusChangeEvent *) & event_buffer);
+        break;
+    case Expose:
+        process_xevent_expose(g, (XExposeEvent *) & event_buffer);
+        break;
+    case MapNotify:
+        process_xevent_mapnotify(g, (XMapEvent *) & event_buffer);
+        break;
+    case PropertyNotify:
+        process_xevent_propertynotify(g, (XPropertyEvent *) & event_buffer);
+        break;
+    case ClientMessage:
+//              fprintf(stderr, "xclient, atom=%s\n",
+//                      XGetAtomName(g->display,
+//                                   event_buffer.xclient.message_type));
+        if (event_buffer.xclient.message_type == g->xembed_message) {
+            process_xevent_xembed(g, (XClientMessageEvent *) &
+                          event_buffer);
+        } else if ((Atom)event_buffer.xclient.data.l[0] ==
+               g->wmDeleteMessage) {
+            if (g->log_level > 0)
+                fprintf(stderr, "close for 0x%x\n",
+                    (int) event_buffer.xclient.window);
+            process_xevent_close(g,
+                         event_buffer.xclient.window);
         }
-        XFreeEventData(g->display, cookie);
-    } else {
-        switch (event_buffer.type) {
-        case ReparentNotify:
-            process_xevent_reparent(g, (XReparentEvent *) &event_buffer);
-            break;
-        case ConfigureNotify:
-            process_xevent_configure(g, (XConfigureEvent *) &
-                        event_buffer);
-            break;
-        case ButtonPress:
-        case ButtonRelease:
-            process_xevent_button(g, (XButtonEvent *) & event_buffer);
-            break;
-        case MotionNotify:
-            process_xevent_motion(g, (XMotionEvent *) & event_buffer);
-            break;
-        case EnterNotify:
-        case LeaveNotify:
-            process_xevent_crossing(g,
-                        (XCrossingEvent *) & event_buffer);
-            break;
-        case Expose:
-            process_xevent_expose(g, (XExposeEvent *) & event_buffer);
-            break;
-        case MapNotify:
-            process_xevent_mapnotify(g, (XMapEvent *) & event_buffer);
-            break;
-        case PropertyNotify:
-            process_xevent_propertynotify(g, (XPropertyEvent *) & event_buffer);
-            break;
-        case ClientMessage:
-    //              fprintf(stderr, "xclient, atom=%s\n",
-    //                      XGetAtomName(g->display,
-    //                                   event_buffer.xclient.message_type));
-            if (event_buffer.xclient.message_type == g->xembed_message) {
-                process_xevent_xembed(g, (XClientMessageEvent *) &
-                            event_buffer);
-            } else if ((Atom)event_buffer.xclient.data.l[0] ==
-                g->wmDeleteMessage) {
-                if (g->log_level > 0)
-                    fprintf(stderr, "close for 0x%x\n",
-                        (int) event_buffer.xclient.window);
-                process_xevent_close(g,
-                            event_buffer.xclient.window);
-            }
-            break;
-        }
+        break;
+    default:;
     }
 }
 
