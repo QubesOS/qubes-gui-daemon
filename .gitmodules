@@ -1,0 +1,3 @@
+[submodule "qubes-common"]
+	path = qubes-common
+	url = https://github.com/QubesOS/qubes-gui-common/
