@@ -1,3 +1,5 @@
 qubes_guid
-qubes-guid
 qubes-guid.1
+/zig-cache/
+/zig-out/
+/include/

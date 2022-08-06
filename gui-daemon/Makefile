@@ -19,25 +19,31 @@
 #
 #
 
-MAKEFLAGS := -rR
-VCHAN_PKG = $(if $(BACKEND_VMM),vchan-$(BACKEND_VMM),vchan)
-CC=gcc
-pkgs := x11 xext x11-xcb xcb glib-2.0 xi $(VCHAN_PKG) libpng libnotify libconfig
-objs := xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
-	../gui-common/error.o list.o
-extra_cflags := -I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
-		$(shell pkg-config --cflags $(pkgs)) \
-		-fvisibility=hidden \
-		-fno-strict-aliasing \
-		-fno-strict-overflow \
-		-fno-delete-null-pointer-checks \
-		-Wp,-D_FORTIFY_SOURCE=2
+# MAKEFLAGS := -rR
+# VCHAN_PKG = $(if $(BACKEND_VMM),vchan-$(BACKEND_VMM),vchan)
+# CC=gcc
+# pkgs := x11 xext x11-xcb xcb xi $(VCHAN_PKG) libpng libnotify libconfig
+# objs := xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
+# 	../gui-common/error.o list.o
+# extra_cflags := -I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
+# 		$(shell pkg-config --cflags $(pkgs)) \
+# 		-fvisibility=hidden \
+# 		-fno-strict-aliasing \
+# 		-fno-strict-overflow \
+# 		-fno-delete-null-pointer-checks \
+# 		-Wp,-D_FORTIFY_SOURCE=2
 
-LDLIBS := $(shell pkg-config --libs $(pkgs))
+# LDLIBS := $(shell pkg-config --libs $(pkgs))
 all: qubes-guid # qubes-guid.1
-vpath %.c ../common
-qubes-guid: $(objs)
-	$(CC) -g -pie -o qubes-guid $(objs) -Wall -lm $(LDLIBS) $(LDFLAGS) -Wl,-Bsymbolic
+# vpath %.c ../common
+# qubes-guid: $(objs)
+# 	$(CC) -g -pie -o qubes-guid $(objs) -Wall -lm $(LDLIBS) $(LDFLAGS) -Wl,-Bsymbolic
+
+qubes-guid: zig-out/bin/qubes-guid
+	cp zig-out/bin/qubes-guid qubes-guid
+
+zig-out/bin/qubes-guid: 
+	zig build
 
 qubes-guid.1: qubes-guid
 	LC_ALL=C help2man --version-string=`cat ../version` --no-info --name="Qubes GUI daemon" ./qubes-guid  > qubes-guid.1
@@ -45,6 +51,6 @@ qubes-guid.1: qubes-guid
 clean:
 	rm -f qubes-guid ./*.o ./*~
 
-%.o: %.c Makefile
-	$(CC) -MD -MP -MF $@.dep -c -o $@ $(extra_cflags) $(CFLAGS) $<
--include *.dep
+# %.o: %.c Makefile
+# 	$(CC) -MD -MP -MF $@.dep -c -o $@ $(extra_cflags) $(CFLAGS) $<
+# -include *.dep

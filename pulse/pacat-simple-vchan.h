@@ -2,7 +2,6 @@
 #define __PACAT_SIMPLE_VCHAN_H
 
 #include <pulse/pulseaudio.h>
-#include <glib.h>
 #include <libvchan.h>
 #include <qubesdb-client.h>
 

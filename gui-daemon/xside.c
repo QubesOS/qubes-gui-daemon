@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <err.h>
+#include <fcntl.h>
 #include <sys/shm.h>
 #include <sys/file.h>
 #include <sys/types.h>
@@ -39,7 +40,6 @@
 #include <poll.h>
 #include <errno.h>
 #include <unistd.h>
-#include <execinfo.h>
 #include <getopt.h>
 #include <X11/X.h>
 #include <X11/Xproto.h>
@@ -56,6 +56,7 @@
 #include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
 #include <libvchan.h>
+#include <libunwind.h>
 #include "xside.h"
 #include "txrx.h"
 #include "double-buffer.h"
@@ -82,7 +83,7 @@
 static Ghandles ghandles;
 
 /* macro used to verify data from VM */
-#define VERIFY(x) do if (!(x) && ask_whether_verify_failed(g, __STRING(x))) return; while(0)
+#define VERIFY(x) do if (!(x) && ask_whether_verify_failed(g, #x)) return; while(0)
 
 /* calculate virtual width */
 #define XORG_DEFAULT_XINC 8
@@ -3562,23 +3563,40 @@ static void sighup_signal_handler(int UNUSED(x))
     ghandles.reload_requested = 1;
 }
 
+
+/* These variables are global because they
+ * cause the signal stack to overflow */
+unw_cursor_t u_cursor;
+unw_context_t u_context;
+char u_buffer[128];
+
 static void print_backtrace(void)
 {
-    void *array[100];
-    size_t size;
-    char **strings;
-    size_t i;
-
+    int ret = -UNW_ENOINFO;
+    int depth = 0;
 
     if (ghandles.log_level > 1) {
-        size = backtrace(array, 100);
-        strings = backtrace_symbols(array, size);
-        fprintf(stderr, "Obtained %zd stack frames.\n", size);
-
-        for (i = 0; i < size; i++)
-            printf("%s\n", strings[i]);
-
-        free(strings);
+        unw_getcontext (&u_context);
+        if (unw_init_local (&u_cursor, &u_context) < 0)
+            fprintf(stderr, "unw_init_local failed!\n");
+            exit(1);
+        do {
+            unw_word_t _ip_offset_from_proc_start;
+            int ret2 = unw_get_proc_name(&u_cursor, u_buffer, sizeof(u_buffer), &_ip_offset_from_proc_start);
+            switch (-ret2) {
+            case 0:
+                break;
+            // case UNW_EUNSPEC:
+            //     break;
+            // case UNW_ENOINFO:
+            //     break;
+            // case UNW_ENOMEM:
+                break;
+            default:
+                fprintf(stderr, "unw_get_proc_name failed. err: %d \n", -ret2);
+                exit(1);
+            }
+        } while ((ret = unw_step (&u_cursor)) > 0 && ++depth < 128);
     }
 
 }
