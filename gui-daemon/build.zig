@@ -2,6 +2,7 @@ const std = @import("std");
 
 const csources = [_][]const u8{
     "xside.c",
+    "xutils.c",
     "png.c",
     "trayicon.c",
     "../gui-common/double-buffer.c",
@@ -46,6 +47,10 @@ pub fn build(b: *std.build.Builder) void {
     exe.addCSourceFiles(csources[1..], &.{
         
     });
+    
+    const obj_xinput_plug = b.addObject("qubes-daemon-xinput-plugin", "xinput-plugin.zig");
+    exe.addObject(obj_xinput_plug);
+
     exe.install();
 
     const run_cmd = exe.run();

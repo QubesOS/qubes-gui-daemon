@@ -66,6 +66,7 @@
 #include "trayicon.h"
 #include "shm-args.h"
 #include "util.h"
+#include "xutils.h"
 
 /* Supported protocol version */
 
@@ -1891,11 +1892,7 @@ static void process_xevent_crossing(Ghandles * g, const XCrossingEvent * ev)
     CHECK_NONMANAGED_WINDOW(g, ev->window);
 
     if (ev->type == EnterNotify) {
-        char keys[32];
-        XQueryKeymap(g->display, keys);
-        hdr.type = MSG_KEYMAP_NOTIFY;
-        hdr.window = 0;
-        write_message(g->vchan, hdr, keys);
+        send_keymap_notify(g);
     }
     /* move tray to correct position in VM */
     if (vm_window->is_docked &&
@@ -1952,11 +1949,7 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
         return;
 
     if (ev->type == FocusIn) {
-        char keys[32];
-        XQueryKeymap(g->display, keys);
-        hdr.type = MSG_KEYMAP_NOTIFY;
-        hdr.window = 0;
-        write_message(g->vchan, hdr, keys);
+        send_keymap_notify(g);
     }
     hdr.type = MSG_FOCUS;
     hdr.window = vm_window->remote_winid;
@@ -2312,13 +2305,10 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
             }
         }
     } else if (ev->data.l[1] == XEMBED_FOCUS_IN) {
+        send_keymap_notify(g);
+
         struct msg_hdr hdr;
         struct msg_focus k;
-        char keys[32];
-        XQueryKeymap(g->display, keys);
-        hdr.type = MSG_KEYMAP_NOTIFY;
-        hdr.window = 0;
-        write_message(g->vchan, hdr, keys);
         hdr.type = MSG_FOCUS;
         hdr.window = vm_window->remote_winid;
         k.type = FocusIn;
