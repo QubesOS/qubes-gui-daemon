@@ -49,6 +49,7 @@ void qubes_daemon_xinput_plug__on_new_window(Ghandles * g, Window child_win) {
  */
 static bool is_special_keypress_xinput(Ghandles * g, const XIDeviceEvent * ev, XID remote_winid)
 {
+    // cast just enough fields to be accepted by `is_special_keypress
     XKeyEvent xev;    
     xev.state = ev->mods.effective;
     xev.keycode = ev->detail;
@@ -77,12 +78,12 @@ static void process_xinput_key(Ghandles * g, const XIDeviceEvent * ev)
     hdr.window = vm_window->remote_winid;
 
     struct msg_xi_keypress k;
-    // TODO:
-    // k.type = ev->evtype; // ev->type is always Generic Event
-    // k.x = ev->event_x;
-    // k.y = ev->event_y;
-    // k.state = ev->mods.effective;
-    // k.keycode = ev->detail;
+    k.evtype = ev->evtype;
+    k.device = ev->deviceid; // which device is this from? Not always a "keyboard"
+    k.detail = ev->detail; // key code
+    k.x = ev->event_x;
+    k.y = ev->event_y;
+    k.modifier_effective = ev->mods.effective;
 
     write_message(g->vchan, hdr, k);
 }
@@ -99,14 +100,17 @@ static void process_xinput_focus(Ghandles * g, const XILeaveEvent * ev)
     }
 
     struct msg_hdr hdr;
-    hdr.type = MSG_FOCUS;
+    hdr.type = MSG_XI_FOCUS;
     hdr.window = vm_window->remote_winid;
 
-    struct msg_focus k;
-    // TODO:
-    // k.type = ev->evtype;
-    // k.mode = ev->mode;
-    // k.detail = ev->detail;
+    struct msg_xi_focus k;
+    k.evtype = ev->evtype;
+    k.device = ev->deviceid; // which device is this from? Not always a "keyboard"
+    k.mode = ev->mode;
+    k.detail = ev->detail; // key code
+    k.x = ev->event_x;
+    k.y = ev->event_y;
+    k.modifier_effective = ev->mods.effective;
     write_message(g->vchan, hdr, k);
 }
 
