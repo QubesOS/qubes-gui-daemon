@@ -380,6 +380,9 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
                 FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
+
+    qubes_daemon_xinput_plug__on_new_window(g, child_win);
+
     XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
     if (g->icon_data) {
         XChangeProperty(g->display, child_win, g->net_wm_icon, XA_CARDINAL, 32,
@@ -658,6 +661,10 @@ static void mkghandles(Ghandles * g)
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
+
+    // TODO: version detection before enable this
+    qubes_daemon_xinput_plug__init(g);
+
     /* get the work area */
     XSelectInput(g->display, g->root_win, PropertyChangeMask);
     update_work_area(g);
@@ -2324,6 +2331,8 @@ static void process_xevent(Ghandles * g)
 {
     XEvent event_buffer;
     XNextEvent(g->display, &event_buffer);
+    if (qubes_daemon_xinput_plug__process_xevent__return_is_xinput_event(g, &event_buffer)) return;
+    
     switch (event_buffer.type) {
     case KeyPress:
     case KeyRelease:

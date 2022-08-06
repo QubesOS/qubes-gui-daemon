@@ -1,12 +1,13 @@
-// TODO: version detection
-
 #include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
 #include "xside.h"
 #include "xutils.h"
 #include "txrx.h"
 #include <X11/extensions/XInput2.h>
 #include "qubes-gui-protocol.h"
 
+static int xinput_plugin_enabled = false;
 
 void qubes_daemon_xinput_plug__init(Ghandles * g) {
     int ev_base, err_base; /* ignore */
@@ -14,9 +15,12 @@ void qubes_daemon_xinput_plug__init(Ghandles * g) {
         fprintf(stderr, "X Input extension not available. Key press events not available. Upgrade your X11 server now.\n");
         exit(1);
     }
+    xinput_plugin_enabled = true;
 }
 
 void qubes_daemon_xinput_plug__on_new_window(Ghandles * g, Window child_win) {
+    if (!xinput_plugin_enabled) return;
+
     // select xinput events
     XIEventMask xi_mask;
     xi_mask.deviceid = XIAllMasterDevices; // https://stackoverflow.com/questions/44095001/getting-double-rawkeypress-events-using-xinput2
@@ -107,6 +111,8 @@ static void process_xinput_focus(Ghandles * g, const XILeaveEvent * ev)
 }
 
 bool qubes_daemon_xinput_plug__process_xevent__return_is_xinput_event(Ghandles * g, XEvent * xevent) {
+    if (!xinput_plugin_enabled) return false;
+
     XGenericEventCookie *cookie =  &xevent->xcookie;
     if ( ! (XGetEventData(g->display, cookie) &&
             cookie->type == GenericEvent &&
