@@ -74,10 +74,10 @@ static void process_xinput_key(Ghandles * g, const XIDeviceEvent * ev)
         return;
 
     struct msg_hdr hdr;
-    hdr.type = MSG_XI_KEYPRESS;
+    hdr.type = MSG_XI_KEY;
     hdr.window = vm_window->remote_winid;
 
-    struct msg_xi_keypress k;
+    struct msg_xi_key k;
     k.evtype = ev->evtype;
     k.device = ev->deviceid; // which device is this from? Not always a "keyboard"
     k.detail = ev->detail; // key code
