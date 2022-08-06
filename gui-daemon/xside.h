@@ -241,4 +241,15 @@ struct _global_handles {
 
 typedef struct _global_handles Ghandles;
 
+void update_wm_user_time(Ghandles *const g, const Window window, const Time time);
+bool is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid);
+
+/* short macro for beginning of each xevent handling function
+ * checks if this window is managed by guid and declares windowdata struct
+ * pointer */
+#define CHECK_NONMANAGED_WINDOW(g, id) struct windowdata *vm_window; \
+    if (!(vm_window=check_nonmanaged_window(g, id))) return
+
+struct windowdata *check_nonmanaged_window(Ghandles * g, XID id);
+
 #endif /* _XSIDE_H */

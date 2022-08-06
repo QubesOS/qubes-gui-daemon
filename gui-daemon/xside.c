@@ -754,7 +754,7 @@ void reload(Ghandles * g) {
 }
 
 /* find if window (given by id) is managed by this guid */
-static struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
+struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
 {
     struct genlist *item = list_lookup(g->wid2windowdata, id);
     if (!item) {
@@ -1252,7 +1252,7 @@ static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
 /* check and handle guid-special keys
  * currently only for inter-vm clipboard copy
  */
-static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
+bool is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
 {
     struct msg_hdr hdr;
     char *data;
@@ -1331,7 +1331,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
     return 0;
 }
 
-static void update_wm_user_time(Ghandles *const g, const Window window,
+void update_wm_user_time(Ghandles *const g, const Window window,
         const Time time) {
     static_assert(sizeof time == sizeof(long), "Wrong size of X11 time");
     XChangeProperty(g->display, g->time_win != None ? g->time_win : window,
