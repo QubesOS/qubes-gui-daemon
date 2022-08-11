@@ -82,12 +82,13 @@ static void process_xinput_focus(Ghandles * g, const XILeaveEvent * ev)
 
 static int xinput_plugin_enabled = false;
 
-#define PROTOCOL_VERSION(major, minor) (major << 16 | minor)
-
 void qubes_daemon_xinput_plug__init(Ghandles * g) {
     // qubes protocol version detection
-    if (g->protocol_version < PROTOCOL_VERSION(1, 5)) {
-        fprintf(stderr, "X Input support disabled, client too old.\n");
+    uint32_t version_major, version_minor;
+    version_major = g->protocol_version >> 16;
+    version_minor = g->protocol_version & 0xffff;
+    if (version_major < 1 || version_minor < 5) {
+        fprintf(stderr, "X Input support disabled, client too old. Negotiated version: %d.%d.\n", version_major, version_minor);
         return;
     }
     fprintf(stderr, "X Input support enabled.\n");

@@ -76,7 +76,7 @@
 /* Supported protocol version */
 
 #define PROTOCOL_VERSION_MAJOR 1
-#define PROTOCOL_VERSION_MINOR 4
+#define PROTOCOL_VERSION_MINOR 5
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
