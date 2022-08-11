@@ -56,7 +56,11 @@
 #include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
 #include <libvchan.h>
+#ifdef USE_UNWIND
 #include <libunwind.h>
+#else
+#include <execinfo.h>
+#endif
 #include "xside.h"
 #include "txrx.h"
 #include "double-buffer.h"
@@ -67,6 +71,7 @@
 #include "shm-args.h"
 #include "util.h"
 #include "xutils.h"
+#include "xinput-plugin.h"
 
 /* Supported protocol version */
 
@@ -3559,6 +3564,7 @@ static void sighup_signal_handler(int UNUSED(x))
     ghandles.reload_requested = 1;
 }
 
+#ifdef USE_UNWIND
 
 /* These variables are global because they
  * cause the signal stack to overflow */
@@ -3573,9 +3579,10 @@ static void print_backtrace(void)
 
     if (ghandles.log_level > 1) {
         unw_getcontext (&u_context);
-        if (unw_init_local (&u_cursor, &u_context) < 0)
+        if (unw_init_local (&u_cursor, &u_context) < 0) {
             fprintf(stderr, "unw_init_local failed!\n");
-            exit(1);
+            return;
+        }
         do {
             unw_word_t _ip_offset_from_proc_start;
             int ret2 = unw_get_proc_name(&u_cursor, u_buffer, sizeof(u_buffer), &_ip_offset_from_proc_start);
@@ -3590,12 +3597,34 @@ static void print_backtrace(void)
                 break;
             default:
                 fprintf(stderr, "unw_get_proc_name failed. err: %d \n", -ret2);
-                exit(1);
+                return;
             }
         } while ((ret = unw_step (&u_cursor)) > 0 && ++depth < 128);
     }
+}
+#else
+// use glibc
+static void print_backtrace(void)
+{
+    void *array[100];
+    size_t size;
+    char **strings;
+    size_t i;
+
+
+    if (ghandles.log_level > 1) {
+        size = backtrace(array, 100);
+        strings = backtrace_symbols(array, size);
+        fprintf(stderr, "Obtained %zd stack frames.\n", size);
+
+        for (i = 0; i < size; i++)
+            printf("%s\n", strings[i]);
+
+        free(strings);
+    }
 
 }
+#endif
 
 /* release all windows mapped memory */
 static void release_all_mapped_mfns(void)
