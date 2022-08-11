@@ -48,7 +48,8 @@ static void process_xinput_key(Ghandles * g, const XIDeviceEvent * ev)
     k.x = ev->event_x;
     k.y = ev->event_y;
     k.modifier_effective = ev->mods.effective;
-
+    k.flags = ev->flags;
+    
     write_message(g->vchan, hdr, k);
 }
 
