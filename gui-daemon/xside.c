@@ -662,9 +662,6 @@ static void mkghandles(Ghandles * g)
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
 
-    // TODO: version detection before enable this
-    qubes_daemon_xinput_plug__init(g);
-
     /* get the work area */
     XSelectInput(g->display, g->root_win, PropertyChangeMask);
     update_work_area(g);
@@ -4548,6 +4545,7 @@ int main(int argc, char **argv)
 
     get_protocol_version(&ghandles);
     send_xconf(&ghandles);
+    qubes_daemon_xinput_plug__init(&ghandles);
 
     for (;;) {
         int select_fds[2] = { xfd };

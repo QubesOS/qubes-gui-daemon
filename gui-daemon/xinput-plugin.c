@@ -10,6 +10,14 @@
 static int xinput_plugin_enabled = false;
 
 void qubes_daemon_xinput_plug__init(Ghandles * g) {
+    // qubes protocol version detection
+    if (g->protocol_version < PROTOCOL_VERSION(1, 5)) {
+        fprintf(stderr, "X Input support disabled, client too old.\n");
+        return;
+    }
+    fprintf(stderr, "X Input support enabled.\n");
+
+
     int ev_base, err_base; /* ignore */
     if (!XQueryExtension(g->display, "XInputExtension", &g->xi_opcode, &ev_base, &err_base)) {
         fprintf(stderr, "X Input extension not available. Key press events not available. Upgrade your X11 server now.\n");
@@ -41,6 +49,32 @@ void qubes_daemon_xinput_plug__on_new_window(Ghandles * g, Window child_win) {
     }
     free(xi_mask.mask);
     XSync(g->display, False);
+}
+
+bool qubes_daemon_xinput_plug__process_xevent__return_is_xinput_event(Ghandles * g, XEvent * xevent) {
+    if (!xinput_plugin_enabled) return false;
+
+    XGenericEventCookie *cookie =  &xevent->xcookie;
+    if ( ! (XGetEventData(g->display, cookie) &&
+            cookie->type == GenericEvent &&
+            cookie->extension == g->xi_opcode)) return false;
+
+    XIEvent* xi_event = cookie->data; // from test_xi2.c in xinput cli utility
+
+    switch (xi_event->evtype) {
+    // ideally raw input events are better, but I'm relying on X server's built-in event filtering and routing feature here
+    case XI_KeyPress:
+    case XI_KeyRelease:
+        process_xinput_key(g, (XIDeviceEvent *)xi_event);
+        break;
+    case XI_FocusIn:
+    case XI_FocusOut:
+        process_xinput_focus(g, (XILeaveEvent *)xi_event);
+        break;
+    }
+    XFreeEventData(g->display, cookie);
+
+    return true;
 }
 
 
@@ -112,30 +146,4 @@ static void process_xinput_focus(Ghandles * g, const XILeaveEvent * ev)
     k.y = ev->event_y;
     k.modifier_effective = ev->mods.effective;
     write_message(g->vchan, hdr, k);
-}
-
-bool qubes_daemon_xinput_plug__process_xevent__return_is_xinput_event(Ghandles * g, XEvent * xevent) {
-    if (!xinput_plugin_enabled) return false;
-
-    XGenericEventCookie *cookie =  &xevent->xcookie;
-    if ( ! (XGetEventData(g->display, cookie) &&
-            cookie->type == GenericEvent &&
-            cookie->extension == g->xi_opcode)) return false;
-
-    XIEvent* xi_event = cookie->data; // from test_xi2.c in xinput cli utility
-
-    switch (xi_event->evtype) {
-    // ideally raw input events are better, but I'm relying on X server's built-in event filtering and routing feature here
-    case XI_KeyPress:
-    case XI_KeyRelease:
-        process_xinput_key(g, (XIDeviceEvent *)xi_event);
-        break;
-    case XI_FocusIn:
-    case XI_FocusOut:
-        process_xinput_focus(g, (XILeaveEvent *)xi_event);
-        break;
-    }
-    XFreeEventData(g->display, cookie);
-
-    return true;
 }
