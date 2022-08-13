@@ -34,7 +34,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ipc.h>
-#include <sys/shm.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <sys/file.h>
@@ -74,7 +73,6 @@ static int (*real_fstat)(VER_ARG int fd, struct stat *buf);
 static struct stat global_buf;
 static int gntdev_fd = -1;
 
-static int local_shmid = 0xabcdef;
 static struct shm_args_hdr *shm_args = NULL;
 #ifdef XENCTRL_HAS_XC_INTERFACE
 static xc_interface *xc_hnd;
@@ -337,8 +335,6 @@ STAT(stat64)
 
 int __attribute__ ((constructor)) initfunc(void)
 {
-    int len;
-    char idbuf[20];
     unsetenv("LD_PRELOAD");
     fprintf(stderr, "shmoverride constructor running\n");
     dlerror();
@@ -391,7 +387,7 @@ int __attribute__ ((constructor)) initfunc(void)
     /* Try to lock the shm.id file (don't rely on whether it exists, a previous
      * process might have crashed).
      */
-    idfd = open(shmid_filename, O_WRONLY | O_CLOEXEC | O_CREAT | O_NOCTTY, 0600);
+    idfd = open(shmid_filename, O_RDWR | O_CLOEXEC | O_CREAT | O_NOCTTY, 0600);
     if (idfd < 0) {
         fprintf(stderr, "shmoverride opening %s: %s\n",
             shmid_filename, strerror(errno));
@@ -403,27 +399,18 @@ int __attribute__ ((constructor)) initfunc(void)
         /* There is probably an alive process holding the file, give up. */
         goto cleanup;
     }
-    if (ftruncate(idfd, 0) < 0) {
+    if (ftruncate(idfd, SHM_ARGS_SIZE) < 0) {
         perror("shmoverride ftruncate");
         goto cleanup;
     }
-    local_shmid =
-        shmget(IPC_PRIVATE, SHM_ARGS_SIZE,
-                IPC_CREAT | 0700);
-    if (local_shmid == -1) {
-        perror("shmoverride shmget");
+    if (fchmod(idfd, 0660)) {
+        perror("shmoverride chmod");
         goto cleanup;
     }
-    if ((unsigned)(len = snprintf(idbuf, sizeof idbuf, "%d", local_shmid)) >= sizeof idbuf)
-        abort();
-    if (write(idfd, idbuf, len) != len) {
-        fprintf(stderr, "shmoverride writing %s: %s\n",
-            shmid_filename, strerror(errno));
-        goto cleanup;
-    }
-    shm_args = shmat(local_shmid, 0, 0);
-    if (!shm_args) {
-        perror("shmat");
+    _Static_assert(SHM_ARGS_SIZE % XC_PAGE_SIZE == 0, "bug");
+    shm_args = mmap(NULL, SHM_ARGS_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED_VALIDATE, idfd, 0);
+    if (shm_args == MAP_FAILED) {
+        perror("mmap");
         goto cleanup;
     }
     return 0;
@@ -463,8 +450,6 @@ int __attribute__ ((destructor)) descfunc(void)
         assert(shmid_filename);
         assert(idfd >= 0);
 
-        shmdt(shm_args);
-        shmctl(local_shmid, IPC_RMID, 0);
         close(idfd);
         close(gntdev_fd);
         unlink(shmid_filename);

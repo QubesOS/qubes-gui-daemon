@@ -29,7 +29,7 @@
 #include <unistd.h>
 #include <err.h>
 #include <sys/types.h>
-#include <sys/shm.h>
+#include <sys/mman.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -4269,7 +4269,6 @@ void restart_guid() {
 int main(int argc, char **argv)
 {
     int xfd;
-    FILE *f;
     int childpid;
     int pipe_notify[2];
     char dbg_log[256];
@@ -4320,30 +4319,22 @@ int main(int argc, char **argv)
             fprintf(stderr, "DISPLAY parse error, expected format like :0 or :0.0\n");
             exit(1);
         }
-        snprintf(shmid_filename, SHMID_FILENAME_LEN,
-             SHMID_FILENAME_PREFIX "%d", display_num);
-        f = fopen(shmid_filename, "r");
-        if (!f) {
+        if ((unsigned)snprintf(shmid_filename, SHMID_FILENAME_LEN,
+             SHMID_FILENAME_PREFIX "%d", display_num) >= SHMID_FILENAME_LEN)
+            abort();
+        int f = open(shmid_filename, O_RDWR|O_NOCTTY|O_NOFOLLOW /* should not be symlink */|O_CLOEXEC);
+        if (f < 0) {
+            if (errno != ENOENT)
+                err(1, "Cannot open %s", shmid_filename);
             fprintf(stderr,
                     "Missing %s; run X with preloaded shmoverride\n",
                     shmid_filename);
             exit(1);
         }
-        if (fscanf(f, "%d", &ghandles.cmd_shmid) < 1) {
-            fprintf(stderr,
-                    "Failed to load %s; run X with preloaded shmoverride\n",
-                    shmid_filename);
-            exit(1);
-        }
-        fclose(f);
-        ghandles.shm_args = shmat(ghandles.cmd_shmid, NULL, 0);
-        if (ghandles.shm_args == (void *) (-1UL)) {
-            fprintf(stderr,
-                    "Invalid or stale shm id 0x%x in %s\n",
-                    ghandles.cmd_shmid,
-                    shmid_filename);
-            exit(1);
-        }
+        ghandles.shm_args = mmap(NULL, SHM_ARGS_SIZE, PROT_READ|PROT_WRITE,
+                                 MAP_SHARED_VALIDATE, f, 0);
+        if (ghandles.shm_args == MAP_FAILED)
+            err(1, "Could not map shared memory file %s", shmid_filename);
     }
 
     /* prepare argv for possible restarts */
