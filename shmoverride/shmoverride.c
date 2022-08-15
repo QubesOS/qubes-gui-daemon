@@ -29,6 +29,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
+#include <ctype.h>
 
 #include <dlfcn.h>
 #include <sys/types.h>
@@ -82,8 +84,7 @@ static int xc_hnd;
 static xengnttab_handle *xgt;
 static char __shmid_filename[SHMID_FILENAME_LEN];
 static char *shmid_filename = NULL;
-static int idfd = -1;
-static char display_str[SHMID_DISPLAY_MAXLEN+1] = "";
+static int idfd = -1, display = -1;
 
 static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args) {
     uint8_t *map;
@@ -221,64 +222,197 @@ ASM_DEF(int, munmap, void *addr, size_t len)
     return real_munmap((void *)rounded_addr, len + (addr_int - rounded_addr));
 }
 
-int get_display(void)
+static const char* const opts_with_args[] = {
+    "+extension",
+    "-a",
+    "-allowNonLocalXvidtune",
+    "-ardelay",
+    "-arinterval",
+    "-audit",
+    "-auth",
+    "-background",
+    "-bgamma",
+    "-cc",
+    "-class",
+    "-config",
+    "-configdir",
+    "-cookie",
+    "-deferglyphs",
+    "-depth",
+    "-displayID",
+    "-displayfd",
+    "-dpi",
+    "-extension",
+    "-f",
+    "-fakescreenfps",
+    "-fbbpp",
+    "-fc",
+    "-fn",
+    "-fp",
+    "-from",
+    "-gamma",
+    "-ggamma",
+    "-indirect",
+    "-initfd",
+    "-isolateDevice",
+    "-keybd",
+    "-keyboard",
+    "-layout",
+    "-ld",
+    "-lf",
+    "-listen",
+    "-listenfd",
+    "-logfile",
+    "-logverbose",
+    "-ls",
+    "-masterfd",
+    "-maxbigreqsize",
+    "-maxclients",
+    "-modulepath",
+    "-mouse",
+    "-multicast",
+    "-name",
+    "-nolisten",
+    "-origin",
+    "-output",
+    "-p",
+    "-parent",
+    "-pointer",
+    "-port",
+    "-query",
+    "-render",
+    "-rgamma",
+    "-rgba",
+    "-s",
+    "-schedInterval",
+    "-screen",
+    "-seat",
+    "-showDefaultModulePath",
+    "-t",
+    "-title",
+    "-to",
+    "-verbose",
+    "-verbosity",
+    "-weight",
+    "-wm",
+    "-x",
+    "-xkbdir",
+    "-xkbmap",
+    "c",
+};
+
+static int cmp_strings(const void *a, const void *b) { return strcmp(a, *(const char **)b); }
+
+static bool parse_display_name(const char *const ptr, int *display_num)
 {
-    int fd;
+    unsigned long l_display = ULONG_MAX;
+    const char *p = ptr + 1, *period_pointer = NULL;
+    if (!isdigit((unsigned char)*p)) {
+        fprintf(stderr, "Bad display name %s: colon not followed by ASCII digit\n", ptr);
+        return false;
+    }
+    for (p++; *p; p++) {
+        if (!isdigit((unsigned char)*p)) {
+            if (*p != '.') {
+                fprintf(stderr, "Bad display name %s: invalid character %d\n", ptr, *p);
+                return false;
+            }
+            if (period_pointer) {
+                fprintf(stderr, "Bad display name %s: more than one period ('.') character\n", ptr);
+                return false;
+            }
+            period_pointer = p;
+        }
+    }
+
+    if (period_pointer) {
+        if (p - period_pointer <= 1) {
+            fprintf(stderr, "Bad display name %s: period at end of name\n", ptr);
+            return false;
+        }
+
+        if (p - period_pointer > 3) {
+            fprintf(stderr, "Bad display name %s: more than 2 bytes after period\n", ptr);
+            return false;
+        }
+    }
+
+    errno = 0;
+    l_display = strtoul(ptr + 1, NULL, 10);
+    if (errno || l_display > INT_MAX) {
+        fprintf(stderr, "Bad display name %s: exceeds INT_MAX (%d)\n", ptr, INT_MAX);
+        /* Xorg will correctly reject this later */
+        return false;
+    }
+
+    /* X happily accepts multiple display names and ignores all but the last */
+    *display_num = (int)l_display;
+    return true;
+}
+
+static int get_display(void)
+{
     ssize_t res;
-    char ch;
-    int in_arg = -1;
+    int fd, rc = -1, display = 0;
 
     fd = open("/proc/self/cmdline", O_RDONLY | O_NOCTTY | O_CLOEXEC);
     if (fd < 0) {
         perror("cmdline open");
-        return -1;
+        return rc;
+    }
+    char *ptr = NULL;
+    size_t size = 0;
+    FILE *f = fdopen(fd, "r");
+    if (!f) {
+        perror("fdopen()");
+        close(fd);
+        return rc;
     }
 
-    while(1) {
-        res = read(fd, &ch, 1);
-        if (res < 0) {
-            perror("cmdline read");
-            return -1;
-        }
-        if (res == 0)
-            break;
-
-        if (in_arg == 0 && ch != ':')
-            in_arg = -1;
-        if (ch == '\0') {
-            in_arg = 0;
-        } else if (in_arg >= 0) {
-            if (in_arg >= SHMID_DISPLAY_MAXLEN)
+    bool skip = true; /* Skip argv[0] (the program name) */
+    while(true) {
+        errno = 0;
+        res = getdelim(&ptr, &size, 0, f);
+        if (res <= 0) {
+            if (res == -1 && errno == 0)
                 break;
-            if (in_arg > 0 && (ch < '0' || ch > '9')) {
-                if (in_arg == 1) {
-                    fprintf(stderr, "cmdline DISPLAY parsing failed\n");
-                    return -1;
-                }
-                in_arg = -1;
-                continue;
-            }
-            display_str[in_arg++] = ch;
-            display_str[in_arg] = '\0';
+            perror("cmdline read");
+            goto cleanup;
+        }
+        size_t length = (size_t)res;
+        assert(ptr && ptr[length] == '\0');
+
+        /*
+         * Skip option arguments.  Some options take more than one argument,
+         * but the extra arguments are always optional and display names
+         * will not be interpreted as arguments to these options.  Since
+         * skip is true at the start of the loop, this also skips argv[0].
+         */
+        if (skip) {
+            skip = false;
+            continue;
+        }
+
+        if (!strcmp(ptr, "-I"))
+            break; /* all remaining arguments ignored */
+
+        /* Check if this is an option that takes a mandatory argument */
+        if (bsearch(ptr, opts_with_args, sizeof(opts_with_args)/sizeof(opts_with_args[0]),
+                    sizeof(opts_with_args[0]), cmp_strings)) {
+            skip = true;
+            continue;
+        }
+
+        if (ptr[0] == ':' && !parse_display_name(ptr, &display)) {
+            fprintf(stderr, "Bad display name %s\n", ptr);
+            goto cleanup;
         }
     }
-    close(fd);
-
-    if (display_str[0] != ':') {
-        display_str[0] = ':';
-        display_str[1] = '0';
-        display_str[2] = '\0';
-    } else if (display_str[1] == '\0') {
-        fprintf(stderr, "cmdline DISPLAY parsing failed\n");
-        return -1;
-    }
-
-    /* post-processing: drop leading ':' */
-    res = strlen(display_str);
-    for (in_arg = 0; in_arg < res; in_arg++)
-        display_str[in_arg] = display_str[in_arg+1];
-
-    return 0;
+    rc = display;
+cleanup:
+    free(ptr);
+    fclose(f);
+    return rc;
 }
 
 static int assign_off(off_t *off) {
@@ -377,12 +511,16 @@ int __attribute__ ((constructor)) initfunc(void)
         goto cleanup; // Allow it to run when not under Xen.
     }
 
-    if (get_display() < 0)
+    if ((display = get_display()) < 0)
         goto cleanup;
 
-    snprintf(__shmid_filename, SHMID_FILENAME_LEN,
-        SHMID_FILENAME_PREFIX "%s", display_str);
+    if ((unsigned int)snprintf(__shmid_filename, sizeof __shmid_filename,
+        SHMID_FILENAME_PREFIX "%d", display) >= sizeof __shmid_filename) {
+        fputs("snprintf() failed!\n", stderr);
+        abort();
+    }
     shmid_filename = __shmid_filename;
+    fprintf(stderr, "shmoverride: running with shm file %s\n", shmid_filename);
 
     /* Try to lock the shm.id file (don't rely on whether it exists, a previous
      * process might have crashed).
