@@ -1,3 +1,24 @@
+qubes-gui-daemon (4.1.24-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Properly check return value of snprintf()
+  * Fix command line parsing
+  * process_playback_data(): avoid blocking on vchan reads
+  * send_rec_data(): Avoid blocking on vchan writes
+  * Properly handle control connection errors
+  * Only check for newlines in newly read data
+  * Log an error for invalid control commands
+  * Move definition of _GNU_SOURCE to the makefile
+  * Prevent PulseAudio assertion failure
+  * Do not try to build vchan sink module
+  * Block during writing for old agents
+  * Use original loop for writing data
+  * Minor cleanups
+  * Send MSG_DESTROY when destroying a window
+  * Send MSG_DESTROY when destroying a window
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Tue, 30 Aug 2022 12:45:18 +0200
+
 qubes-gui-daemon (4.1.23-1) wheezy; urgency=medium
 
   * xside: do not release buffer of the "whole screen" window
