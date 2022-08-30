@@ -22,7 +22,6 @@
 #ifndef _QUBES_TXRX_H
 #define _QUBES_TXRX_H
 
-#include <sys/select.h>
 #include <libvchan.h>
 
 int write_data(libvchan_t *vchan, char *buf, int size);
@@ -34,7 +33,7 @@ int read_data(libvchan_t *vchan, char *buf, int size);
     x.untrusted_len = sizeof(y); \
     real_write_message(vchan, (char*)&x, sizeof(x), (char*)&y, sizeof(y)); \
     } while(0)
-void wait_for_vchan_or_argfd(libvchan_t *vchan, int nfd, int *fd, fd_set * retset);
+int wait_for_vchan_or_argfd(libvchan_t *vchan, int fd);
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void));
 
 #endif /* _QUBES_TXRX_H */

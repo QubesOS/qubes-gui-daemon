@@ -22,8 +22,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include  <X11/Xlib.h>
+#include <X11/Xlib.h>
 #include <X11/Xlibint.h>
+#include <string.h>
+
+#include "error.h"
 int dummy_handler(Display * dpy, XErrorEvent * ev)
 {
 #define ERROR_BUF_SIZE 256

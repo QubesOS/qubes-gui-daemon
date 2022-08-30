@@ -1,4 +1,5 @@
 #include <png.h>
+#include "./png.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -7,7 +8,7 @@
 
 #define PNGHEADER 8
 
-long *load_png(const char *fname, int *ret_size)
+unsigned long *load_png(const char *fname, int *ret_size)
 {
     static FILE *fp = NULL;
     unsigned char header[PNGHEADER];
@@ -114,7 +115,7 @@ long *load_png(const char *fname, int *ret_size)
     if (ret_size)
         *ret_size = data_size;
 
-    return (long *) data;
+    return (unsigned long *) data;
 
 error:
     if (data)

@@ -28,6 +28,7 @@
 #include <math.h>
 #include "xside.h"
 #include <util.h>
+#include "trayicon.h"
 
 /* initialization required for TRAY_BACKGROUND mode */
 void init_tray_bg(Ghandles *g) {

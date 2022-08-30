@@ -251,7 +251,7 @@ qubes_xcb_handler(Ghandles *g, const char *msg, struct windowdata *vm_window,
     dummy_handler(g->display, &err);
 }
 
-int x11_error_handler(Display * dpy, XErrorEvent * ev)
+static int x11_error_handler(Display * dpy, XErrorEvent * ev)
 {
     /* log the error */
     dummy_handler(dpy, ev);
@@ -734,7 +734,7 @@ static void mkghandles(Ghandles * g)
 }
 
 /* reload X server parameters, especially after monitor/screen layout change */
-void reload(Ghandles * g) {
+static void reload(Ghandles * g) {
     XWindowAttributes attr;
 
     g->screen = DefaultScreen(g->display);
@@ -4297,7 +4297,7 @@ static void set_alive_flag(int domid)
     close(guid_boot_lock);
 }
 
-void vchan_close()
+static void vchan_close()
 {
     libvchan_close(ghandles.vchan);
 }
@@ -4331,7 +4331,7 @@ static void cleanup() {
 }
 
 static char** restart_argv;
-void restart_guid() {
+static void restart_guid() {
     cleanup();
     execv("/usr/bin/qubes-guid", restart_argv);
     perror("execv");
@@ -4538,8 +4538,6 @@ int main(int argc, char **argv)
     send_xconf(&ghandles);
 
     for (;;) {
-        int select_fds[2] = { xfd };
-        fd_set retset;
         int busy;
         if (ghandles.reload_requested) {
             fprintf(stderr, "reloading X server parameters...\n");
@@ -4557,7 +4555,7 @@ int main(int argc, char **argv)
                 busy = 1;
             }
         } while (busy);
-        wait_for_vchan_or_argfd(ghandles.vchan, 1, select_fds, &retset);
+        wait_for_vchan_or_argfd(ghandles.vchan, xfd);
     }
     return 0;
 }

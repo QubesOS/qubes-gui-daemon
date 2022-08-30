@@ -23,10 +23,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <libvchan.h>
-#include <sys/select.h>
 #include <errno.h>
-#include "double-buffer.h"
+#include <poll.h>
 #include <assert.h>
+
+#include <double-buffer.h>
+#include "../include/txrx.h"
 
 void (*vchan_at_eof)(void) = NULL;
 int vchan_is_closed = 0;
@@ -36,13 +38,13 @@ int vchan_is_closed = 0;
  */
 int double_buffered = 1;
 
-int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int nfd, int *fd, fd_set * retset);
+static int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd);
 
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void)) {
     vchan_at_eof = new_vchan_at_eof;
 }
 
-void handle_vchan_error(libvchan_t *vchan, const char *op)
+static void handle_vchan_error(libvchan_t *vchan, const char *op)
 {
     if (!libvchan_is_open(vchan)) {
         fprintf(stderr, "EOF\n");
@@ -53,7 +55,7 @@ void handle_vchan_error(libvchan_t *vchan, const char *op)
     }
 }
 
-int write_data_exact(libvchan_t *vchan, char *buf, int size)
+static int write_data_exact(libvchan_t *vchan, char *buf, int size)
 {
     int written = 0;
     int ret;
@@ -97,7 +99,7 @@ int read_data(libvchan_t *vchan, char *buf, int size)
     int ret;
     while (written < size) {
         while (!libvchan_data_ready(vchan))
-            wait_for_vchan_or_argfd_once(vchan, 0, NULL, NULL);
+            wait_for_vchan_or_argfd_once(vchan, -1);
         ret = libvchan_read(vchan, buf + written, size - written);
         if (ret <= 0)
             handle_vchan_error(vchan, "read data");
@@ -107,31 +109,19 @@ int read_data(libvchan_t *vchan, char *buf, int size)
     return size;
 }
 
-int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int nfd, int *fd, fd_set * retset)
+static int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd)
 {
-    fd_set rfds;
-    int vfd, max = 0, ret, i;
-    struct timeval tv = { 0, 1000000 };
+    int ret;
     write_data(vchan, NULL, 0);    // trigger write of queued data, if any present
-    vfd = libvchan_fd_for_select(vchan);
-    FD_ZERO(&rfds);
-    for (i = 0; i < nfd; i++) {
-        int cfd = fd[i];
-        assert(cfd >= 0 && cfd < FD_SETSIZE && "bad external file descriptor number");
-        FD_SET(cfd, &rfds);
-        if (cfd > max)
-            max = cfd;
-    }
-    assert(vfd >= 0 && vfd < FD_SETSIZE && "bad vchan file descriptor number");
-    FD_SET(vfd, &rfds);
-    if (vfd > max)
-        max = vfd;
-    max++;
-    ret = select(max, &rfds, NULL, NULL, &tv);
-    if (ret < 0 && errno == EINTR)
-        return -1;
+    struct pollfd fds[] = {
+        { .fd = libvchan_fd_for_select(vchan), .events = POLLIN, .revents = 0 },
+        { .fd = fd, .events = POLLIN, .revents = 0 },
+    };
+    ret = poll(fds, fd == -1 ? 1 : 2, 1000);
     if (ret < 0) {
-        perror("select");
+        if (errno == EINTR)
+            return -1;
+        perror("poll");
         exit(1);
     }
     if (!libvchan_is_open(vchan)) {
@@ -143,18 +133,17 @@ int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int nfd, int *fd, fd_set * r
         } else
             exit(0);
     }
-    if (FD_ISSET(vfd, &rfds))
+    if (fds[0].revents) {
         // the following will never block; we need to do this to
         // clear libvchan_fd pending state 
         libvchan_wait(vchan);
-    if (retset)
-        *retset = rfds;
+    }
     return ret;
 }
 
-int wait_for_vchan_or_argfd(libvchan_t *vchan, int nfd, int *fd, fd_set * retset)
+int wait_for_vchan_or_argfd(libvchan_t *vchan, int fd)
 {
     int ret;
-    while ((ret=wait_for_vchan_or_argfd_once(vchan, nfd, fd, retset)) == 0);
+    while ((ret=wait_for_vchan_or_argfd_once(vchan, fd)) == 0);
     return ret;
 }
