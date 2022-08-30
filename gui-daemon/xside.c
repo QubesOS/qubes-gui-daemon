@@ -2554,17 +2554,15 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
     list_remove(l2);
     if (vm_window == g->screen_window)
         g->screen_window = NULL;
-    if (g->protocol_version >= PROTOCOL_VERSION(1, 5)) {
-        /* Inform the agent that the window has been destroyed.
-         * Mandatory in protocol version 1.5+, and harmless for older
-         * versions. */
-        struct msg_hdr delete_id = {
-            .type = MSG_DESTROY,
-            .window = vm_window->remote_winid,
-            .untrusted_len = 0,
-        };
-        write_struct(g->vchan, delete_id);
-    }
+    /* Inform the agent that the window has been destroyed.
+     * Mandatory in protocol version 1.5+, and harmless for older
+     * versions. */
+    struct msg_hdr delete_id = {
+        .type = MSG_DESTROY,
+        .window = vm_window->remote_winid,
+        .untrusted_len = 0,
+    };
+    write_struct(g->vchan, delete_id);
     free(vm_window);
 }
 
