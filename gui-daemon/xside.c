@@ -3105,10 +3105,9 @@ static void handle_dock(Ghandles * g, struct windowdata *vm_window)
                 "clearing override-redirect\n",
                 (int) vm_window->local_winid);
         /* changing directly is safe, because window is not mapped here yet */
-        attr.override_redirect = vm_window->override_redirect;
+        attr.override_redirect = vm_window->override_redirect = 0;
         XChangeWindowAttributes(g->display, vm_window->local_winid,
                 CWOverrideRedirect, &attr);
-        vm_window->override_redirect = 0;
     }
     if (vm_window->parent) {
         fprintf(stderr, "cannot dock non-top level window 0x%x\n",
