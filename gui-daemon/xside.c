@@ -127,7 +127,7 @@ static void show_message(Ghandles *g, const char *prefix, const char *msg,
         return;
     }
     snprintf(message, sizeof message, "%s(%s): %s", prefix, g->vmname, msg);
-    notify = notify_notification_new(message, NULL, g->cmdline_icon);
+    notify = notify_notification_new(prefix, message, g->cmdline_icon);
     notify_notification_set_timeout(notify, timeout);
     if (!notify_notification_show(notify, NULL)) {
         fprintf(stderr, "Failed to send notification\n");
