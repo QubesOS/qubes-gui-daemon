@@ -101,7 +101,7 @@ static Ghandles ghandles;
 #define max(x,y) ((x)<(y)?(y):(x))
 #endif
 
-#define ignore_result(x) { __typeof__(x) __attribute__((unused)) _ignore=(x);}
+#define ignore_result(x) do { __typeof__(x) __attribute__((unused)) _ignore=(x);} while (0)
 
 /* XShmAttach return value inform only about successful queueing the operation,
  * not its execution. Errors during XShmAttach are reported asynchronously with
@@ -4417,14 +4417,12 @@ int main(int argc, char **argv)
         /* "-f" option already given, use the same argv */
         restart_argv = argv;
     } else {
-        /* append "-f" option */
-        int i;
-
-        restart_argv = malloc((argc+2) * sizeof(char*));
-        for (i=0;i<argc;i++)
-            restart_argv[i] = argv[i];
-        restart_argv[argc] = strdup("-f");
-        restart_argv[argc+1] = (char*)NULL;
+        /* prepend "-f" option */
+        if (!(restart_argv = malloc((argc+2) * sizeof(char*))))
+            err(1, "malloc()");
+        restart_argv[0] = argv[0];
+        restart_argv[1] = "-f";
+        memcpy(restart_argv + 2, argv + 1, argc * sizeof(char*));
     }
 
     if (!ghandles.nofork) {
