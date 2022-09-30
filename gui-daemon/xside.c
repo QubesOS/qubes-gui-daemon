@@ -3744,7 +3744,7 @@ struct option longopts[] = {
     { "subwindows", required_argument, NULL, 's' },
     { 0, 0, 0, 0 },
 };
-static const char optstring[] = "C:d:t:N:c:l:i:K:vqQnafIp:Th";
+static const char optstring[] = "+C:d:t:N:c:l:i:K:vqQnafIp:Th";
 
 static void usage(FILE *stream)
 {
@@ -3961,6 +3961,7 @@ static uint16_t parse_domid(const char *num)
 
 static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
+    const char *lastarg;
     int opt;
     int prop_num = 0;
     int screensaver_name_num = 0;
@@ -3975,7 +3976,8 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 
     optind = 1;
 
-    while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
+    while ((lastarg = (optind < argc ? argv[optind] : NULL)),
+           (opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
         switch (opt) {
         case 'C':
             /* already handled in parse_cmdline_config_path */
@@ -4093,6 +4095,12 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 
     if (screensaver_name_num == 0)
         g->screensaver_names[0] = "xscreensaver";
+
+    if (argc != optind)
+        errx(1, "GUI daemon takes no non-option arguments");
+
+    if (lastarg && !strcmp(lastarg, "--"))
+        errx(1, "GUI daemon does not use -- to mark end of options");
 }
 
 static void load_default_config_values(Ghandles * g)
