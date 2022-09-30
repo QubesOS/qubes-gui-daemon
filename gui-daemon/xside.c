@@ -3938,6 +3938,27 @@ static _Bool parse_vm_name(const char *arg, Ghandles *g) {
     return false;
 }
 
+/* FIXME: should be in a utility library */
+static uint16_t parse_domid(const char *num)
+{
+    char *endp;
+    long const s = strtol(num, &endp, 10);
+
+    if (*endp)
+        errx(1, "Trailing junk \"%s\" after domain ID", endp);
+
+    if (s < 0)
+        errx(1, "Domain ID cannot be negative (got %ld)", s);
+
+    if (s == 0)
+        errx(1, "Domain 0 never runs a GUI agent");
+
+    if (s >= 0x7FF0)
+        errx(1, "Domain %ld too large for a Xen domid", s);
+
+    return (uint16_t)s;
+}
+
 static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
     int opt;
@@ -3960,10 +3981,14 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
             /* already handled in parse_cmdline_config_path */
             break;
         case 'd':
-            g->domid = atoi(optarg);
+            if (g->domid)
+                errx(1, "Cannot specify domid more than once (previous value %u)", g->domid);
+            g->domid = parse_domid(optarg);
             break;
         case 't':
-            g->target_domid = atoi(optarg);
+            if (g->target_domid)
+                errx(1, "Cannot specify target domid more than once (previous value %u)", g->target_domid);
+            g->target_domid = parse_domid(optarg);
             break;
         case 'N':
             if (parse_vm_name(optarg, g))
@@ -4047,10 +4072,8 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
             exit(1);
         }
     }
-    if (g->domid<=0) {
-        fprintf(stderr, "domid<=0?");
-        exit(1);
-    }
+    if (g->domid<=0)
+        errx(1, "no domain ID provided");
 
     if (g->nofork) {
         /* -K (kill on connect) doesn't make much sense in case of foreground
@@ -4068,9 +4091,8 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
         exit(1);
     }
 
-    if (screensaver_name_num == 0) {
+    if (screensaver_name_num == 0)
         g->screensaver_names[0] = "xscreensaver";
-    }
 }
 
 static void load_default_config_values(Ghandles * g)
