@@ -1953,7 +1953,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
     ASSERT_HEIGHT_UNSIGNED(vm_window->height);
 
     /* sanitize start */
-    if (untrusted_x < 0 || untrusted_y < 0) {
+    if (untrusted_x < 0 || untrusted_y < 0 || untrusted_w < 0 || untrusted_h < 0) {
         if (g->log_level > 1)
             fprintf(stderr,
                 "do_shm_update for 0x%x(remote 0x%x), x=%d, y=%d, w=%d, h=%d ?\n",
@@ -1967,7 +1967,8 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
            "vm_window->x should have been rejected earlier");
     assert(vm_window->y >= -MAX_WINDOW_HEIGHT && vm_window->y <= MAX_WINDOW_HEIGHT &&
            "vm_window->y should have been rejected earlier");
-    // now known: untrusted_x and untrusted_y are not negative
+    // now known: untrusted_x, untrusted_y, untrusted_w, and untrusted_h
+    // are not negative
     if (vm_window->shmseg != QUBES_NO_SHM_SEGMENT) {
         // image_width and image_height are not negative
         // (checked in handle_mfndump and handle_window_dump)
@@ -1979,9 +1980,9 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         // now: x is not negative and not greater than vm_window->image_width
         y = min(untrusted_y, vm_window->image_height);
         // now: y is not negative and not greater than vm_window->image_height
-        w = min(max(untrusted_w, 0), vm_window->image_width - x);
+        w = min(untrusted_w, vm_window->image_width - x);
         // now: w is not negative and not greater than vm_window->image_width
-        h = min(max(untrusted_h, 0), vm_window->image_height - y);
+        h = min(untrusted_h, vm_window->image_height - y);
         // now: h is not negative and not greater than vm_window->image_height
     } else if (g->screen_window) {
         /* update only onscreen window part */
@@ -2027,14 +2028,14 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         // now: y is not negative and y + vm_window->y is not negative
         // now: y + vm_window->y is not greater than g->screen_window->image_height
 
-        w = min(max(untrusted_w, 0), g->screen_window->image_width - vm_window->x - x);
+        w = min(untrusted_w, g->screen_window->image_width - vm_window->x - x);
         // now: w is not negative and not greater than g->screen_window->image_width
         // also: g->screen_window->image_width >= (vm_window->x + x + w)
         // so if the code that forces the window on-screen makes vm_window->x + x
         // exceed g->screen_window->image_width, w will become negative, causing
         // the code to return early.
 
-        h = min(max(untrusted_h, 0), g->screen_window->image_height - vm_window->y - y);
+        h = min(untrusted_h, g->screen_window->image_height - vm_window->y - y);
         // now: h is not negative and not greater than g->screen_window->image_height
         // also: g->screen_window->image_height >= (vm_window->y + y + h)
         // so if the code that forces the window on-screen makes vm_window->y + y
@@ -2051,9 +2052,9 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         // now: x is not negative and not greater than vm_window->width
         y = min(untrusted_y, (int)vm_window->height);
         // now: y is not negative and not greater than vm_window->height
-        w = min(max(untrusted_w, 0), (int)vm_window->width - x);
+        w = min(untrusted_w, (int)vm_window->width - x);
         // now: w is not negative and not greater than vm_window->width
-        h = min(max(untrusted_h, 0), (int)vm_window->height - y);
+        h = min(untrusted_h, (int)vm_window->height - y);
         // now: h is not negative and not greater than vm_window->height
     }
 
