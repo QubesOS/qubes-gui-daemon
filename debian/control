@@ -14,6 +14,7 @@ Build-Depends:
  libxrandr-dev,
  libxcb1-dev,
  libx11-xcb-dev,
+ libxi-dev,
  libconfig-dev,
  libpng-dev,
  libnotify-dev,

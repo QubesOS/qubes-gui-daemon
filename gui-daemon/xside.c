@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <err.h>
+#include <fcntl.h>
 #include <sys/shm.h>
 #include <sys/file.h>
 #include <sys/types.h>
@@ -39,7 +40,6 @@
 #include <poll.h>
 #include <errno.h>
 #include <unistd.h>
-#include <execinfo.h>
 #include <getopt.h>
 #include <X11/X.h>
 #include <X11/Xproto.h>
@@ -56,6 +56,11 @@
 #include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
 #include <libvchan.h>
+#ifdef USE_UNWIND
+#include <libunwind.h>
+#else
+#include <execinfo.h>
+#endif
 #include "xside.h"
 #include "txrx.h"
 #include "double-buffer.h"
@@ -65,6 +70,8 @@
 #include "trayicon.h"
 #include "shm-args.h"
 #include "util.h"
+#include "xutils.h"
+#include "xinput-plugin.h"
 
 /* Supported protocol version */
 
@@ -82,7 +89,7 @@
 static Ghandles ghandles;
 
 /* macro used to verify data from VM */
-#define VERIFY(x) do if (!(x) && ask_whether_verify_failed(g, __STRING(x))) return; while(0)
+#define VERIFY(x) do if (!(x) && ask_whether_verify_failed(g, #x)) return; while(0)
 
 /* calculate virtual width */
 #define XORG_DEFAULT_XINC 8
@@ -378,6 +385,9 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
                 FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
+
+    qubes_daemon_xinput_plug__on_new_window(g, child_win);
+
     XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
     if (g->icon_data) {
         XChangeProperty(g->display, child_win, g->net_wm_icon, XA_CARDINAL, 32,
@@ -656,6 +666,7 @@ static void mkghandles(Ghandles * g)
     if (!XQueryExtension(g->display, "MIT-SHM",
                 &g->shm_major_opcode, &ev_base, &err_base))
         fprintf(stderr, "MIT-SHM X extension missing!\n");
+
     /* get the work area */
     XSelectInput(g->display, g->root_win, PropertyChangeMask);
     update_work_area(g);
@@ -752,7 +763,7 @@ void reload(Ghandles * g) {
 }
 
 /* find if window (given by id) is managed by this guid */
-static struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
+struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
 {
     struct genlist *item = list_lookup(g->wid2windowdata, id);
     if (!item) {
@@ -1250,7 +1261,7 @@ static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
 /* check and handle guid-special keys
  * currently only for inter-vm clipboard copy
  */
-static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
+bool is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
 {
     struct msg_hdr hdr;
     char *data;
@@ -1329,7 +1340,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
     return 0;
 }
 
-static void update_wm_user_time(Ghandles *const g, const Window window,
+void update_wm_user_time(Ghandles *const g, const Window window,
         const Time time) {
     static_assert(sizeof time == sizeof(long), "Wrong size of X11 time");
     XChangeProperty(g->display, g->time_win != None ? g->time_win : window,
@@ -1890,11 +1901,7 @@ static void process_xevent_crossing(Ghandles * g, const XCrossingEvent * ev)
     CHECK_NONMANAGED_WINDOW(g, ev->window);
 
     if (ev->type == EnterNotify) {
-        char keys[32];
-        XQueryKeymap(g->display, keys);
-        hdr.type = MSG_KEYMAP_NOTIFY;
-        hdr.window = 0;
-        write_message(g->vchan, hdr, keys);
+        send_keymap_notify(g);
     }
     /* move tray to correct position in VM */
     if (vm_window->is_docked &&
@@ -1951,11 +1958,7 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
         return;
 
     if (ev->type == FocusIn) {
-        char keys[32];
-        XQueryKeymap(g->display, keys);
-        hdr.type = MSG_KEYMAP_NOTIFY;
-        hdr.window = 0;
-        write_message(g->vchan, hdr, keys);
+        send_keymap_notify(g);
     }
     hdr.type = MSG_FOCUS;
     hdr.window = vm_window->remote_winid;
@@ -2311,13 +2314,10 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
             }
         }
     } else if (ev->data.l[1] == XEMBED_FOCUS_IN) {
+        send_keymap_notify(g);
+
         struct msg_hdr hdr;
         struct msg_focus k;
-        char keys[32];
-        XQueryKeymap(g->display, keys);
-        hdr.type = MSG_KEYMAP_NOTIFY;
-        hdr.window = 0;
-        write_message(g->vchan, hdr, keys);
         hdr.type = MSG_FOCUS;
         hdr.window = vm_window->remote_winid;
         k.type = FocusIn;
@@ -2333,6 +2333,8 @@ static void process_xevent(Ghandles * g)
 {
     XEvent event_buffer;
     XNextEvent(g->display, &event_buffer);
+    if (qubes_daemon_xinput_plug__process_xevent__return_is_xinput_event(g, &event_buffer)) return;
+    
     switch (event_buffer.type) {
     case KeyPress:
     case KeyRelease:
@@ -3570,6 +3572,46 @@ static void sighup_signal_handler(int UNUSED(x))
     ghandles.reload_requested = 1;
 }
 
+#ifdef USE_UNWIND
+
+/* These variables are global because they
+ * cause the signal stack to overflow */
+unw_cursor_t u_cursor;
+unw_context_t u_context;
+char u_buffer[128];
+
+static void print_backtrace(void)
+{
+    int ret = -UNW_ENOINFO;
+    int depth = 0;
+
+    if (ghandles.log_level > 1) {
+        unw_getcontext (&u_context);
+        if (unw_init_local (&u_cursor, &u_context) < 0) {
+            fprintf(stderr, "unw_init_local failed!\n");
+            return;
+        }
+        do {
+            unw_word_t _ip_offset_from_proc_start;
+            int ret2 = unw_get_proc_name(&u_cursor, u_buffer, sizeof(u_buffer), &_ip_offset_from_proc_start);
+            switch (-ret2) {
+            case 0:
+                break;
+            // case UNW_EUNSPEC:
+            //     break;
+            // case UNW_ENOINFO:
+            //     break;
+            // case UNW_ENOMEM:
+                break;
+            default:
+                fprintf(stderr, "unw_get_proc_name failed. err: %d \n", -ret2);
+                return;
+            }
+        } while ((ret = unw_step (&u_cursor)) > 0 && ++depth < 128);
+    }
+}
+#else
+// use glibc
 static void print_backtrace(void)
 {
     void *array[100];
@@ -3590,6 +3632,7 @@ static void print_backtrace(void)
     }
 
 }
+#endif
 
 /* release all windows mapped memory */
 static void release_all_mapped_mfns(void)
@@ -4539,6 +4582,7 @@ int main(int argc, char **argv)
 
     get_protocol_version(&ghandles);
     send_xconf(&ghandles);
+    qubes_daemon_xinput_plug__init(&ghandles);
 
     for (;;) {
         int select_fds[2] = { xfd };
