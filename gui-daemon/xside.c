@@ -4448,13 +4448,13 @@ int main(int argc, char **argv)
         restart_argv = argv;
     } else {
         /* append "-f" option */
-        int i;
+        static char f[3] = "-f";
 
-        restart_argv = malloc((argc+2) * sizeof(char*));
-        for (i=0;i<argc;i++)
-            restart_argv[i] = argv[i];
-        restart_argv[argc] = strdup("-f");
-        restart_argv[argc+1] = (char*)NULL;
+        if (!(restart_argv = malloc((argc+2) * sizeof(char*))))
+            err(1, "malloc");
+        restart_argv[0] = argv[0];
+        restart_argv[1] = f;
+        memcpy(restart_argv + 2, argv + 1, argc * sizeof(char *));
     }
 
     if (!ghandles.nofork) {
