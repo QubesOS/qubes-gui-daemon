@@ -2261,9 +2261,9 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent *con
     struct msg_window_flags msg;
 
     if (ev->window == g->root_win) {
-        if (ev->state != PropertyNewValue)
-            return;
-        update_work_area(g);
+        if (ev->state == PropertyNewValue)
+            update_work_area(g);
+        return;
     }
     CHECK_NONMANAGED_WINDOW(g, ev->window);
     if (ev->atom == g->wm_state) {
