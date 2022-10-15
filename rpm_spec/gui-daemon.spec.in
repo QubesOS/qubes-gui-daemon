@@ -45,9 +45,11 @@ Requires:   socat
 BuildRequires:  python%{python3_pkgversion}-devel
 BuildRequires:  python%{python3_pkgversion}-setuptools
 BuildRequires:  pulseaudio-libs-devel
+BuildRequires:	pkgconfig(x11)
 BuildRequires:	pkgconfig(x11-xcb)
 BuildRequires:	pkgconfig(xcb)
-BuildRequires:	libXext-devel
+BuildRequires:	pkgconfig(xcb-aux)
+BuildRequires:	pkgconfig(xcb-shm)
 BuildRequires:	libXrandr-devel
 BuildRequires:	libconfig-devel
 BuildRequires:	libpng-devel

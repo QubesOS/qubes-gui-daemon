@@ -23,78 +23,85 @@
 
 #define _GNU_SOURCE 1
 #define XC_WANT_COMPAT_MAP_FOREIGN_API
-#include <dlfcn.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <stdio.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
 #include <string.h>
-#include <malloc.h>
-#include <xenctrl.h>
-#include <xengnttab.h>
-#include <sys/mman.h>
-#include <alloca.h>
 #include <errno.h>
+#include <limits.h>
+#include <ctype.h>
+
+#include <dlfcn.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/ipc.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <sys/file.h>
+#include <xenctrl.h>
+#include <xengnttab.h>
 #include <assert.h>
-#include "list.h"
 #include "shm-args.h"
 #include <qubes-gui-protocol.h>
 
-static void *(*real_shmat) (int shmid, const void *shmaddr, int shmflg);
-static int (*real_shmdt) (const void *shmaddr);
-static int (*real_shmctl) (int shmid, int cmd, struct shmid_ds * buf);
+#define QUBES_STRINGIFY(x) QUBES_STRINGIFY_(x)
+#define QUBES_STRINGIFY_(x) #x
 
-static int local_shmid = 0xabcdef;
+#ifdef _STAT_VER
+# define FSTAT __fxstat
+# define FSTAT64 __fxstat64
+# define VER_ARG int ver,
+# define VER _STAT_VER,
+#else
+# define FSTAT fstat
+# define FSTAT64 fstat64
+# define VER_ARG
+# define VER
+#endif
+
+#define ASM_DEF(ret, name, ...) \
+    __attribute__((visibility("default"))) \
+    ret name(__VA_ARGS__) __asm__(QUBES_STRINGIFY_(name)); \
+    __attribute__((visibility("default"))) \
+    ret name(__VA_ARGS__)
+
+static void *(*real_mmap)(void *shmaddr, size_t len, int prot, int flags,
+           int fd, off_t offset);
+static int (*real_munmap) (void *shmaddr, size_t len);
+static int (*real_fstat64) (VER_ARG int fd, struct stat64 *buf);
+static int (*real_fstat)(VER_ARG int fd, struct stat *buf);
+
+static struct stat global_buf;
+static int gntdev_fd = -1;
+
 static struct shm_args_hdr *shm_args = NULL;
-static struct genlist *addr_list;
 #ifdef XENCTRL_HAS_XC_INTERFACE
 static xc_interface *xc_hnd;
 #else
 static int xc_hnd;
 #endif
 static xengnttab_handle *xgt;
-static int list_len;
 static char __shmid_filename[SHMID_FILENAME_LEN];
 static char *shmid_filename = NULL;
-static int idfd = -1;
-static char display_str[SHMID_DISPLAY_MAXLEN+1] = "";
+static int idfd = -1, display = -1;
 
-struct mfns_info {
-    uint32_t count;
-    uint32_t off;
-};
-
-struct grant_refs_info {
-    uint32_t count;
-};
-
-struct info {
-    uint32_t type;
-    union {
-        struct mfns_info mfns;
-        struct grant_refs_info grant;
-    } u;
-};
-
-static uint8_t *shmat_mfns(struct shm_args_hdr *shm_args, struct info *info) {
+static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args) {
     uint8_t *map;
     xen_pfn_t *pfntable;
     uint32_t i;
     struct shm_args_mfns *shm_args_mfns = (struct shm_args_mfns *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
 
-    pfntable = alloca(sizeof(xen_pfn_t) * shm_args_mfns->count);
+    pfntable = calloc(sizeof(xen_pfn_t), shm_args_mfns->count);
+    if (!pfntable)
+        return NULL;
     for (i = 0; i < shm_args_mfns->count; i++)
         pfntable[i] = shm_args_mfns->mfns[i];
 
-    info->u.mfns.count = shm_args_mfns->count;
-    info->u.mfns.off = shm_args_mfns->off;
-
     map = xc_map_foreign_pages(xc_hnd, shm_args->domid, PROT_READ,
                                 pfntable, shm_args_mfns->count);
+    free(pfntable);
     if (map == NULL)
         return NULL;
 
@@ -103,210 +110,390 @@ static uint8_t *shmat_mfns(struct shm_args_hdr *shm_args, struct info *info) {
     return map;
 }
 
-static uint8_t *shmat_grant_refs(struct shm_args_hdr *shm_args,
-                                 struct info *info) {
-    uint8_t *map;
+static uint8_t *mmap_grant_refs(void *shmaddr,
+                                int fd,
+                                size_t len,
+                                struct shm_args_hdr *shm_args) {
     struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
 
-    info->u.grant.count = shm_args_grant->count;
-
-    map = xengnttab_map_domain_grant_refs(xgt,
-            shm_args_grant->count,
-            shm_args->domid,
-            &shm_args_grant->refs[0],
-            PROT_READ);
-
-    return map;
-}
-
-__attribute__((visibility("default")))
-void *shmat(int shmid, const void *shmaddr, int shmflg)
-{
-    uint8_t *fakeaddr = NULL;
-    struct info *info;
-
-    if (!shm_args || (uint32_t)shmid != shm_args->shmid)
-        return real_shmat(shmid, shmaddr, shmflg);
-
-    info = calloc(1, sizeof(struct info));
-    if (info == NULL)
-        return MAP_FAILED;
-
-    switch (shm_args->type) {
-    case SHM_ARGS_TYPE_MFNS:
-        fakeaddr = shmat_mfns(shm_args, info);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        fakeaddr = shmat_grant_refs(shm_args, info);
-        break;
-    default:
-        errno = EINVAL;
-    }
-    info->type = shm_args->type;
-
-    if (fakeaddr == NULL) {
-        free(info);
-        // errno set by shmat_*
-        return MAP_FAILED;
-    }
-
-    list_insert(addr_list, (long) fakeaddr, info);
-    list_len++;
-    return fakeaddr;
-}
-
-static int shmdt_mfns(void *map, struct info *info) {
-    return munmap(map - info->u.mfns.off, info->u.mfns.count * XC_PAGE_SIZE);
-}
-
-static int shmdt_grant_refs(void *map, struct info *info) {
-    return xengnttab_unmap(xgt, map, info->u.grant.count);
-}
-
-__attribute__((visibility("default")))
-int shmdt(const void *shmaddr)
-{
-    void *addr = (void *) shmaddr; // drop const qualifier
-    struct genlist *item = list_lookup(addr_list, (long) addr);
-    struct info *info;
-    int rc;
-    if (!item)
-        return real_shmdt(shmaddr);
-
-    info = item->data;
-    switch (info->type) {
-    case SHM_ARGS_TYPE_MFNS:
-        rc = shmdt_mfns(addr, info);
-        break;
-    case SHM_ARGS_TYPE_GRANT_REFS:
-        rc = shmdt_grant_refs(addr, info);
-        break;
-    default:
-        errno = EINVAL;
-        rc = -1;
-    }
-
-    list_remove(item);
-    list_len--;
-    return rc;
+    return real_mmap(shmaddr, len, PROT_READ, MAP_SHARED, fd, shm_args_grant->off);
 }
 
 static size_t shm_segsz_mfns(struct shm_args_hdr *shm_args) {
     struct shm_args_mfns *shm_args_mfns = (struct shm_args_mfns *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
-
+    if (shm_args_mfns->count > MAX_MFN_COUNT)
+        return 0; // this is considered an error
     return shm_args_mfns->count * XC_PAGE_SIZE - shm_args_mfns->off;
 }
 
 static size_t shm_segsz_grant_refs(struct shm_args_hdr *shm_args) {
     struct shm_args_grant_refs *shm_args_grant = (struct shm_args_grant_refs *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
-
+    if (shm_args_grant->count > MAX_GRANT_REFS_COUNT)
+        return 0; // this is considered an error
     return shm_args_grant->count * XC_PAGE_SIZE;
 }
 
-__attribute__((visibility("default")))
-int shmctl(int shmid, int cmd, struct shmid_ds *buf)
+_Thread_local static bool in_shmoverride = false;
+ASM_DEF(void *, mmap,
+        void *shmaddr, size_t len, int prot, int flags,
+        int fd, off_t offset)
 {
-    size_t segsz = 0;
+    struct stat64 buf;
+    if (0) {
+        // These are purely for type-checking by the C compiler; they are not
+        // executed at runtime
+        real_mmap = mmap64;
+        real_mmap = mmap;
+        real_fstat64 = FSTAT64;
+        real_fstat = FSTAT;
+    }
 
-    if (!shm_args || (uint32_t)shmid != shm_args->shmid || cmd != IPC_STAT)
-        return real_shmctl(shmid, cmd, buf);
+#if defined MAP_ANON && defined MAP_ANONYMOUS && (MAP_ANONYMOUS) != (MAP_ANON)
+# error header bug (def mismatch)
+#endif
+#ifndef MAP_ANON
+# define MAP_ANON 0
+#endif
+#ifndef MAP_ANONYMOUS
+# define MAP_ANONYMOUS 0
+#endif
+    if ((flags & (MAP_ANON|MAP_ANONYMOUS)) || in_shmoverride)
+        return real_mmap(shmaddr, len, prot, flags, fd, offset);
+
+    if (real_fstat64(
+#ifdef _STAT_VER
+                _STAT_VER,
+#endif
+                fd, &buf))
+        return MAP_FAILED;
+
+    if (!S_ISCHR(buf.st_mode) ||
+        buf.st_dev != global_buf.st_dev ||
+        buf.st_ino != global_buf.st_ino ||
+        buf.st_rdev != global_buf.st_rdev) {
+        return real_mmap(shmaddr, len, prot, flags, fd, offset);
+    }
+
+    if ((prot & (PROT_READ | PROT_WRITE | PROT_EXEC)) != PROT_READ ||
+        flags != MAP_SHARED ||
+        offset != 0) {
+        errno = EINVAL;
+        return MAP_FAILED;
+    }
+
+    in_shmoverride = true;
+    uint8_t *fakeaddr = MAP_FAILED;
 
     switch (shm_args->type) {
     case SHM_ARGS_TYPE_MFNS:
-        segsz = shm_segsz_mfns(shm_args);
+        if (len == shm_segsz_mfns(shm_args))
+            fakeaddr = mmap_mfns(shm_args);
+        else
+            errno = EINVAL;
         break;
     case SHM_ARGS_TYPE_GRANT_REFS:
-        segsz = shm_segsz_grant_refs(shm_args);
+        if (len == shm_segsz_grant_refs(shm_args))
+            fakeaddr = mmap_grant_refs(shmaddr, fd, len, shm_args);
+        else
+            errno = EINVAL;
         break;
     default:
         errno = EINVAL;
-        return -1;
     }
-
-    memset(&buf->shm_perm, 0, sizeof(buf->shm_perm));
-    buf->shm_perm.mode = 0666;
-    buf->shm_segsz = segsz;
-
-    return 0;
+    if (!fakeaddr)
+        fakeaddr = MAP_FAILED;
+    in_shmoverride = false;
+    return fakeaddr;
 }
 
-int get_display(void)
+__attribute__((alias("mmap"))) ASM_DEF(void *, mmap64,
+        void *shmaddr, size_t len, int prot, int flags,
+        int fd, off_t offset);
+
+ASM_DEF(int, munmap, void *addr, size_t len)
 {
-    int fd;
+    if (len > SIZE_MAX - XC_PAGE_SIZE)
+        abort();
+    const uintptr_t addr_int = (uintptr_t)addr;
+    const uintptr_t rounded_addr = addr_int & ~(uintptr_t)(XC_PAGE_SIZE - 1);
+    return real_munmap((void *)rounded_addr, len + (addr_int - rounded_addr));
+}
+
+static const char* const opts_with_args[] = {
+    "+extension",
+    "-a",
+    "-allowNonLocalXvidtune",
+    "-ardelay",
+    "-arinterval",
+    "-audit",
+    "-auth",
+    "-background",
+    "-bgamma",
+    "-cc",
+    "-class",
+    "-config",
+    "-configdir",
+    "-cookie",
+    "-deferglyphs",
+    "-depth",
+    "-displayID",
+    "-displayfd",
+    "-dpi",
+    "-extension",
+    "-f",
+    "-fakescreenfps",
+    "-fbbpp",
+    "-fc",
+    "-fn",
+    "-fp",
+    "-from",
+    "-gamma",
+    "-ggamma",
+    "-indirect",
+    "-initfd",
+    "-isolateDevice",
+    "-keybd",
+    "-keyboard",
+    "-layout",
+    "-ld",
+    "-lf",
+    "-listen",
+    "-listenfd",
+    "-logfile",
+    "-logverbose",
+    "-ls",
+    "-masterfd",
+    "-maxbigreqsize",
+    "-maxclients",
+    "-modulepath",
+    "-mouse",
+    "-multicast",
+    "-name",
+    "-nolisten",
+    "-origin",
+    "-output",
+    "-p",
+    "-parent",
+    "-pointer",
+    "-port",
+    "-query",
+    "-render",
+    "-rgamma",
+    "-rgba",
+    "-s",
+    "-schedInterval",
+    "-screen",
+    "-seat",
+    "-showDefaultModulePath",
+    "-t",
+    "-title",
+    "-to",
+    "-verbose",
+    "-verbosity",
+    "-weight",
+    "-wm",
+    "-x",
+    "-xkbdir",
+    "-xkbmap",
+    "c",
+};
+
+static int cmp_strings(const void *a, const void *b) { return strcmp(a, *(const char **)b); }
+
+static bool parse_display_name(const char *const ptr, int *display_num)
+{
+    unsigned long l_display = ULONG_MAX;
+    const char *p = ptr + 1, *period_pointer = NULL;
+    if (!isdigit((unsigned char)*p)) {
+        fprintf(stderr, "Bad display name %s: colon not followed by ASCII digit\n", ptr);
+        return false;
+    }
+    for (p++; *p; p++) {
+        if (!isdigit((unsigned char)*p)) {
+            if (*p != '.') {
+                fprintf(stderr, "Bad display name %s: invalid character %d\n", ptr, *p);
+                return false;
+            }
+            if (period_pointer) {
+                fprintf(stderr, "Bad display name %s: more than one period ('.') character\n", ptr);
+                return false;
+            }
+            period_pointer = p;
+        }
+    }
+
+    if (period_pointer) {
+        if (p - period_pointer <= 1) {
+            fprintf(stderr, "Bad display name %s: period at end of name\n", ptr);
+            return false;
+        }
+
+        if (p - period_pointer > 3) {
+            fprintf(stderr, "Bad display name %s: more than 2 bytes after period\n", ptr);
+            return false;
+        }
+    }
+
+    errno = 0;
+    l_display = strtoul(ptr + 1, NULL, 10);
+    if (errno || l_display > INT_MAX) {
+        fprintf(stderr, "Bad display name %s: exceeds INT_MAX (%d)\n", ptr, INT_MAX);
+        /* Xorg will correctly reject this later */
+        return false;
+    }
+
+    /* X happily accepts multiple display names and ignores all but the last */
+    *display_num = (int)l_display;
+    return true;
+}
+
+static int get_display(void)
+{
     ssize_t res;
-    char ch;
-    int in_arg = -1;
+    int fd, rc = -1, display = 0;
 
     fd = open("/proc/self/cmdline", O_RDONLY | O_NOCTTY | O_CLOEXEC);
     if (fd < 0) {
         perror("cmdline open");
-        return -1;
+        return rc;
+    }
+    char *ptr = NULL;
+    size_t size = 0;
+    FILE *f = fdopen(fd, "r");
+    if (!f) {
+        perror("fdopen()");
+        close(fd);
+        return rc;
     }
 
-    while(1) {
-        res = read(fd, &ch, 1);
-        if (res < 0) {
-            perror("cmdline read");
-            return -1;
-        }
-        if (res == 0)
-            break;
-
-        if (in_arg == 0 && ch != ':')
-            in_arg = -1;
-        if (ch == '\0') {
-            in_arg = 0;
-        } else if (in_arg >= 0) {
-            if (in_arg >= SHMID_DISPLAY_MAXLEN)
+    bool skip = true; /* Skip argv[0] (the program name) */
+    while(true) {
+        errno = 0;
+        res = getdelim(&ptr, &size, 0, f);
+        if (res <= 0) {
+            if (res == -1 && errno == 0)
                 break;
-            if (in_arg > 0 && (ch < '0' || ch > '9')) {
-                if (in_arg == 1) {
-                    fprintf(stderr, "cmdline DISPLAY parsing failed\n");
-                    return -1;
-                }
-                in_arg = -1;
-                continue;
-            }
-            display_str[in_arg++] = ch;
-            display_str[in_arg] = '\0';
+            perror("cmdline read");
+            goto cleanup;
+        }
+        size_t length = (size_t)res;
+        assert(ptr && ptr[length] == '\0');
+
+        /*
+         * Skip option arguments.  Some options take more than one argument,
+         * but the extra arguments are always optional and display names
+         * will not be interpreted as arguments to these options.  Since
+         * skip is true at the start of the loop, this also skips argv[0].
+         */
+        if (skip) {
+            skip = false;
+            continue;
+        }
+
+        if (!strcmp(ptr, "-I"))
+            break; /* all remaining arguments ignored */
+
+        /* Check if this is an option that takes a mandatory argument */
+        if (bsearch(ptr, opts_with_args, sizeof(opts_with_args)/sizeof(opts_with_args[0]),
+                    sizeof(opts_with_args[0]), cmp_strings)) {
+            skip = true;
+            continue;
+        }
+
+        if (ptr[0] == ':' && !parse_display_name(ptr, &display)) {
+            fprintf(stderr, "Bad display name %s\n", ptr);
+            goto cleanup;
         }
     }
-    close(fd);
+    rc = display;
+cleanup:
+    free(ptr);
+    fclose(f);
+    return rc;
+}
 
-    if (display_str[0] != ':') {
-        display_str[0] = ':';
-        display_str[1] = '0';
-        display_str[2] = '\0';
-    } else if (display_str[1] == '\0') {
-        fprintf(stderr, "cmdline DISPLAY parsing failed\n");
+static int assign_off(off_t *off) {
+    size_t s;
+    switch (shm_args->type) {
+    case SHM_ARGS_TYPE_MFNS:
+        s = shm_segsz_mfns(shm_args);
+        break;
+    case SHM_ARGS_TYPE_GRANT_REFS:
+        s = shm_segsz_grant_refs(shm_args);
+        break;
+    default:
+        s = 0;
+    }
+    if (s) {
+        *off = (off_t)s;
+        return 0;
+    } else {
+        errno = EINVAL;
         return -1;
     }
-
-    /* post-processing: drop leading ':' */
-    res = strlen(display_str);
-    for (in_arg = 0; in_arg < res; in_arg++)
-        display_str[in_arg] = display_str[in_arg+1];
-
-    return 0;
 }
+
+#define STAT(id)                                          \
+ASM_DEF(int, f ## id, int filedes, struct id *buf) {      \
+    int res = real_f ## id(VER filedes, buf);             \
+    if (res ||                                            \
+        !S_ISCHR(buf->st_mode) ||                         \
+        buf->st_dev != global_buf.st_dev ||               \
+        buf->st_ino != global_buf.st_ino ||               \
+        buf->st_rdev != global_buf.st_rdev)               \
+        return res;                                       \
+    return assign_off(&buf->st_size);                     \
+}
+STAT(stat)
+STAT(stat64)
+#undef STAT
+
+#ifdef _STAT_VER
+#define STAT(id)                                                    \
+ASM_DEF(int, __fx ## id, int ver, int filedes, struct id *buf) {    \
+    if (ver != _STAT_VER) {                                         \
+        fprintf(stderr,                                             \
+                "Wrong _STAT_VER: got %d, expected %d, libc has incompatibly changed\n", \
+                ver, _STAT_VER);                                    \
+        abort();                                                    \
+    }                                                               \
+    return f ## id(filedes, buf);                                   \
+}
+STAT(stat)
+STAT(stat64)
+#undef STAT
+#endif
 
 int __attribute__ ((constructor)) initfunc(void)
 {
-    int len;
-    char idbuf[20];
     unsetenv("LD_PRELOAD");
     fprintf(stderr, "shmoverride constructor running\n");
-    real_shmat = dlsym(RTLD_NEXT, "shmat");
-    real_shmctl = dlsym(RTLD_NEXT, "shmctl");
-    real_shmdt = dlsym(RTLD_NEXT, "shmdt");
-    if (!real_shmat || !real_shmctl || !real_shmdt) {
-        perror("shmoverride: missing shm API");
+    dlerror();
+    if (!(real_mmap = dlsym(RTLD_NEXT, "mmap64"))) {
+        fprintf(stderr, "shmoverride: no mmap64?: %s\n", dlerror());
+        abort();
+    } else if (!(real_fstat = dlsym(RTLD_NEXT, QUBES_STRINGIFY(FSTAT)))) {
+        fprintf(stderr, "shmoverride: no " QUBES_STRINGIFY(FSTAT) "?: %s\n", dlerror());
+        abort();
+    } else if (!(real_fstat64 = dlsym(RTLD_NEXT, QUBES_STRINGIFY(FSTAT64)))) {
+        fprintf(stderr, "shmoverride: no " QUBES_STRINGIFY(FSTAT64) "?: %s\n", dlerror());
+        abort();
+    } else if (!(real_munmap = dlsym(RTLD_NEXT, "munmap"))) {
+        fprintf(stderr, "shmoverride: no munmap?: %s\n", dlerror());
+        abort();
+    } else if ((gntdev_fd = open("/dev/xen/gntdev", O_PATH | O_CLOEXEC | O_NOCTTY)) == -1) {
+        perror("open /dev/xen/gntdev");
+        goto cleanup;
+    } else if (real_fstat(VER gntdev_fd, &global_buf)) {
+        perror("stat /dev/xen/gntdev");
+        goto cleanup;
+    } else if (!S_ISCHR(global_buf.st_mode)) {
+        fprintf(stderr, "/dev/xen/gntdev is not a character special file");
         goto cleanup;
     }
-    addr_list = list_new();
 #ifdef XENCTRL_HAS_XC_INTERFACE
     xc_hnd = xc_interface_open(NULL, NULL, 0);
     if (!xc_hnd) {
@@ -324,17 +511,21 @@ int __attribute__ ((constructor)) initfunc(void)
         goto cleanup; // Allow it to run when not under Xen.
     }
 
-    if (get_display() < 0)
+    if ((display = get_display()) < 0)
         goto cleanup;
 
-    snprintf(__shmid_filename, SHMID_FILENAME_LEN,
-        SHMID_FILENAME_PREFIX "%s", display_str);
+    if ((unsigned int)snprintf(__shmid_filename, sizeof __shmid_filename,
+        SHMID_FILENAME_PREFIX "%d", display) >= sizeof __shmid_filename) {
+        fputs("snprintf() failed!\n", stderr);
+        abort();
+    }
     shmid_filename = __shmid_filename;
+    fprintf(stderr, "shmoverride: running with shm file %s\n", shmid_filename);
 
     /* Try to lock the shm.id file (don't rely on whether it exists, a previous
      * process might have crashed).
      */
-    idfd = open(shmid_filename, O_WRONLY | O_CLOEXEC | O_CREAT | O_NOCTTY, 0600);
+    idfd = open(shmid_filename, O_RDWR | O_CLOEXEC | O_CREAT | O_NOCTTY, 0600);
     if (idfd < 0) {
         fprintf(stderr, "shmoverride opening %s: %s\n",
             shmid_filename, strerror(errno));
@@ -346,34 +537,24 @@ int __attribute__ ((constructor)) initfunc(void)
         /* There is probably an alive process holding the file, give up. */
         goto cleanup;
     }
-    if (ftruncate(idfd, 0) < 0) {
+    if (ftruncate(idfd, SHM_ARGS_SIZE) < 0) {
         perror("shmoverride ftruncate");
         goto cleanup;
     }
-    local_shmid =
-        shmget(IPC_PRIVATE, SHM_ARGS_SIZE,
-                IPC_CREAT | 0700);
-    if (local_shmid == -1) {
-        perror("shmoverride shmget");
+    if (fchmod(idfd, 0660)) {
+        perror("shmoverride chmod");
         goto cleanup;
     }
-    if ((unsigned)(len = snprintf(idbuf, sizeof idbuf, "%d", local_shmid)) >= sizeof idbuf)
-        abort();
-    if (write(idfd, idbuf, len) != len) {
-        fprintf(stderr, "shmoverride writing %s: %s\n",
-            shmid_filename, strerror(errno));
+    _Static_assert(SHM_ARGS_SIZE % XC_PAGE_SIZE == 0, "bug");
+    shm_args = mmap(NULL, SHM_ARGS_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED_VALIDATE, idfd, 0);
+    if (shm_args == MAP_FAILED) {
+        perror("mmap");
         goto cleanup;
     }
-    shm_args = real_shmat(local_shmid, 0, 0);
-    if (!shm_args) {
-        perror("real_shmat");
-        goto cleanup;
-    }
-    shm_args->shmid = local_shmid;
     return 0;
 
 cleanup:
-    fprintf(stderr, "shmoverride: running without override");
+    fprintf(stderr, "shmoverride: running without override\n");
 #ifdef XENCTRL_HAS_XC_INTERFACE
     if (!xc_hnd) {
         xc_interface_close(xc_hnd);
@@ -389,6 +570,10 @@ cleanup:
         close(idfd);
         idfd = -1;
     }
+    if (gntdev_fd >= 0) {
+        close(gntdev_fd);
+        gntdev_fd = -1;
+    }
     if (shmid_filename) {
         unlink(shmid_filename);
         shmid_filename = NULL;
@@ -403,9 +588,8 @@ int __attribute__ ((destructor)) descfunc(void)
         assert(shmid_filename);
         assert(idfd >= 0);
 
-        real_shmdt(shm_args);
-        real_shmctl(local_shmid, IPC_RMID, 0);
         close(idfd);
+        close(gntdev_fd);
         unlink(shmid_filename);
     }
 
