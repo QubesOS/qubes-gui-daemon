@@ -3775,7 +3775,7 @@ struct option longopts[] = {
     { "subwindows", required_argument, NULL, 's' },
     { 0, 0, 0, 0 },
 };
-static const char optstring[] = "C:d:t:N:c:l:i:K:vqQnafIp:Th";
+static const char optstring[] = "+C:d:t:N:c:l:i:K:vqQnafIp:Th";
 
 static void usage(FILE *stream)
 {
@@ -3969,8 +3969,30 @@ static _Bool parse_vm_name(const char *arg, Ghandles *g) {
     return false;
 }
 
+/* FIXME: should be in a utility library */
+static uint16_t parse_domid(const char *num)
+{
+    char *endp;
+    long const s = strtol(num, &endp, 10);
+
+    if (*endp)
+        errx(1, "Trailing junk \"%s\" after domain ID", endp);
+
+    if (s < 0)
+        errx(1, "Domain ID cannot be negative (got %ld)", s);
+
+    if (s == 0)
+        errx(1, "Domain 0 never runs a GUI agent");
+
+    if (s >= 0x7FF0)
+        errx(1, "Domain %ld too large for a Xen domid", s);
+
+    return (uint16_t)s;
+}
+
 static void parse_cmdline(Ghandles * g, int argc, char **argv)
 {
+    const char *lastarg;
     int opt;
     int prop_num = 0;
     int screensaver_name_num = 0;
@@ -3985,16 +4007,21 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 
     optind = 1;
 
-    while ((opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
+    while ((lastarg = (optind < argc ? argv[optind] : NULL)),
+           (opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
         switch (opt) {
         case 'C':
             /* already handled in parse_cmdline_config_path */
             break;
         case 'd':
-            g->domid = atoi(optarg);
+            if (g->domid)
+                errx(1, "Cannot specify domid more than once (previous value %u)", g->domid);
+            g->domid = parse_domid(optarg);
             break;
         case 't':
-            g->target_domid = atoi(optarg);
+            if (g->target_domid)
+                errx(1, "Cannot specify target domid more than once (previous value %u)", g->target_domid);
+            g->target_domid = parse_domid(optarg);
             break;
         case 'N':
             if (parse_vm_name(optarg, g))
@@ -4078,10 +4105,8 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
             exit(1);
         }
     }
-    if (g->domid<=0) {
-        fprintf(stderr, "domid<=0?");
-        exit(1);
-    }
+    if (g->domid<=0)
+        errx(1, "no domain ID provided");
 
     if (g->nofork) {
         /* -K (kill on connect) doesn't make much sense in case of foreground
@@ -4099,9 +4124,14 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
         exit(1);
     }
 
-    if (screensaver_name_num == 0) {
+    if (screensaver_name_num == 0)
         g->screensaver_names[0] = "xscreensaver";
-    }
+
+    if (argc != optind)
+        errx(1, "GUI daemon takes no non-option arguments");
+
+    if (lastarg && !strcmp(lastarg, "--"))
+        errx(1, "GUI daemon does not use -- to mark end of options");
 }
 
 static void load_default_config_values(Ghandles * g)
@@ -4449,13 +4479,13 @@ int main(int argc, char **argv)
         restart_argv = argv;
     } else {
         /* append "-f" option */
-        int i;
+        static char f[3] = "-f";
 
-        restart_argv = malloc((argc+2) * sizeof(char*));
-        for (i=0;i<argc;i++)
-            restart_argv[i] = argv[i];
-        restart_argv[argc] = strdup("-f");
-        restart_argv[argc+1] = (char*)NULL;
+        if (!(restart_argv = malloc((argc+2) * sizeof(char*))))
+            err(1, "malloc");
+        restart_argv[0] = argv[0];
+        restart_argv[1] = f;
+        memcpy(restart_argv + 2, argv + 1, argc * sizeof(char *));
     }
 
     if (!ghandles.nofork) {
