@@ -1980,6 +1980,8 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
     int border_width = BORDER_WIDTH;
     int border_padding = 0; /* start forced border x pixels from the edge */
     int x = 0, y = 0, w = 0, h = 0;
+    ASSERT_WIDTH_UNSIGNED(vm_window->width);
+    ASSERT_HEIGHT_UNSIGNED(vm_window->height);
 
     /* sanitize start */
     if (untrusted_x < 0 || untrusted_y < 0) {
@@ -1991,10 +1993,19 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
                 untrusted_y, untrusted_w, untrusted_h);
         return;
     }
+    // checked in handle_create() and handle_configure_from_vm()
+    assert(vm_window->x >= -MAX_WINDOW_WIDTH && vm_window->x <= MAX_WINDOW_WIDTH &&
+           "vm_window->x should have been rejected earlier");
+    assert(vm_window->y >= -MAX_WINDOW_HEIGHT && vm_window->y <= MAX_WINDOW_HEIGHT &&
+           "vm_window->y should have been rejected earlier");
     // now known: untrusted_x and untrusted_y are not negative
     if (vm_window->image) {
         // image_width and image_height are not negative
         // (checked in handle_mfndump and handle_window_dump)
+        ASSERT_WIDTH(vm_window->image_width);
+        ASSERT_HEIGHT(vm_window->image_height);
+
+        // now do actual calculations
         x = min(untrusted_x, vm_window->image_width);
         // now: x is not negative and not greater than vm_window->image_width
         y = min(untrusted_y, vm_window->image_height);
@@ -2007,26 +2018,33 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         /* update only onscreen window part */
         // image_width and image_height are not negative
         // (checked in handle_mfndump and handle_window_dump)
+        ASSERT_WIDTH(g->screen_window->image_width);
+        ASSERT_HEIGHT(g->screen_window->image_height);
+
+        // now do actual calculations
         if (vm_window->x >= g->screen_window->image_width ||
-                vm_window->y >= g->screen_window->image_height)
+                vm_window->y >= g->screen_window->image_height) {
             // window is entirely off-screen
             return;
+        }
         // now: vm_window->x is less than g->screen_window->image_width
         // now: vm_window->y is less than g->screen_window->image_height
         // now: g->screen_window->image_width - vm_window->x > 0
         // now: g->screen_window->image_height - vm_window->y > 0
 
-        if (vm_window->x < 0 && vm_window->x+untrusted_x < 0)
+        if (vm_window->x < 0 && vm_window->x+untrusted_x < 0) {
             // we know vm_window->x is not less than -MAX_WINDOW_WIDTH, so this
             // is not UB.
             untrusted_x = -vm_window->x;
-        // untrusted_x + vm_window->x is not negative and untrusted_x is not
+        }
+        // now: untrusted_x + vm_window->x is not negative and untrusted_x is not
         // negative
 
-        if (vm_window->y < 0 && vm_window->y+untrusted_y < 0)
+        if (vm_window->y < 0 && vm_window->y+untrusted_y < 0) {
             // we know vm_window->x is not less than -MAX_WINDOW_WIDTH, so this
             // is not UB.
             untrusted_y = -vm_window->y;
+        }
         // now: untrusted_y + vm_window->y is not negative and untrusted_y is
         // not negative
 
@@ -2042,9 +2060,17 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
 
         w = min(max(untrusted_w, 0), g->screen_window->image_width - vm_window->x - x);
         // now: w is not negative and not greater than g->screen_window->image_width
+        // also: g->screen_window->image_width >= (vm_window->x + x + w)
+        // so if the code that forces the window on-screen makes vm_window->x + x
+        // exceed g->screen_window->image_width, w will become negative, causing
+        // the code to return early.
 
         h = min(max(untrusted_h, 0), g->screen_window->image_height - vm_window->y - y);
         // now: h is not negative and not greater than g->screen_window->image_height
+        // also: g->screen_window->image_height >= (vm_window->y + y + h)
+        // so if the code that forces the window on-screen makes vm_window->y + y
+        // exceed g->screen_window->image_height, h will become negative, causing
+        // the code to return early.
 
         // if the requested area is outside of the window, this will be caught
         // by the code below that checks for frames being overwritten
@@ -2088,6 +2114,9 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
                    vm_window->height);
         return;
     }
+    assert(x >= 0 && y >= 0 && w >= 0 && h >= 0);
+    assert(border_width >= 0);
+    const int right = x + w, bottom = y + h;
     /* force frame to be visible: */
     /*   * left */
     delta = border_width - x;
@@ -2097,7 +2126,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         do_border = 1;
     }
     /*   * right */
-    delta = x + w - (vm_window->width - border_width);
+    delta = right - (vm_window->width - border_width);
     if (delta > 0) {
         w -= delta;
         do_border = 1;
@@ -2110,7 +2139,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         do_border = 1;
     }
     /*   * bottom */
-    delta = y + h - (vm_window->height - border_width);
+    delta = bottom - (vm_window->height - border_width);
     if (delta > 0) {
         h -= delta;
         do_border = 1;
@@ -2132,6 +2161,8 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
             fill_tray_bg_and_update(g, vm_window, x, y, w, h);
         else if (g->trayicon_mode == TRAY_TINT)
             tint_tray_and_update(g, vm_window, x, y, w, h);
+        else
+            assert(0 && "Invalid trayicon_mode in do_shm_update");
     } else {
         if (vm_window->image) {
             XShmPutImage(g->display, vm_window->local_winid,
@@ -2148,6 +2179,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
     }
     if (!do_border)
         return;
+    /* if border_width is 0 the loop body will not execute */
     for (i = border_padding; i < border_padding + border_width; i++)
         XDrawRectangle(g->display, vm_window->local_winid,
                    g->frame_gc, i, i,
@@ -2229,9 +2261,9 @@ static void process_xevent_propertynotify(Ghandles *g, const XPropertyEvent *con
     struct msg_window_flags msg;
 
     if (ev->window == g->root_win) {
-        if (ev->state != PropertyNewValue)
-            return;
-        update_work_area(g);
+        if (ev->state == PropertyNewValue)
+            update_work_area(g);
+        return;
     }
     CHECK_NONMANAGED_WINDOW(g, ev->window);
     if (ev->atom == g->wm_state) {
