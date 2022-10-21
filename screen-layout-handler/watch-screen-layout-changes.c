@@ -30,6 +30,8 @@ int main(int argc, char **argv) {
     signal(SIGCHLD, SIG_IGN);
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGTERM);
+    sigaddset(&sigmask, SIGINT);
+    sigaddset(&sigmask, SIGHUP);
     if (sigprocmask(SIG_BLOCK, &sigmask, NULL) == -1)
         err(1, "Couldn't block signals for graceful signal recovery");
 
