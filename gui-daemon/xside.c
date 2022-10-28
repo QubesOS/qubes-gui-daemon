@@ -3196,6 +3196,15 @@ qubes_xcb_send_xen_fd(Ghandles *g,
     }
 }
 
+__attribute__((cold)) _Noreturn static void
+too_big_window_error(const char *msg, uint32_t untrusted_width, uint32_t untrusted_height)
+{
+    errx(1, "Width or height too large in MSG_%s: "
+            "limit is %dx%d but got %" PRIu32 "x%" PRIu32,
+         msg, MAX_WINDOW_WIDTH, MAX_WINDOW_HEIGHT,
+         untrusted_width, untrusted_height);
+}
+
 /* handle VM message: MSG_MFNDUMP
  * Retrieve memory addresses connected with composition buffer of remote window
  */
@@ -3226,13 +3235,17 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
                 untrusted_shmcmd.width, untrusted_shmcmd.height,
                 untrusted_shmcmd.num_mfn, untrusted_shmcmd.off);
     /* sanitize start */
-    VERIFY(untrusted_shmcmd.num_mfn <= (unsigned)MAX_MFN_COUNT);
+    if (untrusted_shmcmd.num_mfn > MAX_MFN_COUNT)
+        errx(1, "MSG_MFNDUMP: too many MFNs (limit %zu got %" PRIu32 ")",
+             (size_t)MAX_MFN_COUNT, untrusted_shmcmd.num_mfn);
     num_mfn = untrusted_shmcmd.num_mfn;
-    VERIFY((int) untrusted_shmcmd.width >= 0
-           && (int) untrusted_shmcmd.height >= 0);
-    VERIFY((int) untrusted_shmcmd.width <= MAX_WINDOW_WIDTH
-           && (int) untrusted_shmcmd.height <= MAX_WINDOW_HEIGHT);
-    VERIFY(untrusted_shmcmd.off < 4096);
+    if (untrusted_shmcmd.width > MAX_WINDOW_WIDTH ||
+        untrusted_shmcmd.height > MAX_WINDOW_HEIGHT)
+    {
+        too_big_window_error("MFNDUMP", untrusted_shmcmd.width, untrusted_shmcmd.height);
+    }
+    if (untrusted_shmcmd.off >= 4096)
+        errx(1, "MSG_MFNDUMP has offset %" PRIu32 " which is not less than 4096", untrusted_shmcmd.off);
     off = untrusted_shmcmd.off;
     /* unused for now: VERIFY(untrusted_shmcmd.bpp == 24); */
     /* sanitize end */
@@ -3349,10 +3362,11 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
         exit(1);
     }
     const uint32_t wd_type = untrusted_wd_hdr.type;
-    VERIFY((int) untrusted_wd_hdr.width >= 0
-           && (int) untrusted_wd_hdr.height >= 0);
-    VERIFY((int) untrusted_wd_hdr.width <= MAX_WINDOW_WIDTH
-           && (int) untrusted_wd_hdr.height <= MAX_WINDOW_HEIGHT);
+    if (untrusted_wd_hdr.width > MAX_WINDOW_WIDTH ||
+        untrusted_wd_hdr.height > MAX_WINDOW_HEIGHT)
+    {
+        too_big_window_error("WINDOW_DUMP", untrusted_wd_hdr.width, untrusted_wd_hdr.height);
+    }
     vm_window->image_width = untrusted_wd_hdr.width;
     vm_window->image_height = untrusted_wd_hdr.height;
     //VERIFY(untrusted_wd_hdr.bpp == 24);
@@ -3378,22 +3392,18 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
 static void handle_message(Ghandles * g)
 {
     struct msg_hdr untrusted_hdr;
-    uint32_t type;
     XID window = 0;
     struct genlist *l;
     struct windowdata *vm_window = NULL;
 
     read_struct(g->vchan, untrusted_hdr);
-    VERIFY(untrusted_hdr.type > MSG_MIN
-           && untrusted_hdr.type < MSG_MAX);
-    /* sanitized msg type */
-    type = untrusted_hdr.type;
-    if (type == MSG_CLIPBOARD_DATA) {
+    uint32_t const untrusted_type = untrusted_hdr.type;
+    if (untrusted_type == MSG_CLIPBOARD_DATA) {
         handle_clipboard_data(g, untrusted_hdr.untrusted_len);
         return;
     }
     l = list_lookup(g->remote2local, untrusted_hdr.window);
-    if (type == MSG_CREATE) {
+    if (untrusted_type == MSG_CREATE) {
         if (l) {
             fprintf(stderr,
                 "CREATE for already existing window id 0x%x?\n",
@@ -3405,7 +3415,7 @@ static void handle_message(Ghandles * g)
         if (!l) {
             fprintf(stderr,
                 "msg 0x%x without CREATE for 0x%x\n",
-                type, untrusted_hdr.window);
+                untrusted_type, untrusted_hdr.window);
             exit(1);
         }
         vm_window = l->data;
@@ -3414,7 +3424,7 @@ static void handle_message(Ghandles * g)
          */
     }
 
-    switch (type) {
+    switch (untrusted_type) {
     case MSG_CREATE:
         handle_create(g, window);
         break;
@@ -3468,8 +3478,7 @@ static void handle_message(Ghandles * g)
         handle_cursor(g, vm_window);
         break;
     default:
-        fprintf(stderr, "got unknown msg type %d\n", type);
-        exit(1);
+        errx(1, "got unknown msg type %" PRIu32 "\n", untrusted_type);
     }
 }
 
