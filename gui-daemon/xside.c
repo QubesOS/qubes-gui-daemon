@@ -4444,7 +4444,7 @@ int main(int argc, char **argv)
                 process_xevent(&ghandles);
                 busy = 1;
             }
-            if (libvchan_data_ready(ghandles.vchan)) {
+            if (libvchan_data_ready(ghandles.vchan) >= (int)sizeof(struct msg_hdr)) {
                 handle_message(&ghandles);
                 busy = 1;
             }
