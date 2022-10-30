@@ -3268,14 +3268,11 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 
     read_data(g->vchan, (char *) &shm_args_mfns->mfns[0], mfns_len);
     if (num_mfn * 4096 <
-        vm_window->image_width * vm_window->image_height * 4 +
-        off) {
-        fprintf(stderr,
-            "handle_mfndump for window 0x%x(remote 0x%x)"
+        vm_window->image_width * vm_window->image_height * 4 + off) {
+        errx(1, "handle_mfndump for window 0x%x(remote 0x%x)"
             " got too small num_mfn= 0x%x\n",
             (int) vm_window->local_winid,
             (int) vm_window->remote_winid, num_mfn);
-        exit(1);
     }
     qubes_xcb_send_xen_fd(g, vm_window, shm_args, shm_args_len);
     free(shm_args);
@@ -3336,16 +3333,14 @@ static void handle_window_dump_body(Ghandles *g, uint32_t wd_type, size_t
 }
 
 static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
-                               uint32_t untrusted_len) {
+                               size_t const untrusted_wd_body_len) {
     struct msg_window_dump_hdr untrusted_wd_hdr;
     struct shm_args_hdr *shm_args = NULL;
     size_t shm_args_len = 0, img_data_size = 0;
 
     release_mapped_mfns(g, vm_window);
 
-    VERIFY(untrusted_len >= MSG_WINDOW_DUMP_HDR_LEN);
     read_struct(g->vchan, untrusted_wd_hdr);
-    const size_t untrusted_wd_body_len = untrusted_len - MSG_WINDOW_DUMP_HDR_LEN;
 
     if (g->log_level > 1)
         fprintf(stderr, "MSG_WINDOW_DUMP for 0x%lx(0x%lx): %ux%u, type = %u\n",
@@ -3388,6 +3383,13 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     free(shm_args);
 }
 
+__attribute__((cold)) _Noreturn static void
+msg_too_short_error(const char *msg, uint32_t untrusted_len, size_t expected_len)
+{
+    errx(1, "MSG_%s message is too short (got %" PRIu32 " expected >= %zu",
+         msg, untrusted_len, expected_len);
+}
+
 /* VM message dispatcher */
 static void handle_message(Ghandles * g)
 {
@@ -3397,9 +3399,10 @@ static void handle_message(Ghandles * g)
     struct windowdata *vm_window = NULL;
 
     read_struct(g->vchan, untrusted_hdr);
+    uint32_t const untrusted_len = untrusted_hdr.untrusted_len;
     uint32_t const untrusted_type = untrusted_hdr.type;
     if (untrusted_type == MSG_CLIPBOARD_DATA) {
-        handle_clipboard_data(g, untrusted_hdr.untrusted_len);
+        handle_clipboard_data(g, untrusted_len);
         return;
     }
     l = list_lookup(g->remote2local, untrusted_hdr.window);
@@ -3472,7 +3475,9 @@ static void handle_message(Ghandles * g)
         handle_wmflags(g, vm_window);
         break;
     case MSG_WINDOW_DUMP:
-        handle_window_dump(g, vm_window, untrusted_hdr.untrusted_len);
+        if (untrusted_len < MSG_WINDOW_DUMP_HDR_LEN)
+            msg_too_short_error("WINDOW_DUMP", untrusted_len, MSG_WINDOW_DUMP_HDR_LEN);
+        handle_window_dump(g, vm_window, untrusted_len - MSG_WINDOW_DUMP_HDR_LEN);
         break;
     case MSG_CURSOR:
         handle_cursor(g, vm_window);
