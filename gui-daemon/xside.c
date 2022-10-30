@@ -57,8 +57,6 @@
 #include <xcb/xcb_aux.h>
 #include <libconfig.h>
 #include <libnotify/notify.h>
-#include <assert.h>
-#include <qubes-gui-protocol.h>
 #include <qubes-xorg-tray-defs.h>
 #include <libvchan.h>
 #include <xen/grant_table.h>
