@@ -2011,7 +2011,7 @@ static void do_shm_update(Ghandles * g, struct windowdata *vm_window,
         // negative
 
         if (vm_window->y < 0 && vm_window->y+untrusted_y < 0) {
-            // we know vm_window->x is not less than -MAX_WINDOW_WIDTH, so this
+            // we know vm_window->y is not less than -MAX_WINDOW_HEIGHT, so this
             // is not UB.
             untrusted_y = -vm_window->y;
         }
