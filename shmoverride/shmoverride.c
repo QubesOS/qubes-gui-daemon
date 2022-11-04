@@ -66,16 +66,12 @@
     __attribute__((visibility("default"))) \
     ret name(__VA_ARGS__)
 
-typedef void *(*mmap_func)(void *shmaddr, size_t len, int prot, int flags,
-                           int fd, off_t offset);
-typedef int (*munmap_func)(void *shmaddr, size_t len);
-typedef int (*fstat64_func)(VER_ARG int fd, struct stat64 *buf);
-typedef int (*fstat_func)(VER_ARG int fd, struct stat *buf);
+static void *(*real_mmap)(void *shmaddr, size_t len, int prot, int flags,
+                          int fd, off_t offset);
+static int (*real_munmap)(void *shmaddr, size_t len);
+static int (*real_fstat64)(VER_ARG int fd, struct stat64 *buf);
+static int (*real_fstat)(VER_ARG int fd, struct stat *buf);
 
-static mmap_func real_mmap;
-static munmap_func real_munmap;
-static fstat_func real_fstat;
-static fstat64_func real_fstat64;
 static struct stat global_buf;
 static int gntdev_fd = -1;
 
@@ -468,16 +464,16 @@ static int __attribute__ ((constructor)) initfunc(void)
     unsetenv("LD_PRELOAD");
     fprintf(stderr, "shmoverride constructor running\n");
     dlerror();
-    if (!(real_mmap = (mmap_func)dlsym(RTLD_NEXT, "mmap64"))) {
+    if (!(real_mmap = (__typeof__(mmap64) *)dlsym(RTLD_NEXT, "mmap64"))) {
         fprintf(stderr, "shmoverride: no mmap64?: %s\n", dlerror());
         abort();
-    } else if (!(real_fstat = (fstat_func)dlsym(RTLD_NEXT, QUBES_STRINGIFY(FSTAT)))) {
+    } else if (!(real_fstat = (__typeof__(FSTAT) *)dlsym(RTLD_NEXT, QUBES_STRINGIFY(FSTAT)))) {
         fprintf(stderr, "shmoverride: no " QUBES_STRINGIFY(FSTAT) "?: %s\n", dlerror());
         abort();
-    } else if (!(real_fstat64 = (fstat64_func)dlsym(RTLD_NEXT, QUBES_STRINGIFY(FSTAT64)))) {
+    } else if (!(real_fstat64 = (__typeof__(FSTAT64) *)dlsym(RTLD_NEXT, QUBES_STRINGIFY(FSTAT64)))) {
         fprintf(stderr, "shmoverride: no " QUBES_STRINGIFY(FSTAT64) "?: %s\n", dlerror());
         abort();
-    } else if (!(real_munmap = (munmap_func)dlsym(RTLD_NEXT, "munmap"))) {
+    } else if (!(real_munmap = (__typeof__(munmap)* )dlsym(RTLD_NEXT, "munmap"))) {
         fprintf(stderr, "shmoverride: no munmap?: %s\n", dlerror());
         abort();
     } else if ((gntdev_fd = open("/dev/xen/gntdev", O_PATH | O_CLOEXEC | O_NOCTTY)) == -1) {
@@ -587,15 +583,6 @@ static int __attribute__ ((destructor)) descfunc(void)
         close(idfd);
         close(gntdev_fd);
         unlink(shmid_filename);
-    }
-
-    if (/* DISABLES CODE */ (0)) {
-        // These are purely for type-checking by the C compiler; they are not
-        // executed at runtime
-        real_mmap = mmap64;
-        real_mmap = mmap;
-        real_fstat64 = FSTAT64;
-        real_fstat = FSTAT;
     }
 
     if (xgt != NULL)
