@@ -88,6 +88,7 @@
 #include <xcb/xproto.h>
 #include <xcb/shm.h>
 #include <qubes-gui-protocol.h>
+#include <xen/xen.h>
 #include "util.h"
 
 #define QUBES_POLICY_EVAL_SIMPLE_SOCKET ("/etc/qubes-rpc/" QUBES_SERVICE_EVAL_SIMPLE)
@@ -171,6 +172,8 @@ typedef struct {
     xcb_atom_t wm_state_maximized_horz; /* Atom: _NET_WM_STATE_MAXIMIZED_HORZ */
     xcb_atom_t wm_user_time_window; /* Atom: _NET_WM_USER_TIME_WINDOW */
     xcb_atom_t wm_user_time; /* Atom: _NET_WM_USER_TIME */
+    xcb_atom_t qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
+    xcb_atom_t net_supported;
     /* shared memory handling */
     struct shm_args_hdr *shm_args;    /* shared memory with Xorg */
     int shm_major_opcode;   /* MIT-SHM extension opcode */
@@ -178,8 +181,8 @@ typedef struct {
     /* Client VM parameters */
     libvchan_t *vchan;
     char vmname[32];    /* name of VM */
-    int domid;        /* Xen domain id (GUI) */
-    int target_domid;        /* Xen domain id (VM) - can differ from domid when GUI is stubdom */
+    domid_t domid;        /* Xen domain id (GUI) */
+    domid_t target_domid;        /* Xen domain id (VM) - can differ from domid when GUI is stubdom */
     uint32_t protocol_version;  /* Negotiated protocol version.  Must be uint32_t
                                    as it is used as a protocol message. */
     char *cmdline_color;    /* color of frame */
@@ -200,12 +203,10 @@ typedef struct {
     xcb_window_t time_win; /* Window to set _NET_WM_USER_TIME on */
     /* signal was caught */
     int volatile reload_requested;
-    pid_t pulseaudio_pid;
     /* configuration */
     char config_path[64]; /* configuration file path (initialized to default) */
     int log_level;        /* log level */
     int startup_timeout;
-    int invisible;            /* do not show any VM window */
     pid_t kill_on_connect;  /* pid to kill when connection to gui agent is established */
     int copy_seq_mask;    /* modifiers mask for secure-copy key sequence */
     KeySym copy_seq_key;    /* key for secure-copy key sequence */
@@ -218,8 +219,6 @@ typedef struct {
     xcb_connection_t *cb_connection; /**< XCB connection */
     xcb_gcontext_t gc; /**< XCB graphics context */
     int work_x, work_y, work_width, work_height;  /* do not allow a window to go beyond these bounds */
-    xcb_atom_t qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
-    xcb_atom_t net_supported;
     int xen_fd; /* O_PATH file descriptor to /dev/xen/gntdev */
     int xen_dir_fd; /* file descriptor to /dev/xen */
     bool clipboard_requested : 1;    /* if clippoard content was requested by dom0 */
@@ -231,11 +230,12 @@ typedef struct {
     bool allow_utf8_titles : 1; /* allow UTF-8 chars in window title */
     bool allow_fullscreen  : 1; /* allow fullscreen windows without decoration */
     bool override_redirect_protection : 1; /* disallow override_redirect windows to cover more than
-					 MAX_OVERRIDE_REDIRECT_PERCENTAGE percent of the screen */
-    bool prefix_titles : 1;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
+					     MAX_OVERRIDE_REDIRECT_PERCENTAGE percent of the screen */
+    bool prefix_titles     : 1; /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
     bool trayicon_tint_reduce_saturation : 1; /* reduce trayicon saturation by 50% (available only for "tint" mode) */
     bool trayicon_tint_whitehack : 1; /* replace white pixels with almost-white 0xfefefe (available only for "tint" mode) */
     bool disable_override_redirect : 1; /* Disable “override redirect” windows */
+    bool invisible         : 1; /* do not show any VM window */
 } Ghandles;
 
 #define ASSERT_HEIGHT_UNSIGNED(h)                                                      \
