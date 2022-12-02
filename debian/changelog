@@ -1,3 +1,31 @@
+qubes-gui-daemon (4.2.0-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Actually unset override-redirect when docking
+  * Support pipewire-pulseaudio as well as pulseaudio
+
+  [ Marta Marczykowska-Górecka ]
+  * Fix notification to comply with summary/body format
+
+  [ Demi Marie Obenour ]
+  * Make the build system a bit better
+  * Add assertions and comments in do_shm_update
+  * Do not check for WM_STATE changes on the root window
+  * Strict validation of domain IDs
+  * GUI daemon does not take non-option arguments
+  * Fix unchecked malloc()
+  * Obtain an XCB graphics context
+  * Switch from Xlib to XCB for shared memory
+  * Update shmoverride/README for Xlib → xcb change
+  * Use FD passing for shared memory
+  * shmoverride: avoid keeping state for munmap
+  * Remove remaining use of System V shared memory
+  * Better logging and command-line parsing
+  * Clean up some macros
+  * Fix function prototype mismatches and use poll(2)
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 02 Dec 2022 05:31:44 +0100
+
 qubes-gui-daemon (4.1.24-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
