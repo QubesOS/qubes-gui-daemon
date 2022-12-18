@@ -80,12 +80,14 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <assert.h>
 #include <unistd.h>
 #include <libvchan.h>
 #include <X11/Xlib.h>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
 #include <xcb/shm.h>
+#include <qubes-gui-protocol.h>
 #include "util.h"
 
 #define QUBES_POLICY_EVAL_SIMPLE_SOCKET ("/etc/qubes-rpc/" QUBES_SERVICE_EVAL_SIMPLE)
@@ -278,14 +280,16 @@ static inline void put_shm_image(
         uint16_t src_y,
         uint16_t w,
         uint16_t h,
-        uint16_t dst_x,
-        uint16_t dst_y) {
+        int16_t dst_x,
+        int16_t dst_y) {
+    ASSERT_WIDTH(vm_window->image_width);
+    ASSERT_HEIGHT(vm_window->image_height);
     check_xcb_void(
         xcb_shm_put_image(g->cb_connection,
                       drawable,
                       g->gc,
-                      vm_window->image_width,
-                      vm_window->image_height,
+                      (uint16_t)vm_window->image_width,
+                      (uint16_t)vm_window->image_height,
                       src_x,
                       src_y,
                       w,
