@@ -601,7 +601,7 @@ static void context_state_callback(pa_context *c, void *userdata) {
             pa_stream_set_buffer_attr_callback(u->rec_stream, stream_buffer_attr_callback, u);
 
             flags = PA_STREAM_START_CORKED | PA_STREAM_ADJUST_LATENCY;
-            u->rec_allowed = u->rec_requested = 0;
+            u->rec_requested = 0;
 
             if (pa_stream_connect_record(u->rec_stream, u->rec_device, bufattr, flags) < 0) {
                 pacat_log("pa_stream_connect_record() failed: %s", pa_strerror(pa_context_errno(c)));
@@ -858,6 +858,74 @@ static void control_cleanup(struct userdata *u) {
         qdb_close(u->qdb);
 }
 
+static void connect_pa_daemon(struct userdata *u) {
+    char *server = NULL;
+
+    pacat_log("Connection to qube established, connecting to PulseAudio daemon\n");
+
+    /* Connect the context */
+    if (pa_context_connect(u->context, server, PA_CONTEXT_NOFAIL, NULL) < 0) {
+        pacat_log("pa_context_connect() failed: %s", pa_strerror(pa_context_errno(u->context)));
+        quit(u, 1);
+    }
+}
+
+static void vchan_play_async_connect(pa_mainloop_api *UNUSED(a),
+        pa_io_event *e, int UNUSED(fd), pa_io_event_flags_t UNUSED(f),
+        void *userdata) {
+    struct userdata *u = userdata;
+    int ret;
+
+    assert(e == u->play_ctrl_event);
+
+    ret = libvchan_client_init_async_finish(u->play_ctrl, true);
+    if (ret > 0)
+        /* wait more */
+        return;
+    if (ret < 0) {
+        perror("libvchan_client_init_async_finish");
+        quit(u, 1);
+        return;
+    }
+
+    /* connection established, no need to watch this FD anymore */
+    u->mainloop_api->io_free(u->play_ctrl_event);
+    u->play_ctrl_event = NULL;
+
+    /* when both vchans are connected, connect to the daemon */
+    if (libvchan_is_open(u->rec_ctrl) == VCHAN_CONNECTED)
+        connect_pa_daemon(u);
+}
+
+static void vchan_rec_async_connect(pa_mainloop_api *UNUSED(a),
+        pa_io_event *e, int UNUSED(fd), pa_io_event_flags_t UNUSED(f),
+        void *userdata) {
+    struct userdata *u = userdata;
+    int ret;
+
+    assert(e == u->rec_ctrl_event);
+
+    ret = libvchan_client_init_async_finish(u->rec_ctrl, true);
+    if (ret > 0)
+        /* wait more */
+        return;
+    if (ret < 0) {
+        perror("libvchan_client_init_async_finish");
+        quit(u, 1);
+        return;
+    }
+
+    /* connection established, no need to watch this FD anymore */
+    u->mainloop_api->io_free(u->rec_ctrl_event);
+    u->rec_ctrl_event = NULL;
+
+    u->never_block = libvchan_buffer_space(u->rec_ctrl) > 8192;
+
+    /* when both vchans are connected, connect to the daemon */
+    if (libvchan_is_open(u->play_ctrl) == VCHAN_CONNECTED)
+        connect_pa_daemon(u);
+}
+
 static _Noreturn void usage(char *arg0) {
     fprintf(stderr, "usage: %s [-l] [--] domid domname\n",
             arg0 ? arg0 : "pacat-simple-vchan");
@@ -871,10 +939,10 @@ int main(int argc, char *argv[])
     struct userdata u;
     pa_glib_mainloop* m = NULL;
     pa_time_event *time_event = NULL;
-    char *server = NULL;
     int domid = -1;
     char *pidfile_path;
     int pidfile_fd;
+    int play_watch_fd, rec_watch_fd;
     int i = 1;
 
     if (argc <= 2 || argc > 5)
@@ -911,14 +979,14 @@ int main(int argc, char *argv[])
 
     u.name = domname;
 
-    u.play_ctrl = libvchan_client_init(domid, QUBES_PA_SINK_VCHAN_PORT);
+    u.play_ctrl = libvchan_client_init_async(domid, QUBES_PA_SINK_VCHAN_PORT, &play_watch_fd);
     if (!u.play_ctrl) {
-        perror("libvchan_client_init");
+        perror("libvchan_client_init_async");
         exit(1);
     }
-    u.rec_ctrl = libvchan_client_init(domid, QUBES_PA_SOURCE_VCHAN_PORT);
+    u.rec_ctrl = libvchan_client_init_async(domid, QUBES_PA_SOURCE_VCHAN_PORT, &rec_watch_fd);
     if (!u.rec_ctrl) {
-        perror("libvchan_client_init");
+        perror("libvchan_client_init_async");
         exit(1);
     }
     if (setgid(getgid()) < 0) {
@@ -929,7 +997,6 @@ int main(int argc, char *argv[])
         perror("setuid");
         exit(1);
     }
-    u.never_block = libvchan_buffer_space(u.rec_ctrl) > 8192;
     u.proplist = pa_proplist_new();
     pa_proplist_sets(u.proplist, PA_PROP_APPLICATION_NAME, u.name);
     pa_proplist_sets(u.proplist, PA_PROP_MEDIA_NAME, u.name);
@@ -954,17 +1021,28 @@ int main(int argc, char *argv[])
         goto quit;
     }
 
+    u.play_ctrl_event = u.mainloop_api->io_new(u.mainloop_api,
+            play_watch_fd, PA_IO_EVENT_INPUT, vchan_play_async_connect, &u);
+    if (!u.play_ctrl_event) {
+        pacat_log("io_new play_ctrl failed");
+        goto quit;
+    }
+
+    u.rec_ctrl_event = u.mainloop_api->io_new(u.mainloop_api,
+            rec_watch_fd, PA_IO_EVENT_INPUT, vchan_rec_async_connect, &u);
+    if (!u.rec_ctrl_event) {
+        pacat_log("io_new rec_ctrl failed");
+        goto quit;
+    }
+
+    u.rec_allowed = 0;
+
     if (!(u.context = pa_context_new_with_proplist(u.mainloop_api, NULL, u.proplist))) {
         pacat_log("pa_context_new() failed.");
         goto quit;
     }
 
     pa_context_set_state_callback(u.context, context_state_callback, &u);
-    /* Connect the context */
-    if (pa_context_connect(u.context, server, PA_CONTEXT_NOFAIL, NULL) < 0) {
-        pacat_log("pa_context_connect() failed: %s", pa_strerror(pa_context_errno(u.context)));
-        goto quit;
-    }
 
     if (setup_control(&u) < 0) {
         pacat_log("control socket initialization failed");
@@ -993,6 +1071,16 @@ quit:
     if (time_event) {
         assert(u.mainloop_api);
         u.mainloop_api->time_free(time_event);
+    }
+
+    if (u.play_ctrl_event) {
+        assert(u.mainloop_api);
+        u.mainloop_api->io_free(u.play_ctrl_event);
+    }
+
+    if (u.rec_ctrl_event) {
+        assert(u.mainloop_api);
+        u.mainloop_api->io_free(u.rec_ctrl_event);
     }
 
     /* discard remaining data */

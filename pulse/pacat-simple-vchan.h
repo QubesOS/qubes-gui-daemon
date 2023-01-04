@@ -26,6 +26,8 @@ struct userdata {
 
     pa_io_event* play_stdio_event;
     pa_io_event* rec_stdio_event;
+    pa_io_event* play_ctrl_event;
+    pa_io_event* rec_ctrl_event;
 
     int rec_allowed;
     int rec_requested;
