@@ -68,7 +68,7 @@
 /* Supported protocol version */
 
 #define PROTOCOL_VERSION_MAJOR UINT32_C(1)
-#define PROTOCOL_VERSION_MINOR UINT32_C(6)
+#define PROTOCOL_VERSION_MINOR UINT32_C(7)
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
@@ -3130,8 +3130,9 @@ qubes_xcb_send_xen_fd(Ghandles *g,
                       struct shm_args_hdr *shm_args,
                       size_t shm_args_len)
 {
+    xcb_generic_error_t *error = NULL;
     if (g->invisible)
-        return;
+        goto ack;
     shm_args->domid = g->domid;
     vm_window->shmseg = xcb_generate_id(g->cb_connection);
     if (vm_window->shmseg == QUBES_NO_SHM_SEGMENT) {
@@ -3188,8 +3189,16 @@ qubes_xcb_send_xen_fd(Ghandles *g,
                                       dup_fd, true),
             "xcb_shm_attach_fd_checked");
     xcb_aux_sync(g->cb_connection);
-    xcb_generic_error_t *error = xcb_request_check(g->cb_connection, cookie);
+    error = xcb_request_check(g->cb_connection, cookie);
     inter_appviewer_lock(g, 0);
+ack:
+    if (g->protocol_version >= QUBES_GUID_MIN_MSG_WINDOW_DUMP_ACK) {
+        struct msg_hdr hdr;
+        hdr.type = MSG_WINDOW_DUMP_ACK;
+        hdr.window = vm_window->remote_winid;
+        hdr.untrusted_len = 0;
+        write_struct(g->vchan, hdr);
+    }
     if (error) {
         qubes_xcb_handler(g, "xcb_shm_attach_fd", vm_window, error);
         free(error);
