@@ -403,18 +403,18 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
 
     switch (pa_stream_get_state(s)) {
         case PA_STREAM_CREATING:
-	    break;
+            break;
         case PA_STREAM_TERMINATED:
-	    if (u->play_stdio_event && u->play_stream == s) {
-               pacat_log("play stream terminated");
-		assert(u->mainloop_api);
-		u->mainloop_api->io_free(u->play_stdio_event);
-	    }
-	    if (u->rec_stdio_event && u->rec_stream == s) {
-               pacat_log("rec stream terminated");
-		assert(u->mainloop_api);
-		u->mainloop_api->io_free(u->rec_stdio_event);
-	    }
+            if (u->play_stdio_event && u->play_stream == s) {
+                pacat_log("play stream terminated");
+                assert(u->mainloop_api);
+                u->mainloop_api->io_free(u->play_stdio_event);
+            }
+            if (u->rec_stdio_event && u->rec_stream == s) {
+                pacat_log("rec stream terminated");
+                assert(u->mainloop_api);
+                u->mainloop_api->io_free(u->rec_stdio_event);
+            }
             break;
 
         case PA_STREAM_READY:
@@ -440,22 +440,22 @@ static void stream_state_callback(pa_stream *s, void *userdata) {
                         pa_stream_get_device_index(s),
                         pa_stream_is_suspended(s) ? "" : "not ");
             }
-	    if (u->play_stream == s) {
-		u->play_stdio_event = u->mainloop_api->io_new(u->mainloop_api,
+            if (u->play_stream == s) {
+                u->play_stdio_event = u->mainloop_api->io_new(u->mainloop_api,
                     libvchan_fd_for_select(u->play_ctrl), PA_IO_EVENT_INPUT, vchan_play_callback,  u);
-		if (!u->play_stdio_event) {
-		    pacat_log("io_new play failed");
-		    quit(u, 1);
-		}
-	    }
-	    if (u->rec_stream == s) {
-		u->rec_stdio_event = u->mainloop_api->io_new(u->mainloop_api,
-			libvchan_fd_for_select(u->rec_ctrl), PA_IO_EVENT_INPUT, vchan_rec_callback, u);
-		if (!u->rec_stdio_event) {
-		    pacat_log("io_new rec failed");
-		    quit(u, 1);
-		}
-	    }
+                if (!u->play_stdio_event) {
+                    pacat_log("io_new play failed");
+                    quit(u, 1);
+                }
+            }
+            if (u->rec_stream == s) {
+                u->rec_stdio_event = u->mainloop_api->io_new(u->mainloop_api,
+                        libvchan_fd_for_select(u->rec_ctrl), PA_IO_EVENT_INPUT, vchan_rec_callback, u);
+                if (!u->rec_stdio_event) {
+                    pacat_log("io_new rec failed");
+                    quit(u, 1);
+                }
+            }
             break;
 
         case PA_STREAM_FAILED:
