@@ -1,3 +1,18 @@
+qubes-gui-daemon (4.2.1-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Fix some -Wconversion warnings
+  * Remove unneeded header includes
+  * Rip out subwindows support
+
+  [ Marek Marczykowski-Górecki ]
+  * pulse: Fix indentation
+  * Deal with delayed pulseaudio agent startup
+  * rpm: drop explicit libvchan dependency
+  * ci: drop R4.1
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 09 Jan 2023 19:49:08 +0100
+
 qubes-gui-daemon (4.2.0-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
