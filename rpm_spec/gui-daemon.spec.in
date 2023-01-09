@@ -35,7 +35,6 @@ URL:		http://www.qubes-os.org
 Requires:	xorg-x11-server-Xorg
 Requires:	service(graphical-login)
 Requires:	libconfig
-Requires:	qubes-libvchan-@BACKEND_VMM@
 Requires:   python%{python3_pkgversion}-xcffib
 Requires:   qubes-utils >= 3.1.0
 Requires:   qubes-core-qrexec >= 4.1.5
@@ -94,7 +93,6 @@ Requires:	pulseaudio-daemon
 Requires:	pulseaudio
 %endif
 Requires:	libconfig
-Requires:	qubes-libvchan-@BACKEND_VMM@
 Requires:   qubes-utils >= 3.1.0
 Requires:   python%{python3_pkgversion}-pydbus
 
