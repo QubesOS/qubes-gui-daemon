@@ -40,6 +40,7 @@ Requires:   qubes-utils >= 3.1.0
 Requires:   qubes-core-qrexec >= 4.1.5
 Requires:   python%{python3_pkgversion}-qubesimgconverter >= 4.1.4
 Requires:   socat
+Requires:   group(qubes)
 
 BuildRequires:  python%{python3_pkgversion}-devel
 BuildRequires:  python%{python3_pkgversion}-setuptools
