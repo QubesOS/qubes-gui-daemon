@@ -64,7 +64,7 @@ install:
 	install -D shmoverride/shmoverride.so $(DESTDIR)$(LIBDIR)/qubes-gui-daemon/shmoverride.so
 	install -D -m 0644 gui-daemon/guid.conf $(DESTDIR)/etc/qubes/guid.conf
 	install -D gui-daemon/qubes-localgroup.sh $(DESTDIR)/etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
-	install -D -m 0644 gui-daemon/qubes.ClipboardPaste.policy $(DESTDIR)/etc/qubes-rpc/policy/qubes.ClipboardPaste
+	install -D -m 0644 common/90-default-gui-daemon.policy $(DESTDIR)/etc/qubes/policy.d/90-default-gui-daemon.policy
 	install -D screen-layout-handler/watch-screen-layout-changes $(DESTDIR)/usr/libexec/qubes/watch-screen-layout-changes
 	install -D -m 0644 screen-layout-handler/qubes-screen-layout-watches.desktop $(DESTDIR)/etc/xdg/autostart/qubes-screen-layout-watches.desktop
 	$(MAKE) -C window-icon-updater install

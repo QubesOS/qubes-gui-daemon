@@ -160,8 +160,7 @@ rm -f %{name}-%{version}
 /etc/qubes-rpc/qubes.AudioInputDisable
 
 %files -n qubes-gui-dom0
-%config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.ClipboardPaste
-%config(noreplace) %{_sysconfdir}/qubes-rpc/policy/qubes.WindowIconUpdater
+%config(noreplace) %{_sysconfdir}/qubes/policy.d/90-default-gui-daemon.policy
 
 %files -n qubes-audio-dom0
 %{python3_sitelib}/qubesguidaemon-*.egg-info

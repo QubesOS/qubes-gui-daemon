@@ -8,7 +8,5 @@ etc/qubes/guid.conf
 etc/xdg/autostart/qubes-screen-layout-watches.desktop
 etc/xdg/autostart/qubes-icon-receiver.desktop
 etc/qubes-rpc/qubes.WindowIconUpdater
-etc/qubes-rpc/policy/qubes.ClipboardPaste
-etc/qubes-rpc/policy/qubes.WindowIconUpdater
 etc/qubes/rpc-config/qubes.WindowIconUpdater
 etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
