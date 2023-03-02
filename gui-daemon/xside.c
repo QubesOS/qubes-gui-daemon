@@ -2522,12 +2522,14 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
     /* Inform the agent that the window has been destroyed.
      * Mandatory in protocol version 1.5+, and harmless for older
      * versions. */
-    struct msg_hdr delete_id = {
-        .type = MSG_DESTROY,
-        .window = vm_window->remote_winid,
-        .untrusted_len = 0,
-    };
-    write_struct(g->vchan, delete_id);
+    if (g->protocol_version >= QUBES_GUID_MIN_BIDIRECTIONAL_MSG_DESTROY) {
+        struct msg_hdr delete_id = {
+            .type = MSG_DESTROY,
+            .window = vm_window->remote_winid,
+            .untrusted_len = 0,
+        };
+        write_struct(g->vchan, delete_id);
+    }
     free(vm_window);
 }
 
