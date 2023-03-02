@@ -1294,7 +1294,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
             if (len > 0) {
                 /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
                    of the blob, be aware when working with old implementations. */
-                if (g->protocol_version < PROTOCOL_VERSION(1, 2))
+                if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_DATA_LEN_IN_LEN)
                     hdr.window = len;
                 else
                     hdr.window = remote_winid;
@@ -3594,7 +3594,7 @@ static void send_xconf(Ghandles * g)
     XWindowAttributes attr;
     if (!XGetWindowAttributes(g->display, g->root_win, &attr))
         errx(1, "Cannot query root window attributes!");
-    if (g->protocol_version >= PROTOCOL_VERSION(1, 4)) {
+    if (g->protocol_version >= QUBES_GUID_MIN_BIDIRECTIONAL_NEGOTIATION_VERSION) {
         /* Bidirectional protocol negotiation is supported */
         _Static_assert(sizeof g->protocol_version == 4,
                        "g->protocol_version must be a uint32_t");
