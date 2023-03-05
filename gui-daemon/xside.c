@@ -67,8 +67,8 @@
 
 /* Supported protocol version */
 
-#define PROTOCOL_VERSION_MAJOR 1u
-#define PROTOCOL_VERSION_MINOR 5u
+#define PROTOCOL_VERSION_MAJOR UINT32_C(1)
+#define PROTOCOL_VERSION_MINOR UINT32_C(6)
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
@@ -3197,13 +3197,47 @@ qubes_xcb_send_xen_fd(Ghandles *g,
     }
 }
 
+__attribute__((cold)) _Noreturn static void
+too_big_window_error(const char *msg, uint32_t untrusted_width, uint32_t untrusted_height)
+{
+    errx(1, "Width or height too large in MSG_%s: "
+            "limit is %dx%d but got %" PRIu32 "x%" PRIu32,
+         msg, MAX_WINDOW_WIDTH, MAX_WINDOW_HEIGHT,
+         untrusted_width, untrusted_height);
+}
+
+__attribute__((cold)) static void
+bad_length(uint32_t const protocol_version, const char *const msg,
+           size_t const expected, uint32_t const untrusted_len)
+{
+    const unsigned int major_version = protocol_version >> 16;
+    const unsigned int minor_version = protocol_version & 0xFFFF;
+    warnx("incorrect untrusted_len for MSG_%s: expected %zu got %" PRIu32,
+          msg, expected, untrusted_len);
+    if (protocol_version >= PROTOCOL_VERSION(1, 6))
+        errx(1, "Exiting since protocol version %u.%u >= 1.6",
+             major_version, minor_version);
+    else
+        warnx("Continuing since protocol version %u.%u < 1.6",
+              major_version, minor_version);
+}
+
+#define CHECK_LEN(expected, msg)                                             \
+    do {                                                                     \
+        size_t _expected = (expected);                                       \
+        if (untrusted_len != _expected)                                      \
+            bad_length(g->protocol_version, #msg, _expected, untrusted_len); \
+        untrusted_len = _expected;                                           \
+    } while (0)
+#pragma GCC poison _expected
+
 /* handle VM message: MSG_MFNDUMP
  * Retrieve memory addresses connected with composition buffer of remote window
  */
-static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
+static void handle_mfndump(Ghandles * g, struct windowdata *vm_window, uint32_t untrusted_len)
 {
     struct shm_cmd untrusted_shmcmd;
-    unsigned num_mfn, off;
+    uint32_t num_mfn, off;
     size_t shm_args_len;
     struct shm_args_hdr *shm_args;
     struct shm_args_mfns *shm_args_mfns;
@@ -3227,20 +3261,26 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
                 untrusted_shmcmd.width, untrusted_shmcmd.height,
                 untrusted_shmcmd.num_mfn, untrusted_shmcmd.off);
     /* sanitize start */
-    VERIFY(untrusted_shmcmd.num_mfn <= (unsigned)MAX_MFN_COUNT);
+    if (untrusted_shmcmd.num_mfn > MAX_MFN_COUNT)
+        errx(1, "MSG_MFNDUMP: too many MFNs (limit %zu got %" PRIu32 ")",
+             (size_t)MAX_MFN_COUNT, untrusted_shmcmd.num_mfn);
     num_mfn = untrusted_shmcmd.num_mfn;
-    VERIFY((int) untrusted_shmcmd.width >= 0
-           && (int) untrusted_shmcmd.height >= 0);
-    VERIFY((int) untrusted_shmcmd.width <= MAX_WINDOW_WIDTH
-           && (int) untrusted_shmcmd.height <= MAX_WINDOW_HEIGHT);
-    VERIFY(untrusted_shmcmd.off < 4096);
+    if (untrusted_shmcmd.width > MAX_WINDOW_WIDTH ||
+        untrusted_shmcmd.height > MAX_WINDOW_HEIGHT)
+    {
+        too_big_window_error("MFNDUMP", untrusted_shmcmd.width, untrusted_shmcmd.height);
+    }
+    if (untrusted_shmcmd.off >= 4096)
+        errx(1, "MSG_MFNDUMP has offset %" PRIu32 " which is not less than 4096", untrusted_shmcmd.off);
     off = untrusted_shmcmd.off;
+    mfns_len = num_mfn * SIZEOF_SHARED_MFN;
+    CHECK_LEN(mfns_len + sizeof untrusted_shmcmd, "MFNDUMP");
     /* unused for now: VERIFY(untrusted_shmcmd.bpp == 24); */
     /* sanitize end */
+
     vm_window->image_width = untrusted_shmcmd.width;
     vm_window->image_height = untrusted_shmcmd.height;    /* sanitized above */
 
-    mfns_len = num_mfn * SIZEOF_SHARED_MFN;
     shm_args_len = sizeof(struct shm_args_hdr) + sizeof(struct shm_args_mfns) +
                    mfns_len;
     shm_args = calloc(1, shm_args_len);
@@ -3256,14 +3296,11 @@ static void handle_mfndump(Ghandles * g, struct windowdata *vm_window)
 
     read_data(g->vchan, (char *) &shm_args_mfns->mfns[0], mfns_len);
     if (num_mfn * 4096 <
-        vm_window->image_width * vm_window->image_height * 4 +
-        off) {
-        fprintf(stderr,
-            "handle_mfndump for window 0x%x(remote 0x%x)"
+        vm_window->image_width * vm_window->image_height * 4 + off) {
+        errx(1, "handle_mfndump for window 0x%x(remote 0x%x)"
             " got too small num_mfn= 0x%x\n",
             (int) vm_window->local_winid,
             (int) vm_window->remote_winid, num_mfn);
-        exit(1);
     }
     qubes_xcb_send_xen_fd(g, vm_window, shm_args, shm_args_len);
     free(shm_args);
@@ -3324,16 +3361,14 @@ static void handle_window_dump_body(Ghandles *g, uint32_t wd_type, size_t
 }
 
 static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
-                               uint32_t untrusted_len) {
+                               size_t const untrusted_wd_body_len) {
     struct msg_window_dump_hdr untrusted_wd_hdr;
     struct shm_args_hdr *shm_args = NULL;
     size_t shm_args_len = 0, img_data_size = 0;
 
     release_mapped_mfns(g, vm_window);
 
-    VERIFY(untrusted_len >= MSG_WINDOW_DUMP_HDR_LEN);
     read_struct(g->vchan, untrusted_wd_hdr);
-    const size_t untrusted_wd_body_len = untrusted_len - MSG_WINDOW_DUMP_HDR_LEN;
 
     if (g->log_level > 1)
         fprintf(stderr, "MSG_WINDOW_DUMP for 0x%lx(0x%lx): %ux%u, type = %u\n",
@@ -3350,10 +3385,11 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
         exit(1);
     }
     const uint32_t wd_type = untrusted_wd_hdr.type;
-    VERIFY((int) untrusted_wd_hdr.width >= 0
-           && (int) untrusted_wd_hdr.height >= 0);
-    VERIFY((int) untrusted_wd_hdr.width <= MAX_WINDOW_WIDTH
-           && (int) untrusted_wd_hdr.height <= MAX_WINDOW_HEIGHT);
+    if (untrusted_wd_hdr.width > MAX_WINDOW_WIDTH ||
+        untrusted_wd_hdr.height > MAX_WINDOW_HEIGHT)
+    {
+        too_big_window_error("WINDOW_DUMP", untrusted_wd_hdr.width, untrusted_wd_hdr.height);
+    }
     vm_window->image_width = untrusted_wd_hdr.width;
     vm_window->image_height = untrusted_wd_hdr.height;
     //VERIFY(untrusted_wd_hdr.bpp == 24);
@@ -3375,26 +3411,30 @@ static void handle_window_dump(Ghandles *g, struct windowdata *vm_window,
     free(shm_args);
 }
 
+__attribute__((cold)) _Noreturn static void
+msg_too_short_error(const char *msg, uint32_t untrusted_len, size_t expected_len)
+{
+    errx(1, "MSG_%s message is too short (got %" PRIu32 " expected >= %zu",
+         msg, untrusted_len, expected_len);
+}
+
 /* VM message dispatcher */
 static void handle_message(Ghandles * g)
 {
     struct msg_hdr untrusted_hdr;
-    uint32_t type;
     XID window = 0;
     struct genlist *l;
     struct windowdata *vm_window = NULL;
 
     read_struct(g->vchan, untrusted_hdr);
-    VERIFY(untrusted_hdr.type > MSG_MIN
-           && untrusted_hdr.type < MSG_MAX);
-    /* sanitized msg type */
-    type = untrusted_hdr.type;
-    if (type == MSG_CLIPBOARD_DATA) {
-        handle_clipboard_data(g, untrusted_hdr.untrusted_len);
+    uint32_t untrusted_len = untrusted_hdr.untrusted_len;
+    uint32_t const untrusted_type = untrusted_hdr.type;
+    if (untrusted_type == MSG_CLIPBOARD_DATA) {
+        handle_clipboard_data(g, untrusted_len);
         return;
     }
     l = list_lookup(g->remote2local, untrusted_hdr.window);
-    if (type == MSG_CREATE) {
+    if (untrusted_type == MSG_CREATE) {
         if (l) {
             fprintf(stderr,
                 "CREATE for already existing window id 0x%x?\n",
@@ -3406,7 +3446,7 @@ static void handle_message(Ghandles * g)
         if (!l) {
             fprintf(stderr,
                 "msg 0x%x without CREATE for 0x%x\n",
-                type, untrusted_hdr.window);
+                untrusted_type, untrusted_hdr.window);
             exit(1);
         }
         vm_window = l->data;
@@ -3415,17 +3455,21 @@ static void handle_message(Ghandles * g)
          */
     }
 
-    switch (type) {
+    switch (untrusted_type) {
     case MSG_CREATE:
+        CHECK_LEN(sizeof(struct msg_create), CREATE);
         handle_create(g, window);
         break;
     case MSG_DESTROY:
+        CHECK_LEN(0, DESTROY);
         handle_destroy(g, l);
         break;
     case MSG_MAP:
+        CHECK_LEN(sizeof(struct msg_map_info), MAP);
         handle_map(g, vm_window);
         break;
     case MSG_UNMAP:
+        CHECK_LEN(0, UNMAP);
         /*
          * Mapping/unmapping of a docked window should be done via setting
          * _XEMBED_INFO property. Consider doing this in the future, but definitely
@@ -3439,38 +3483,50 @@ static void handle_message(Ghandles * g)
             release_mapped_mfns(g, vm_window);
         break;
     case MSG_CONFIGURE:
+        CHECK_LEN(sizeof(struct msg_configure), CONFIGURE);
         handle_configure_from_vm(g, vm_window);
         break;
     case MSG_MFNDUMP:
-        handle_mfndump(g, vm_window);
+        if (g->protocol_version >= PROTOCOL_VERSION(1, 6) &&
+            untrusted_len < sizeof(struct shm_cmd))
+            msg_too_short_error("MFNDUMP", untrusted_len, sizeof(struct shm_cmd));
+        handle_mfndump(g, vm_window, untrusted_len);
         break;
     case MSG_SHMIMAGE:
+        CHECK_LEN(sizeof(struct msg_shmimage), SHMIMAGE);
         handle_shmimage(g, vm_window);
         break;
     case MSG_WMNAME:
+        CHECK_LEN(sizeof(struct msg_wmname), WMNAME);
         handle_wmname(g, vm_window);
         break;
     case MSG_WMCLASS:
+        CHECK_LEN(sizeof(struct msg_wmclass), WMCLASS);
         handle_wmclass(g, vm_window);
         break;
     case MSG_DOCK:
+        CHECK_LEN(0, DOCK);
         handle_dock(g, vm_window);
         break;
     case MSG_WINDOW_HINTS:
+        CHECK_LEN(sizeof(struct msg_window_hints), WINDOW_HINTS);
         handle_wmhints(g, vm_window);
         break;
     case MSG_WINDOW_FLAGS:
+        CHECK_LEN(sizeof(struct msg_window_flags), WINDOW_FLAGS);
         handle_wmflags(g, vm_window);
         break;
     case MSG_WINDOW_DUMP:
-        handle_window_dump(g, vm_window, untrusted_hdr.untrusted_len);
+        if (untrusted_len < MSG_WINDOW_DUMP_HDR_LEN)
+            msg_too_short_error("WINDOW_DUMP", untrusted_len, MSG_WINDOW_DUMP_HDR_LEN);
+        handle_window_dump(g, vm_window, untrusted_len - MSG_WINDOW_DUMP_HDR_LEN);
         break;
     case MSG_CURSOR:
+        CHECK_LEN(sizeof(struct msg_cursor), CURSOR);
         handle_cursor(g, vm_window);
         break;
     default:
-        fprintf(stderr, "got unknown msg type %d\n", type);
-        exit(1);
+        errx(1, "got unknown msg type %" PRIu32 "\n", untrusted_type);
     }
 }
 
@@ -3572,7 +3628,7 @@ static void get_protocol_version(Ghandles * g)
     } else {
         /* agent is too new */
         if ((unsigned)snprintf(message, sizeof message, "%s %s \""
-                "The Dom0 GUI daemon do not support protocol version %d:%d, requested by the VM '%s'.\n"
+                "The Dom0 GUI daemon does not support protocol version %d:%d, requested by the VM '%s'.\n"
                 "To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
                 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
                 g->use_kdialog ? "--sorry" : "--error --text ",
@@ -4445,7 +4501,7 @@ int main(int argc, char **argv)
                 process_xevent(&ghandles);
                 busy = 1;
             }
-            if (libvchan_data_ready(ghandles.vchan)) {
+            if (libvchan_data_ready(ghandles.vchan) >= (int)sizeof(struct msg_hdr)) {
                 handle_message(&ghandles);
                 busy = 1;
             }
