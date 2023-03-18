@@ -3615,7 +3615,7 @@ static void get_protocol_version(Ghandles * g)
 {
     uint32_t untrusted_version;
     char message[1024];
-    uint32_t version_major, version_minor;
+    unsigned int version_major, version_minor;
     read_struct(g->vchan, untrusted_version);
     version_major = untrusted_version >> 16;
     version_minor = untrusted_version & 0xffff;
@@ -3628,7 +3628,7 @@ static void get_protocol_version(Ghandles * g)
     if (version_major < PROTOCOL_VERSION_MAJOR) {
         /* agent is too old */
         if ((unsigned)snprintf(message, sizeof message, "%s %s \""
-                "The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
+                "The GUI agent that runs in the VM '%s' implements outdated protocol (%u:%u), and must be updated.\n\n"
                 "To start and access the VM or template without GUI virtualization, use the following commands:\n"
                 "qvm-start --no-guid vmname\n"
                 "qvm-console-dispvm vmname\"",
@@ -3639,7 +3639,7 @@ static void get_protocol_version(Ghandles * g)
     } else {
         /* agent is too new */
         if ((unsigned)snprintf(message, sizeof message, "%s %s \""
-                "The Dom0 GUI daemon does not support protocol version %d:%d, requested by the VM '%s'.\n"
+                "The Dom0 GUI daemon does not support protocol version %u:%u, requested by the VM '%s'.\n\n"
                 "To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
                 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
                 g->use_kdialog ? "--sorry" : "--error --text ",
