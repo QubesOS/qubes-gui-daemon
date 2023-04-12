@@ -37,6 +37,7 @@ struct userdata {
     int control_socket_fd;
     pa_io_event* control_socket_event;
     bool never_block;
+    bool pending_play_cork;
 };
 
 void pacat_log(const char *fmt, ...);

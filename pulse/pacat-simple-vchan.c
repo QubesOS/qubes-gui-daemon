@@ -200,9 +200,6 @@ static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_l
     void *buffer = NULL;
     assert(s);
 
-    if (!max_length)
-        return;
-
     if ((space_in_vchan = libvchan_data_ready(u->play_ctrl)) < 0) {
         pacat_log("libvchan_data_ready() failed: return value %d", space_in_vchan);
         quit(u, 1);
@@ -211,7 +208,7 @@ static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_l
 
     buffer_length = (size_t)space_in_vchan > max_length ? max_length : (size_t)space_in_vchan;
     if (!buffer_length)
-        return;
+        goto maybe_cork;
 
     if (pa_stream_begin_write(s, &buffer, &buffer_length) || !buffer) {
         pacat_log("pa_stream_begin_write() failed: %s", pa_strerror(pa_context_errno(u->context)));
@@ -241,8 +238,16 @@ static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_l
             quit(u, 1);
             return;
         }
+        space_in_vchan -= (int)buffer_length;
     } else
         pa_stream_cancel_write(s);
+
+maybe_cork:
+    if (u->pending_play_cork && space_in_vchan == 0) {
+        pacat_log("Playback stream drained; corking it");
+        pa_stream_cork(u->play_stream, 1, NULL, u);
+        u->pending_play_cork = false;
+    }
 
     return;
 }
@@ -383,12 +388,20 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
                 g_mutex_unlock(&u->prop_mutex);
                 break;
             case QUBES_PA_SINK_CORK_CMD:
-                pacat_log("Stream cork");
-                pa_stream_cork(u->play_stream, 1, NULL, u);
+                if (libvchan_data_ready(u->play_ctrl) > 0) {
+                    pacat_log("Deferred stream cork");
+                    u->pending_play_cork = true;
+                } else {
+                    pacat_log("Stream cork");
+                    pa_stream_cork(u->play_stream, 1, NULL, u);
+                }
                 break;
             case QUBES_PA_SINK_UNCORK_CMD:
                 pacat_log("Stream uncork");
+                u->pending_play_cork = false;
                 pa_stream_cork(u->play_stream, 0, NULL, u);
+                break;
+            default:
                 break;
         }
     }
