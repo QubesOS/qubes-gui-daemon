@@ -94,6 +94,10 @@ static int verbose = 1;
 
 static void context_state_callback(pa_context *c, void *userdata);
 
+static void playback_stream_drain(struct userdata *u);
+
+static void playback_stream_drain_cb(pa_stream *s, int success, void *userdata);
+
 void pacat_log(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -244,12 +248,80 @@ static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_l
 
 maybe_cork:
     if (u->pending_play_cork && space_in_vchan == 0) {
-        pacat_log("Playback stream drained; corking it");
-        pa_stream_cork(u->play_stream, 1, NULL, u);
-        u->pending_play_cork = false;
+        pacat_log("Cork requested and playback vchan empty. Draining playback stream.");
+        playback_stream_drain(u);
     }
 
     return;
+}
+
+static void playback_stream_drain(struct userdata *u) {
+    pa_operation *o;
+    pa_stream *s = u->play_stream;
+
+    if (u->draining)
+        return; /* Cannot have more than one drain operation ongoing */
+    u->draining = true;
+
+    if (!(o = pa_stream_drain(s, playback_stream_drain_cb, u))) {
+        pacat_log("pa_stream_drain(): %s", pa_strerror(pa_context_errno(pa_stream_get_context(s))));
+        quit(u, 1);
+        return;
+    }
+
+    pa_operation_unref(o);
+}
+
+static void playback_stream_drain_cb(pa_stream *s, int success, void *userdata) {
+    struct userdata *u = userdata;
+    assert(s == u->play_stream);
+    u->draining = false;
+    /* Check that the draining was successful. */
+    if (!success)
+        return;
+
+    /*
+     * Check that the agent has not sent QUBES_PA_SINK_UNCORK_CMD in the
+     * meantime. This ensures correct behavior in the following situation:
+     *
+     * 1. Agent sends QUBES_PA_SINK_CORK_CMD.
+     * 2. Vchan is drained.
+     * 3. pa_stream_drain() is called.
+     * 4. Agent sends QUBES_PA_SINK_UNCORK_CMD.
+     * 5. PulseAudio calls playback_stream_drain_cb().
+     *
+     * The stream must not get corked in this case.
+     */
+    if (!u->pending_play_cork)
+        return;
+
+    /*
+     * Check that the vchan is still empty before actually corking the stream.
+     * This ensures correct behavior in the following situation:
+     *
+     * 1. Agent sends QUBES_PA_SINK_CORK_CMD.
+     * 2. Vchan is drained.
+     * 3. pa_stream_drain() is called.
+     * 4. Agent sends QUBES_PA_SINK_UNCORK_CMD.
+     * 5. Agent sends more data on the vchan.
+     * 6. Agent sends QUBES_PA_SINK_CORK_CMD.
+     * 7. PulseAudio calls playback_stream_drain_cb().
+     *
+     * Without this check, the data sent in step 5 would be (wrongly) left in
+     * the vchan.  If the agent does not send any more data, pa_stream_drain()
+     * will be called again when the vchan does become empty, so the stream will
+     * eventually be corked.
+     */
+    int space_in_vchan = libvchan_data_ready(u->play_ctrl);
+    if (space_in_vchan == 0) {
+        pacat_log("Playback vchan empty and playback stream drained. Corking playback stream.");
+        u->pending_play_cork = false;
+        pa_stream_cork(u->play_stream, 1, NULL, u);
+    } else if (space_in_vchan < 0) {
+        pacat_log("libvchan_data_ready() failed: return value %d", space_in_vchan);
+        quit(u, 1);
+        return;
+    }
 }
 
 /* This is called whenever new data may be written to the stream */
@@ -388,17 +460,21 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
                 g_mutex_unlock(&u->prop_mutex);
                 break;
             case QUBES_PA_SINK_CORK_CMD:
+                u->pending_play_cork = true;
                 if (libvchan_data_ready(u->play_ctrl) > 0) {
-                    pacat_log("Deferred stream cork");
-                    u->pending_play_cork = true;
+                    pacat_log("Deferred stream drain");
                 } else {
-                    pacat_log("Stream cork");
-                    pa_stream_cork(u->play_stream, 1, NULL, u);
+                    pacat_log("Stream drain");
+                    playback_stream_drain(u);
                 }
                 break;
             case QUBES_PA_SINK_UNCORK_CMD:
                 pacat_log("Stream uncork");
                 u->pending_play_cork = false;
+                /*
+                 * do not clear u->draining, as draining while a drain
+                 * operation is in progress is not safe
+                 */
                 pa_stream_cork(u->play_stream, 0, NULL, u);
                 break;
             default:
