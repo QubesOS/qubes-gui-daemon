@@ -1008,18 +1008,25 @@ static void vchan_rec_async_connect(pa_mainloop_api *UNUSED(a),
     u->mainloop_api->io_free(u->rec_ctrl_event);
     u->rec_ctrl_event = NULL;
 
-    u->never_block = libvchan_buffer_space(u->rec_ctrl) > 8192;
+    if (u->never_block == -1)
+        u->never_block = libvchan_buffer_space(u->rec_ctrl) > 8192;
 
     /* when both vchans are connected, connect to the daemon */
     if (libvchan_is_open(u->play_ctrl) == VCHAN_CONNECTED)
         connect_pa_daemon(u);
 }
 
-static _Noreturn void usage(char *arg0) {
-    fprintf(stderr, "usage: %s [-l] [--] domid domname\n",
+static _Noreturn void usage(char *arg0, int arg) {
+    FILE *stream = arg ? stderr : stdout;
+    fprintf(stream, "usage: %s [-l] [--] domid domname\n",
             arg0 ? arg0 : "pacat-simple-vchan");
-    fprintf(stderr, "  -l - low-latency mode (higher CPU usage)\n");
-    exit(1);
+    fprintf(stream, "  -l - low-latency mode (higher CPU usage)\n");
+    fprintf(stream, "  -n - never block on vchan I/O (default if record buffer size is 8192 bytes or more)\n");
+    fprintf(stream, "  -b - always block on vchan I/O (default if record buffer size is less than 8192 bytes)\n");
+    fprintf(stream, "  -h - print this message\n");
+    if (fflush(NULL) || ferror(stdout) || ferror(stderr))
+        exit(1);
+    exit(arg);
 }
 
 int main(int argc, char *argv[])
@@ -1032,19 +1039,32 @@ int main(int argc, char *argv[])
     char *pidfile_path;
     int pidfile_fd;
     int play_watch_fd, rec_watch_fd;
-    int i = 1;
+    int i;
 
-    if (argc <= 2 || argc > 5)
-        usage(argv[0]);
-    if (!strcmp(argv[i], "-l")) {
-        bufattr = &custom_bufattr;
-        i++;
+    memset(&u, 0, sizeof(u));
+    u.never_block = -1;
+    if (argc <= 2)
+        usage(argv[0], 1);
+    while ((i = getopt(argc, argv, "+lnbh")) != -1) {
+        switch (i) {
+            case 'l':
+                bufattr = &custom_bufattr;
+                break;
+            case 'n':
+                u.never_block = 1;
+                break;
+            case 'b':
+                u.never_block = 0;
+                break;
+            case 'h':
+                usage(argv[0], 0);
+            default:
+                usage(argv[0], 1);
+        }
     }
-    if (!strcmp(argv[i], "--"))
-        i++;
-    if (argc - i != 2)
-        usage(argv[0]);
-    const char *domid_str = argv[i], *domname = argv[i + 1];
+    if (argc - optind != 2)
+        usage(argv[0], 1);
+    const char *domid_str = argv[optind], *domname = argv[optind + 1];
     char *endptr;
     errno = 0;
     long l_domid = strtol(domid_str, &endptr, 10);
@@ -1061,7 +1081,6 @@ int main(int argc, char *argv[])
         /* error already printed by create_pidfile() */
         exit(1);
 
-    memset(&u, 0, sizeof(u));
     u.ret = 1;
 
     g_mutex_init(&u.prop_mutex);

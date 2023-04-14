@@ -36,7 +36,7 @@ struct userdata {
     pa_io_event* control_socket_event;
     bool rec_allowed;
     bool rec_requested;
-    bool never_block;
+    int8_t never_block;
     bool pending_play_cork;
     bool draining;
 };
