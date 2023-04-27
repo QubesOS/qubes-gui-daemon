@@ -68,7 +68,7 @@
 /* Supported protocol version */
 
 #define PROTOCOL_VERSION_MAJOR UINT32_C(1)
-#define PROTOCOL_VERSION_MINOR UINT32_C(6)
+#define PROTOCOL_VERSION_MINOR UINT32_C(7)
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
@@ -1294,7 +1294,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
             if (len > 0) {
                 /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
                    of the blob, be aware when working with old implementations. */
-                if (g->protocol_version < PROTOCOL_VERSION(1, 2))
+                if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_DATA_LEN_IN_LEN)
                     hdr.window = len;
                 else
                     hdr.window = remote_winid;
@@ -2522,12 +2522,14 @@ static void handle_destroy(Ghandles * g, struct genlist *l)
     /* Inform the agent that the window has been destroyed.
      * Mandatory in protocol version 1.5+, and harmless for older
      * versions. */
-    struct msg_hdr delete_id = {
-        .type = MSG_DESTROY,
-        .window = vm_window->remote_winid,
-        .untrusted_len = 0,
-    };
-    write_struct(g->vchan, delete_id);
+    if (g->protocol_version >= QUBES_GUID_MIN_BIDIRECTIONAL_MSG_DESTROY) {
+        struct msg_hdr delete_id = {
+            .type = MSG_DESTROY,
+            .window = vm_window->remote_winid,
+            .untrusted_len = 0,
+        };
+        write_struct(g->vchan, delete_id);
+    }
     free(vm_window);
 }
 
@@ -3130,8 +3132,9 @@ qubes_xcb_send_xen_fd(Ghandles *g,
                       struct shm_args_hdr *shm_args,
                       size_t shm_args_len)
 {
+    xcb_generic_error_t *error = NULL;
     if (g->invisible)
-        return;
+        goto ack;
     shm_args->domid = g->domid;
     vm_window->shmseg = xcb_generate_id(g->cb_connection);
     if (vm_window->shmseg == QUBES_NO_SHM_SEGMENT) {
@@ -3188,8 +3191,16 @@ qubes_xcb_send_xen_fd(Ghandles *g,
                                       dup_fd, true),
             "xcb_shm_attach_fd_checked");
     xcb_aux_sync(g->cb_connection);
-    xcb_generic_error_t *error = xcb_request_check(g->cb_connection, cookie);
+    error = xcb_request_check(g->cb_connection, cookie);
     inter_appviewer_lock(g, 0);
+ack:
+    if (g->protocol_version >= QUBES_GUID_MIN_MSG_WINDOW_DUMP_ACK) {
+        struct msg_hdr hdr;
+        hdr.type = MSG_WINDOW_DUMP_ACK;
+        hdr.window = vm_window->remote_winid;
+        hdr.untrusted_len = 0;
+        write_struct(g->vchan, hdr);
+    }
     if (error) {
         qubes_xcb_handler(g, "xcb_shm_attach_fd", vm_window, error);
         free(error);
@@ -3585,7 +3596,7 @@ static void send_xconf(Ghandles * g)
     XWindowAttributes attr;
     if (!XGetWindowAttributes(g->display, g->root_win, &attr))
         errx(1, "Cannot query root window attributes!");
-    if (g->protocol_version >= PROTOCOL_VERSION(1, 4)) {
+    if (g->protocol_version >= QUBES_GUID_MIN_BIDIRECTIONAL_NEGOTIATION_VERSION) {
         /* Bidirectional protocol negotiation is supported */
         _Static_assert(sizeof g->protocol_version == 4,
                        "g->protocol_version must be a uint32_t");
@@ -3604,7 +3615,7 @@ static void get_protocol_version(Ghandles * g)
 {
     uint32_t untrusted_version;
     char message[1024];
-    uint32_t version_major, version_minor;
+    unsigned int version_major, version_minor;
     read_struct(g->vchan, untrusted_version);
     version_major = untrusted_version >> 16;
     version_minor = untrusted_version & 0xffff;
@@ -3617,7 +3628,7 @@ static void get_protocol_version(Ghandles * g)
     if (version_major < PROTOCOL_VERSION_MAJOR) {
         /* agent is too old */
         if ((unsigned)snprintf(message, sizeof message, "%s %s \""
-                "The GUI agent that runs in the VM '%s' implements outdated protocol (%d:%d), and must be updated.\n\n"
+                "The GUI agent that runs in the VM '%s' implements outdated protocol (%u:%u), and must be updated.\n\n"
                 "To start and access the VM or template without GUI virtualization, use the following commands:\n"
                 "qvm-start --no-guid vmname\n"
                 "qvm-console-dispvm vmname\"",
@@ -3628,7 +3639,7 @@ static void get_protocol_version(Ghandles * g)
     } else {
         /* agent is too new */
         if ((unsigned)snprintf(message, sizeof message, "%s %s \""
-                "The Dom0 GUI daemon does not support protocol version %d:%d, requested by the VM '%s'.\n"
+                "The Dom0 GUI daemon does not support protocol version %u:%u, requested by the VM '%s'.\n\n"
                 "To update Dom0, use 'qubes-dom0-update' command or do it via qubes-manager\"",
                 g->use_kdialog ? KDIALOG_PATH : ZENITY_PATH,
                 g->use_kdialog ? "--sorry" : "--error --text ",
