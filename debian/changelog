@@ -1,3 +1,22 @@
+qubes-gui-daemon (4.2.3-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * do_shm_update: Negative width or height is an error
+  * Fix a typo in a comment
+  * Do not read a message unless a header is ready
+  * Do not use VERIFY with partially-read messages
+  * Earlier validation of MSG_WINDOW_DUMP sizes
+  * Strictly validate message lengths
+  * Drain playback stream before corking it
+  * Do not cork a playback stream with nonempty buffers
+  * Allow selecting blocking or non-blocking I/O
+  * ACK all grant mappings
+  * Avoid hard-coding protocol versions
+  * Do not send MSG_DESTROY to agents that aren't expecting it
+  * Ensure notifications conform to header-body format
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Thu, 27 Apr 2023 14:37:16 +0200
+
 qubes-gui-daemon (4.2.2-1) unstable; urgency=medium
 
   * rpm: fix files ownership on install
