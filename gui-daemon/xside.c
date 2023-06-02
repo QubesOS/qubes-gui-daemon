@@ -3908,6 +3908,7 @@ static _Bool parse_vm_name(const char *arg, Ghandles *g) {
         case '0'...'9':
         case '-':
         case '_':
+        case '.':
             continue;
         case '\0':
             memcpy(g->vmname, arg, i + 1);
