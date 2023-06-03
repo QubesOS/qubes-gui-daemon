@@ -64,6 +64,7 @@
 #include "trayicon.h"
 #include "shm-args.h"
 #include "util.h"
+#include <qubes/pure.h>
 
 /* Supported protocol version */
 
@@ -3897,28 +3898,6 @@ static void parse_trayicon_mode(Ghandles *g, const char *mode_str) {
     }
 }
 
-static _Bool parse_vm_name(const char *arg, Ghandles *g) {
-    if (('a' > *arg || *arg > 'z') &&
-        ('A' > *arg || *arg > 'Z'))
-        return false;
-    for (size_t i = 1; i < sizeof(g->vmname); ++i) {
-        switch (arg[i]) {
-        case 'A'...'Z':
-        case 'a'...'z':
-        case '0'...'9':
-        case '-':
-        case '_':
-            continue;
-        case '\0':
-            memcpy(g->vmname, arg, i + 1);
-            return true;
-        default:
-            return false;
-        }
-    }
-    return false;
-}
-
 /* FIXME: should be in a utility library */
 static uint16_t parse_domid(const char *num)
 {
@@ -3973,11 +3952,15 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
                 errx(1, "Cannot specify target domid more than once (previous value %u)", g->target_domid);
             g->target_domid = parse_domid(optarg);
             break;
-        case 'N':
-            if (parse_vm_name(optarg, g))
-                break;
-            fprintf(stderr, "domain name not valid");
-            exit(1);
+        case 'N': {
+            struct QubesSlice s = qubes_pure_buffer_init_from_nul_terminated_string(optarg);
+            if (!qubes_pure_is_valid_qube_name(s))
+                errx(1, "domain name '%s' not valid", optarg);
+            if (s.length >= sizeof(g->vmname))
+                errx(1, "domain name '%s' is too long (this is a bug)", optarg);
+            memcpy(g->vmname, s.pointer, s.length + 1);
+            break;
+        }
         case 'c':
             g->cmdline_color = optarg;
             break;
