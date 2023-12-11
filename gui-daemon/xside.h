@@ -78,7 +78,9 @@
 #  define UNUSED(x) UNUSED_ ## x
 #endif
 
-#include <stdint.h>
+#include <inttypes.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <assert.h>
 #include <unistd.h>
@@ -104,12 +106,52 @@ enum trayicon_mode {
     TRAY_TINT,
 };
 
+enum edge_flags {
+    MOVED_LEFT = 1 << 0,
+    MOVED_TOP = 1 << 1,
+    MOVED_RIGHT = 1 << 2,
+    MOVED_BOTTOM = 1 << 3,
+};
+
+/** Box */
+struct box {
+    /** Width: must be between 1 and MAX_WINDOW_WIDTH inclusive. */
+    uint32_t width;
+    /** Height: must be between 1 and MAX_WINDOW_HEIGHT inclusive. */
+    uint32_t height;
+    /** X coordinate (left side): must be between -MAX_WINDOW_WIDTH and MAX_WINDOW_WIDTH
+     * inclusive. */
+    int32_t x;
+    /** Y coordinate (right side): must be betwee -MAX_WINDOW_HEIGHT and MAX_WINDOW_HEIGHT
+     * inclusive. */
+    int32_t y;
+};
+
+/** Check if a box is valid */
+static inline bool check_box(struct box box)
+{
+    return ((box.width >= 1 && box.width <= MAX_WINDOW_WIDTH) &&
+            (box.height >= 1 && box.height <= MAX_WINDOW_HEIGHT) &&
+            (box.x >= -MAX_WINDOW_WIDTH && box.x <= MAX_WINDOW_WIDTH) &&
+            (box.y >= -MAX_WINDOW_HEIGHT && box.y <= MAX_WINDOW_HEIGHT));
+}
+
+static inline void assert_box_valid(struct box box, const char *msg)
+{
+    if (!check_box(box)) {
+        fprintf(stderr, "BUG: invalid window coordinates (x %" PRIi32 ", y %" PRIi32 ", size %" PRIu32 "x%" PRIu32 ") in %s\n",
+                   box.x, box.y, box.width, box.height, msg);
+        abort();
+    }
+}
+
 /* per-window data */
 struct windowdata {
     unsigned width;
     unsigned height;
     int x;
     int y;
+    struct box remote_coordinates;
     int is_mapped;
     int is_docked;        /* is it docked tray icon */
     XID remote_winid;    /* window id on VM side */
@@ -120,7 +162,7 @@ struct windowdata {
     xcb_shm_seg_t shmseg; /* X Shared Memory segment, or ((xcb_shm_seg_t)-1) if there is none */
     int image_height;    /* size of window content, not always the same as window in dom0! */
     int image_width;
-    int have_queued_configure;    /* have configure request been sent to VM - waiting for confirmation */
+    uint8_t changed_edges;    /* have configure request been sent to VM - waiting for confirmation */
     int fullscreen_maximize_requested; /* window have requested fullscreen,
                                           which was converted to maximize
                                           request - translate it back when WM

@@ -1720,6 +1720,16 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
             (int) vm_window->remote_winid, ev->width,
             ev->height, vm_window->width, vm_window->height,
             ev->x, ev->y, vm_window->x, vm_window->y);
+
+    if (ev->width < 1 || ev->height < 1 ||
+        ev->width > MAX_WINDOW_WIDTH || ev->height > MAX_WINDOW_HEIGHT) {
+        fprintf(stderr, "%s: got event from X server with bogus width/height (%dx%d)\n",
+                __func__, ev->width, ev->height);
+        return;
+    }
+
+    unsigned int width = (unsigned)ev->width, height = (unsigned)ev->height;
+
     /* non-synthetic events are about window position/size relative to the embeding
      * frame window (if applies), synthetic one (produced by window manager) are
      * about window position relative to original window parent.
@@ -1739,13 +1749,29 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
         x = ev->x;
         y = ev->y;
     }
+    if (x < -MAX_WINDOW_WIDTH || x > MAX_WINDOW_WIDTH ||
+        y < -MAX_WINDOW_WIDTH || y > MAX_WINDOW_HEIGHT) {
+        fprintf(stderr,
+                "%s: got event from X server with bogus x/y (x %d, y %d, width %u, height %u)\n",
+                __func__, x, y, width, height);
+        return; /* FIXME! */
+    }
 
-    if ((int)vm_window->width == ev->width
-        && (int)vm_window->height == ev->height && vm_window->x == x
-        && vm_window->y == y)
+    int changed_edges = 0;
+    if (vm_window->x != x)
+        changed_edges |= MOVED_LEFT;
+    if (vm_window->y != y)
+        changed_edges |= MOVED_TOP;
+    if ((int)vm_window->width + vm_window->x != (int)width + x)
+        changed_edges |= MOVED_RIGHT;
+    if ((int)vm_window->height + vm_window->y != (int)height + y)
+        changed_edges |= MOVED_BOTTOM;
+
+    if (changed_edges == 0)
         return;
-    vm_window->width = ev->width;
-    vm_window->height = ev->height;
+
+    vm_window->width = width;
+    vm_window->height = height;
     if (!vm_window->is_docked) {
         vm_window->x = x;
         vm_window->y = y;
@@ -1764,13 +1790,15 @@ static void process_xevent_configure(Ghandles * g, const XConfigureEvent * ev)
         XFlush(g->display);
     }
 
-// if AppVM has not unacknowledged previous resize msg, do not send another one
-    if (vm_window->have_queued_configure)
+    // if AppVM has not unacknowledged previous resize msg, do not send another one
+    if ((vm_window->changed_edges & changed_edges) != 0) {
+        vm_window->changed_edges |= changed_edges;
         return;
+    }
     if (vm_window->remote_winid != FULLSCREEN_WINDOW_ID)
-        vm_window->have_queued_configure = 1;
+        vm_window->changed_edges |= changed_edges;
     send_configure(g, vm_window, vm_window->x, vm_window->y,
-               vm_window->width, vm_window->height);
+                   vm_window->width, vm_window->height);
 }
 
 /* handle VM message: MSG_CONFIGURE
@@ -1780,7 +1808,7 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
     struct msg_configure untrusted_conf;
     int x, y;
     unsigned width, height;
-    int conf_changed, override_redirect;
+    int override_redirect;
 
     read_struct(g->vchan, untrusted_conf);
     if (g->log_level > 1)
@@ -1802,42 +1830,129 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
     height = untrusted_conf.height;
     VERIFY(width > 0 && height > 0);
     x = max(-MAX_WINDOW_WIDTH,
-                min((int) untrusted_conf.x, MAX_WINDOW_WIDTH));
+            min((int) untrusted_conf.x, MAX_WINDOW_WIDTH));
     y = max(-MAX_WINDOW_HEIGHT,
-                min((int) untrusted_conf.y, MAX_WINDOW_HEIGHT));
+            min((int) untrusted_conf.y, MAX_WINDOW_HEIGHT));
     /* ignore override_redirect in MSG_CONFIGURE */
     untrusted_conf.override_redirect = vm_window->override_redirect;
     /* sanitize end */
-    if (vm_window->width != width || vm_window->height != height ||
-        vm_window->x != x || vm_window->y != y)
-        conf_changed = 1;
-    else
-        conf_changed = 0;
+    int changed_edges = 0;
+    if (vm_window->remote_coordinates.x != x)
+        changed_edges |= MOVED_LEFT;
+    if (vm_window->remote_coordinates.y != y)
+        changed_edges |= MOVED_TOP;
+    if ((int32_t)vm_window->remote_coordinates.width + vm_window->remote_coordinates.x != (int32_t)width + x)
+        changed_edges |= MOVED_RIGHT;
+    if ((int32_t)vm_window->remote_coordinates.height + vm_window->remote_coordinates.y != (int32_t)height + y)
+        changed_edges |= MOVED_BOTTOM;
+    vm_window->remote_coordinates.width = width;
+    vm_window->remote_coordinates.height = height;
+    vm_window->remote_coordinates.x = x;
+    vm_window->remote_coordinates.y = y;
+    bool conf_changed = (vm_window->x != x || vm_window->y != y ||
+                         vm_window->width != width || vm_window->height != height);
+
+    // Check if this is an ACK for a previously sent configure request.
+    if (!conf_changed) {
+        vm_window->changed_edges = 0;
+        return;
+    }
 
     /* We do not allow a docked window to change its size, period. */
     if (vm_window->is_docked) {
-        if (conf_changed)
-            send_configure(g, vm_window, vm_window->x,
-                       vm_window->y, vm_window->width,
-                       vm_window->height);
-        vm_window->have_queued_configure = 0;
+        vm_window->changed_edges = 0;
+        goto just_send_configure;
+    }
+
+    // Check if the VM has not acknowledged a change to one of
+    // the edges it tried to change here.
+    if ((vm_window->changed_edges & changed_edges) != 0)
+        goto just_send_configure;
+
+    if (changed_edges == 0) {
+        // No-op
         return;
     }
 
+    if (vm_window->changed_edges != 0) {
+        static_assert(INT_MAX >= 3L * MAX_WINDOW_WIDTH, "unsupported platform");
+        static_assert(INT_MIN <= 2L * -MAX_WINDOW_WIDTH, "unsupported platform");
+        static_assert(INT_MAX >= 3L * MAX_WINDOW_HEIGHT, "unsupported platform");
+        static_assert(INT_MIN <= 2L * -MAX_WINDOW_HEIGHT, "unsupported platform");
 
-    if (vm_window->have_queued_configure) {
-        if (conf_changed) {
-            send_configure(g, vm_window, vm_window->x,
-                       vm_window->y, vm_window->width,
-                       vm_window->height);
-            return;
-        } else {
-            // same dimensions; this is an ack for our previously sent configure req
-            vm_window->have_queued_configure = 0;
+        if (vm_window->override_redirect != 0) {
+            // Do not try to reconcile override-redirect windows.
+            // Such windows are generally not configured by the user
+            // or window manager, and configures by the GUI daemon
+            // must be honored for security.
+            goto just_send_configure;
+        }
+        // Reconcile the VM's changes with the local ones
+        switch (changed_edges & (MOVED_LEFT | MOVED_RIGHT)) {
+        case MOVED_LEFT | MOVED_RIGHT:
+            // VM moved both sides, neither moved locally
+            break;
+        case MOVED_LEFT: {
+            // Left moved by VM, right may have been moved locally.
+            // Check to make sure width is still valid.
+            int new_width = vm_window->x + (int)vm_window->width - x;
+            if (new_width < 1 || new_width > MAX_WINDOW_WIDTH)
+                goto just_send_configure;
+            width = (unsigned int)new_width;
+            break;
+        }
+        case MOVED_RIGHT: {
+            // Right moved by VM, left may have been moved locally.
+            // Check to make sure width is still valid.
+            int32_t new_width = width + x - vm_window->x;
+            if (new_width < 1 || new_width > MAX_WINDOW_WIDTH)
+                goto just_send_configure;
+            x = vm_window->x;
+            width = (unsigned int)new_width;
+            break;
+        }
+        case 0:
+            // VM didn't change left or right
+            x = vm_window->x;
+            width = vm_window->width;
+            break;
+        default:
+            // cannot happen
+            abort();
+        }
+        switch (changed_edges & (MOVED_TOP | MOVED_BOTTOM)) {
+        case MOVED_TOP | MOVED_BOTTOM:
+            // VM moved both edges, neither moved locally
+            break;
+        case MOVED_TOP: {
+            // Top moved by VM, bottom may have been moved locally.
+            // Check to make sure height is still valid.
+            int new_height = vm_window->y + (int)vm_window->height - y;
+            if (new_height < 1 || new_height > MAX_WINDOW_HEIGHT)
+                goto just_send_configure;
+            height = (unsigned int)new_height;
+            break;
+        }
+        case MOVED_BOTTOM: {
+            // Bottom moved by VM, top may have been moved locally.
+            // Check to make sure height is still valid.
+            int32_t new_height = height + y - vm_window->y;
+            if (new_height < 1 || new_height > MAX_WINDOW_HEIGHT)
+                goto just_send_configure;
+            y = vm_window->y;
+            height = (unsigned int)new_height;
+            break;
+        }
+        case 0:
+            // VM didn't change left or right
+            y = vm_window->y;
+            height = vm_window->height;
+            break;
+        default:
+            // cannot happen
+            abort();
         }
     }
-    if (!conf_changed)
-        return;
     vm_window->width = width;
     vm_window->height = height;
     vm_window->x = x;
@@ -1856,6 +1971,16 @@ static void handle_configure_from_vm(Ghandles * g, struct windowdata *vm_window)
     } else {
         moveresize_vm_window(g, vm_window, false);
     }
+    return;
+just_send_configure:
+    vm_window->remote_coordinates.x = vm_window->x;
+    vm_window->remote_coordinates.y = vm_window->y;
+    vm_window->remote_coordinates.width = vm_window->width;
+    vm_window->remote_coordinates.height = vm_window->height;
+    send_configure(g, vm_window, vm_window->x,
+                    vm_window->y, vm_window->width,
+                    vm_window->height);
+    return;
 }
 
 /* handle local Xserver event: EnterNotify, LeaveNotify
@@ -2447,16 +2572,16 @@ static void handle_create(Ghandles * g, XID window)
      */
     read_struct(g->vchan, untrusted_crt);
     /* sanitize start */
-    VERIFY((int) untrusted_crt.width >= 0
-           && (int) untrusted_crt.height >= 0);
-    vm_window->width =
-        min((int) untrusted_crt.width, MAX_WINDOW_WIDTH);
-    vm_window->height =
-        min((int) untrusted_crt.height, MAX_WINDOW_HEIGHT);
-    vm_window->x = max(-MAX_WINDOW_WIDTH,
-                           min((int) untrusted_crt.x, MAX_WINDOW_WIDTH));
-    vm_window->y = max(-MAX_WINDOW_HEIGHT,
-                           min((int) untrusted_crt.y, MAX_WINDOW_HEIGHT));
+    VERIFY((int32_t) untrusted_crt.width > 0
+           && (int32_t) untrusted_crt.height > 0);
+    vm_window->width = vm_window->remote_coordinates.width =
+        min(untrusted_crt.width, (unsigned int)MAX_WINDOW_WIDTH);
+    vm_window->height = vm_window->remote_coordinates.height =
+        min(untrusted_crt.height, (unsigned int)MAX_WINDOW_HEIGHT);
+    vm_window->x = vm_window->remote_coordinates.x =
+        max(-MAX_WINDOW_WIDTH, min((int32_t) untrusted_crt.x, MAX_WINDOW_WIDTH));
+    vm_window->y = vm_window->remote_coordinates.y =
+        max(-MAX_WINDOW_HEIGHT, min((int32_t) untrusted_crt.y, MAX_WINDOW_HEIGHT));
     vm_window->override_redirect =
         validate_override_redirect(g, vm_window, !!(untrusted_crt.override_redirect));
     untrusted_crt.parent = 0; /* ignore the parent field */
