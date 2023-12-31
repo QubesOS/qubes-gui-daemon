@@ -41,7 +41,7 @@ class MicDeviceExtension(qubes.ext.Extension):
         super(MicDeviceExtension, self).__init__()
 
     def get_device(self, app):
-        return MicDevice(app.domains[0], 'mic', 'Microphone')
+        return MicDevice(app.domains[0], ident='mic', devclass='mic')
 
     @qubes.ext.handler('device-list:mic')
     def on_device_list_mic(self, vm, event):
