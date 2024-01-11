@@ -1,3 +1,16 @@
+qubes-gui-daemon (4.2.4-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Allow periods in qube names
+
+  [ Marek Marczykowski-Górecki ]
+  * Revert "Allow periods in qube names"
+
+  [ Demi Marie Obenour ]
+  * Do not crash if the work area is invalid
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Thu, 11 Jan 2024 03:05:10 +0100
+
 qubes-gui-daemon (4.2.3-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
