@@ -49,11 +49,9 @@ void double_buffer_init(void)
 
 void double_buffer_append(char *buf, int size)
 {
-    int __attribute__((unused)) ignore;
-
     if ((unsigned)size > BUFFER_SIZE_MAX) {
         fprintf(stderr, "double_buffer_append: req_size=%d\n", size);
-        ignore = system
+        int __attribute__((unused)) ignore = system
             ("/usr/bin/xmessage -button OK:2 'Suspiciously large buffer, terminating...'");
         exit(1);
     }
@@ -64,7 +62,7 @@ void double_buffer_append(char *buf, int size)
             fprintf(stderr,
                 "double_buffer_append: offset=%d, data_count=%d, req_size=%d\n",
                 data_offset, data_count, size);
-            ignore = system
+            int __attribute__((unused)) ignore = system
                 ("/usr/bin/xmessage -button OK:2 'Out of buffer space (AppVM refuses to read data?), terminating...'");
             exit(1);
         }

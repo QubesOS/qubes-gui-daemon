@@ -41,6 +41,7 @@ void init_tray_bg(Ghandles *g) {
 
 /* Color tray icon background (use top-left corner as a "transparent" base),
  * and update image on screen. Do the operation on given area only.
+ * Parameters are guaranteed positive.
  */
 void fill_tray_bg_and_update(Ghandles *g, struct windowdata *vm_window,
         int x, int y, int w, int h) {
@@ -80,7 +81,7 @@ void fill_tray_bg_and_update(Ghandles *g, struct windowdata *vm_window,
                 vm_window->image_width,
                 vm_window->image_height,
                 24);
-    put_shm_image(g, pixmap, vm_window,
+    put_shm_image(g, (xcb_drawable_t)pixmap, vm_window,
         0, 0,
         vm_window->image_width,
         vm_window->image_height,
@@ -207,9 +208,9 @@ static uint32_t hls_to_rgb(double h, double l, double s) {
 
     if (s == 0.0)
         return
-            (int)(l * 0xff) << 16 |
-            (int)(l * 0xff) <<  8 |
-            (int)(l * 0xff) <<  0;
+            (uint32_t)(l * 0xff) << 16 |
+            (uint32_t)(l * 0xff) <<  8 |
+            (uint32_t)(l * 0xff) <<  0;
     if (l <= 0.5)
         m2 = l * (1.0+s);
     else

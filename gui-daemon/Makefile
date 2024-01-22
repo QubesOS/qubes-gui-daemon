@@ -25,7 +25,7 @@ CC=gcc
 pkgs := x11 x11-xcb xcb xcb-shm xcb-aux glib-2.0 $(VCHAN_PKG) libpng libnotify libconfig
 objs := xside.o png.o trayicon.o ../gui-common/double-buffer.o ../gui-common/txrx-vchan.o \
 	../gui-common/error.o list.o
-extra_cflags := -I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
+extra_cflags := -I../include/ -g -O2 -Wall -Wextra -Werror -fPIC \
 		$(shell pkg-config --cflags $(pkgs)) \
 		-fvisibility=hidden \
 		-fno-strict-aliasing \

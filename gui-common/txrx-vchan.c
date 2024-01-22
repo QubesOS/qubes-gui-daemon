@@ -30,13 +30,12 @@
 #include <double-buffer.h>
 #include "../include/txrx.h"
 
-void (*vchan_at_eof)(void) = NULL;
-int vchan_is_closed = 0;
+static void (*vchan_at_eof)(void) = NULL;
 
 /* double buffered in gui-daemon to deal with deadlock
  * during send large clipboard content
  */
-int double_buffered = 1;
+static int double_buffered = 1;
 
 static int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd);
 
@@ -44,7 +43,7 @@ void vchan_register_at_eof(void (*new_vchan_at_eof)(void)) {
     vchan_at_eof = new_vchan_at_eof;
 }
 
-static void handle_vchan_error(libvchan_t *vchan, const char *op)
+static _Noreturn void handle_vchan_error(libvchan_t *vchan, const char *op)
 {
     if (!libvchan_is_open(vchan)) {
         fprintf(stderr, "EOF\n");

@@ -88,6 +88,7 @@
 #include <xcb/xproto.h>
 #include <xcb/shm.h>
 #include <qubes-gui-protocol.h>
+#include <xen/xen.h>
 #include "util.h"
 
 #define QUBES_POLICY_EVAL_SIMPLE_SOCKET ("/etc/qubes-rpc/" QUBES_SERVICE_EVAL_SIMPLE)
@@ -134,19 +135,19 @@ struct extra_prop {
     char *raw_option; /* raw command line option, not parsed yet */
     Atom prop; /* property name */
     Atom type; /* property type */
-    int format; /* data format (8, 16, 32) */
     void *data; /* actual data */
+    int format; /* data format (8, 16, 32) */
     int nelements; /* data size, in "format" units */
 };
 
 /* global variables
  * keep them in this struct for readability
  */
-struct _global_handles {
+typedef struct {
     /* local X server handles and attributes */
     Display *display;
     int screen;        /* shortcut to the default screen */
-    Window root_win;    /* root attributes */
+    xcb_window_t root_win;    /* root attributes */
     int root_width;        /* size of root window */
     int root_height;
     GC context;        /* context for pixmap operations */
@@ -155,32 +156,33 @@ struct _global_handles {
     double tint_h;  /* precomputed H and S for tray coloring - only in TRAY_TINT mode */
     double tint_s;
     /* atoms for comunitating with xserver */
-    Atom wmDeleteMessage;    /* Atom: WM_DELETE_WINDOW */
-    Atom tray_selection;    /* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
-    Atom tray_opcode;    /* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
-    Atom xembed_message;    /* Atom: _XEMBED */
-    Atom xembed_info;    /* Atom: _XEMBED_INFO */
-    Atom wm_state;         /* Atom: _NET_WM_STATE */
-    Atom wm_state_fullscreen; /* Atom: _NET_WM_STATE_FULLSCREEN */
-    Atom wm_state_demands_attention; /* Atom: _NET_WM_STATE_DEMANDS_ATTENTION */
-    Atom wm_state_hidden;    /* Atom: _NET_WM_STATE_HIDDEN */
-    Atom wm_workarea;      /* Atom: _NET_WORKAREA */
-    Atom net_current_desktop;     /* Atom: _NET_CURRENT_DESKTOP */
-    Atom frame_extents; /* Atom: _NET_FRAME_EXTENTS */
-    Atom wm_state_maximized_vert; /* Atom: _NET_WM_STATE_MAXIMIZED_VERT */
-    Atom wm_state_maximized_horz; /* Atom: _NET_WM_STATE_MAXIMIZED_HORZ */
-    Atom wm_user_time_window; /* Atom: _NET_WM_USER_TIME_WINDOW */
-    Atom wm_user_time; /* Atom: _NET_WM_USER_TIME */
-    int shm_major_opcode;   /* MIT-SHM extension opcode */
+    xcb_atom_t wmDeleteMessage;    /* Atom: WM_DELETE_WINDOW */
+    xcb_atom_t tray_selection;    /* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
+    xcb_atom_t tray_opcode;    /* Atom: _NET_SYSTEM_TRAY_MESSAGE_OPCODE */
+    xcb_atom_t xembed_message;    /* Atom: _XEMBED */
+    xcb_atom_t xembed_info;    /* Atom: _XEMBED_INFO */
+    xcb_atom_t wm_state;         /* Atom: _NET_WM_STATE */
+    xcb_atom_t wm_state_fullscreen; /* Atom: _NET_WM_STATE_FULLSCREEN */
+    xcb_atom_t wm_state_demands_attention; /* Atom: _NET_WM_STATE_DEMANDS_ATTENTION */
+    xcb_atom_t wm_state_hidden;    /* Atom: _NET_WM_STATE_HIDDEN */
+    xcb_atom_t wm_workarea;      /* Atom: _NET_WORKAREA */
+    xcb_atom_t net_current_desktop;     /* Atom: _NET_CURRENT_DESKTOP */
+    xcb_atom_t frame_extents; /* Atom: _NET_FRAME_EXTENTS */
+    xcb_atom_t wm_state_maximized_vert; /* Atom: _NET_WM_STATE_MAXIMIZED_VERT */
+    xcb_atom_t wm_state_maximized_horz; /* Atom: _NET_WM_STATE_MAXIMIZED_HORZ */
+    xcb_atom_t wm_user_time_window; /* Atom: _NET_WM_USER_TIME_WINDOW */
+    xcb_atom_t wm_user_time; /* Atom: _NET_WM_USER_TIME */
+    xcb_atom_t qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
+    xcb_atom_t net_supported;
     /* shared memory handling */
     struct shm_args_hdr *shm_args;    /* shared memory with Xorg */
-    uint32_t cmd_shmid;        /* shared memory id - received from shmoverride.so through shm.id.$DISPLAY file */
+    int shm_major_opcode;   /* MIT-SHM extension opcode */
     int inter_appviewer_lock_fd; /* FD of lock file used to synchronize shared memory access */
     /* Client VM parameters */
     libvchan_t *vchan;
     char vmname[32];    /* name of VM */
-    int domid;        /* Xen domain id (GUI) */
-    int target_domid;        /* Xen domain id (VM) - can differ from domid when GUI is stubdom */
+    domid_t domid;        /* Xen domain id (GUI) */
+    domid_t target_domid;        /* Xen domain id (VM) - can differ from domid when GUI is stubdom */
     uint32_t protocol_version;  /* Negotiated protocol version.  Must be uint32_t
                                    as it is used as a protocol message. */
     char *cmdline_color;    /* color of frame */
@@ -197,49 +199,44 @@ struct _global_handles {
     /*   indexed by local window id */
     struct genlist *wid2windowdata;
     /* counters and other state */
-    int clipboard_requested;    /* if clippoard content was requested by dom0 */
-    Time clipboard_xevent_time;  /* timestamp of keypress which triggered last copy/paste */
-    Window time_win; /* Window to set _NET_WM_USER_TIME on */
+    xcb_time_t clipboard_xevent_time;  /* timestamp of keypress which triggered last copy/paste */
+    xcb_window_t time_win; /* Window to set _NET_WM_USER_TIME on */
     /* signal was caught */
     int volatile reload_requested;
-    pid_t pulseaudio_pid;
     /* configuration */
     char config_path[64]; /* configuration file path (initialized to default) */
     int log_level;        /* log level */
     int startup_timeout;
-    int nofork;               /* do not fork into background - used during guid restart */
-    int invisible;            /* do not show any VM window */
     pid_t kill_on_connect;  /* pid to kill when connection to gui agent is established */
-    int allow_utf8_titles;    /* allow UTF-8 chars in window title */
-    int allow_fullscreen;   /* allow fullscreen windows without decoration */
-    int override_redirect_protection; /* disallow override_redirect windows to cover more than
-					 MAX_OVERRIDE_REDIRECT_PERCENTAGE percent of the screen */
     int copy_seq_mask;    /* modifiers mask for secure-copy key sequence */
     KeySym copy_seq_key;    /* key for secure-copy key sequence */
     int paste_seq_mask;    /* modifiers mask for secure-paste key sequence */
     KeySym paste_seq_key;    /* key for secure-paste key sequence */
-    int qrexec_clipboard;    /* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
-    int use_kdialog;    /* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
-    int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
     enum trayicon_mode trayicon_mode; /* trayicon coloring mode */
     int trayicon_border; /* position of trayicon border - 0 - no border, 1 - at the edges, 2 - 1px from the edges */
-    bool trayicon_tint_reduce_saturation; /* reduce trayicon saturation by 50% (available only for "tint" mode) */
-    bool trayicon_tint_whitehack; /* replace white pixels with almost-white 0xfefefe (available only for "tint" mode) */
-    bool disable_override_redirect; /* Disable “override redirect” windows */
     char *screensaver_names[MAX_SCREENSAVER_NAMES]; /* WM_CLASS names for windows detected as screensavers */
     Cursor *cursors;  /* preloaded cursors (using XCreateFontCursor) */
     xcb_connection_t *cb_connection; /**< XCB connection */
     xcb_gcontext_t gc; /**< XCB graphics context */
     int work_x, work_y, work_width, work_height;  /* do not allow a window to go beyond these bounds */
-    Atom qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
-    bool in_dom0; /* true if we are in dom0, otherwise false */
-    Atom net_supported;
     int xen_fd; /* O_PATH file descriptor to /dev/xen/gntdev */
     int xen_dir_fd; /* file descriptor to /dev/xen */
+    bool clipboard_requested : 1;    /* if clippoard content was requested by dom0 */
+    bool in_dom0 : 1; /* true if we are in dom0, otherwise false */
     bool permit_subwindows : 1; /* Permit subwindows */
-};
-
-typedef struct _global_handles Ghandles;
+    bool qrexec_clipboard  : 1; /* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
+    bool use_kdialog       : 1; /* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
+    bool nofork            : 1; /* do not fork into background - used during guid restart */
+    bool allow_utf8_titles : 1; /* allow UTF-8 chars in window title */
+    bool allow_fullscreen  : 1; /* allow fullscreen windows without decoration */
+    bool override_redirect_protection : 1; /* disallow override_redirect windows to cover more than
+					     MAX_OVERRIDE_REDIRECT_PERCENTAGE percent of the screen */
+    bool prefix_titles     : 1; /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
+    bool trayicon_tint_reduce_saturation : 1; /* reduce trayicon saturation by 50% (available only for "tint" mode) */
+    bool trayicon_tint_whitehack : 1; /* replace white pixels with almost-white 0xfefefe (available only for "tint" mode) */
+    bool disable_override_redirect : 1; /* Disable “override redirect” windows */
+    bool invisible         : 1; /* do not show any VM window */
+} Ghandles;
 
 #define ASSERT_HEIGHT_UNSIGNED(h)                                                      \
     do {                                                                               \

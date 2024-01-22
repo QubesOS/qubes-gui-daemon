@@ -93,20 +93,25 @@ static Ghandles ghandles;
 #define CHECK_NONMANAGED_WINDOW(g, id) struct windowdata *vm_window; \
     do if (!(vm_window=check_nonmanaged_window((g), (id)))) return; while (0)
 
-#ifndef min
+#if defined min || defined max
+#error min or max already defined
+#endif
 #define min(x,y) ({ \
+    _Pragma("GCC diagnostic push"); \
+    _Pragma("GCC diagnostic ignored \"-Wshadow\"") \
     __typeof__(x) _x = (x); \
     __typeof__(y) _y = (y); \
     _x > _y ? _y : _x; \
+    _Pragma("GCC diagnostic pop"); \
 })
-#endif
-#ifndef max
 #define max(x,y) ({ \
+    _Pragma("GCC diagnostic push"); \
+    _Pragma("GCC diagnostic ignored \"-Wshadow\"") \
     __typeof__(x) _x = (x); \
     __typeof__(y) _y = (y); \
     _x < _y ? _y : _x; \
+    _Pragma("GCC diagnostic pop"); \
 })
-#endif
 #pragma GCC poison _x _y
 
 #define ignore_result(x) do { __typeof__(x) __attribute__((unused)) _ignore=(x); } while (0)
@@ -219,8 +224,6 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
         fprintf(stderr, "Problems executing %s ?\n", g->use_kdialog ? "kdialog" : "zenity");
         exit(1);
     }
-    /* should never happen */
-    abort();
 }
 
 static void
@@ -266,8 +269,9 @@ static int x11_error_handler(Display * dpy, XErrorEvent * ev)
 
 #ifdef MAKE_X11_ERRORS_FATAL
     exit(1);
-#endif
+#else
     return 0;
+#endif
 }
 
 /*
@@ -352,7 +356,8 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
                 FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
-    XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
+    Atom deleteMsg = g->wmDeleteMessage;
+    XSetWMProtocols(g->display, child_win, &deleteMsg, 1);
     if (g->icon_data) {
         XChangeProperty(g->display, child_win, g->net_wm_icon, XA_CARDINAL, 32,
                 PropModeReplace, (unsigned char *) g->icon_data,
@@ -542,7 +547,7 @@ static void intern_global_atoms(Ghandles *const g) {
         sizeof(tray_sel_atom_name))
         abort();
     const struct {
-        Atom *const dest;
+        xcb_atom_t *const dest;
         const char *const name;
     } atoms_to_intern[] = {
         { &g->tray_selection, tray_sel_atom_name },
@@ -613,7 +618,6 @@ static void mkghandles(Ghandles * g)
 {
     int ev_base, err_base; /* ignore */
     XWindowAttributes attr;
-    int i;
 
     if (!(g->display = XOpenDisplay(NULL)))
         err(1, "XOpenDisplay");
@@ -690,7 +694,7 @@ static void mkghandles(Ghandles * g)
         perror("malloc");
         exit(1);
     }
-    for (i = 0; i < XC_num_glyphs; i++) {
+    for (size_t i = 0; i < XC_num_glyphs; i++) {
         /* X font cursors have even numbers from 0 up to XC_num_glyphs.
          * Fill the rest with None.
          */
@@ -3332,10 +3336,6 @@ static void handle_window_dump_body_grant_refs(Ghandles *g,
     size_t refs_len;
     struct shm_args_grant_refs *shm_args_grant;
 
-    // We don't have any custom arguments except the variable length refs list.
-    static_assert(sizeof(struct msg_window_dump_grant_refs) == 0,
-                   "struct def bug");
-
     // Check that we will not overflow during multiplication
     static_assert(MAX_GRANT_REFS_COUNT < INT32_MAX / 4096,
                    "MAX_GRANT_REFS_COUNT too large");
@@ -3566,7 +3566,7 @@ static void unset_alive_flag(void)
 }
 
 /* signal handler - connected to SIGTERM */
-static void dummy_signal_handler(int UNUSED(x))
+_Noreturn static void dummy_signal_handler(int UNUSED(x))
 {
     unset_alive_flag();
     _exit(0);
@@ -3660,7 +3660,7 @@ static void get_protocol_version(Ghandles * g)
 }
 
 /* wait until child process connects to VM */
-static void wait_for_connection_in_parent(int *pipe_notify)
+_Noreturn static void wait_for_connection_in_parent(int *pipe_notify)
 {
     // inside the parent process
     // wait for daemon to get connection with AppVM
@@ -3711,7 +3711,7 @@ enum {
     opt_screensaver_name = 258,
 };
 
-struct option longopts[] = {
+static struct option longopts[] = {
     { "override-redirect", required_argument, NULL, 'r' },
     { "config", required_argument, NULL, 'C' },
     { "domid", required_argument, NULL, 'd' },
@@ -3966,7 +3966,7 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
 
     optind = 1;
 
-    while ((lastarg = (optind < argc ? argv[optind] : NULL)),
+    while ((void)(lastarg = (optind < argc ? argv[optind] : NULL)),
            (opt = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
         switch (opt) {
         case 'C':
@@ -4233,14 +4233,16 @@ static void parse_config(Ghandles * g)
                 g->config_path,
                 config_error_text(&config));
         } else {
-            fprintf(stderr,
-                "Critical: error reading config (%s:%d): %s\n",
+            const char * f =
 #if (((LIBCONFIG_VER_MAJOR == 1) && (LIBCONFIG_VER_MINOR >= 4)) \
         || (LIBCONFIG_VER_MAJOR > 1))
-                config_error_file(&config),
+                config_error_file(&config)
 #else
-                g->config_path,
+                g->config_path
 #endif
+           ; fprintf(stderr,
+                "Critical: error reading config (%s:%d): %s\n",
+                f,
                 config_error_line(&config),
                 config_error_text(&config));
             exit(1);
@@ -4342,10 +4344,8 @@ int main(int argc, char **argv)
         if (childpid < 0) {
             fprintf(stderr, "Cannot fork :(\n");
             exit(1);
-        } else if (childpid > 0) {
+        } else if (childpid > 0)
             wait_for_connection_in_parent(pipe_notify);
-            exit(0);
-        }
         close(pipe_notify[0]);
     }
 
@@ -4528,5 +4528,4 @@ int main(int argc, char **argv)
         } while (busy);
         wait_for_vchan_or_argfd(ghandles.vchan, xfd);
     }
-    return 0;
 }
