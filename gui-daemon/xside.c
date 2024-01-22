@@ -324,8 +324,8 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     XSetWindowAttributes attr;
 
     my_size_hints.flags = PSize;
-    my_size_hints.width = vm_window->width;
-    my_size_hints.height = vm_window->height;
+    my_size_hints.width = (int)vm_window->width;
+    my_size_hints.height = (int)vm_window->height;
 
     attr.override_redirect = vm_window->override_redirect;
     attr.background_pixel = WhitePixel(g->display, DefaultScreen(g->display));
@@ -592,7 +592,7 @@ retry:
     /* Ensure we read all of the atoms */
     *state_list = NULL;
     ret = XGetWindowProperty(display, window, property,
-            0, (10 * 4 + bytesleft + 3) / 4, False, XA_ATOM, &act_type, &act_fmt,
+            0, (long)((10 * 4 + bytesleft + 3) / 4), False, XA_ATOM, &act_type, &act_fmt,
             &nitems, &bytesleft, (unsigned char**)state_list);
     if (ret != Success) {
         XFree(*state_list);
@@ -613,7 +613,6 @@ static void mkghandles(Ghandles * g)
 {
     int ev_base, err_base; /* ignore */
     XWindowAttributes attr;
-    int i;
 
     if (!(g->display = XOpenDisplay(NULL)))
         err(1, "XOpenDisplay");
@@ -690,7 +689,7 @@ static void mkghandles(Ghandles * g)
         perror("malloc");
         exit(1);
     }
-    for (i = 0; i < XC_num_glyphs; i++) {
+    for (unsigned int i = 0; i < XC_num_glyphs; i++) {
         /* X font cursors have even numbers from 0 up to XC_num_glyphs.
          * Fill the rest with None.
          */
@@ -745,7 +744,7 @@ static void reload(Ghandles * g) {
 /* find if window (given by id) is managed by this guid */
 static struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
 {
-    struct genlist *item = list_lookup(g->wid2windowdata, id);
+    struct genlist *item = list_lookup(g->wid2windowdata, (long)id);
     if (!item) {
         if (g->log_level > 0)
             fprintf(stderr, "cannot lookup 0x%x in wid2windowdata\n",
@@ -808,55 +807,52 @@ static void save_clipboard_source_vmname(const char *vmname) {
 
 /* fetch clippboard content from file */
 /* lock already taken in is_special_keypress() */
-static void get_qubes_clipboard(Ghandles *g, char **data, int *len)
+static void get_qubes_clipboard(Ghandles *g, char **data, uint32_t *len)
 {
-    FILE *file;
     *len = 0;
-    file = fopen(QUBES_CLIPBOARD_FILENAME, "r");
-    if (!file)
+    int fd = open(QUBES_CLIPBOARD_FILENAME, O_RDONLY | O_NOCTTY | O_CLOEXEC);
+    if (fd == -1) {
+        if (errno != ENOENT)
+            show_error_message(g, "secure paste: failed to open " QUBES_CLIPBOARD_FILENAME);
         return;
-    if (fseek(file, 0, SEEK_END) < 0) {
-        show_error_message(g, "secure paste: failed to seek in " QUBES_CLIPBOARD_FILENAME);
-        goto close_done;
     }
-    *len = ftell(file);
-    if (*len < 0) {
-        *len = 0;
+    struct stat statbuf;
+    if (fstat(fd, &statbuf)) {
         show_error_message(g, "secure paste: failed to determine size of "
             QUBES_CLIPBOARD_FILENAME);
         goto close_done;
     }
-    if (*len == 0)
+    uint64_t bytes = (uint64_t)statbuf.st_size;
+    if (bytes == 0)
         goto close_done;
-    *data = malloc(*len);
-    if (!*data) {
-        perror("malloc");
-        exit(1);
-    }
-    if (fseek(file, 0, SEEK_SET) < 0) {
-        free(*data);
-        *data = NULL;
-        *len = 0;
-        show_error_message(g, "secure paste: failed to seek in "
-            QUBES_CLIPBOARD_FILENAME);
+    if (bytes > MAX_CLIPBOARD_SIZE) {
+        show_error_message(g, "secure paste: file " QUBES_CLIPBOARD_FILENAME " too large");
         goto close_done;
     }
-    *len=fread(*data, 1, *len, file);
-    if (*len < 0) {
-        *len = 0;
+    if (!S_ISREG(statbuf.st_mode)) {
+        show_error_message(g, "secure paste: file " QUBES_CLIPBOARD_FILENAME " is not a regular file");
+        goto close_done;
+    }
+    *data = malloc((size_t)bytes);
+    if (!*data)
+        err(1, "malloc");
+    ssize_t bytes_read = read(fd, *data, (size_t)bytes);
+    if (bytes_read < 0) {
         free(*data);
         *data=NULL;
         show_error_message(g, "secure paste: failed to read from "
             QUBES_CLIPBOARD_FILENAME);
         goto close_done;
     }
+    *len = (uint32_t)bytes_read;
 close_done:
-    fclose(file);
-    if (truncate(QUBES_CLIPBOARD_FILENAME, 0)) {
+    if (ftruncate(fd, 0)) {
         perror("failed to truncate " QUBES_CLIPBOARD_FILENAME ", trying unlink instead\n");
-        unlink(QUBES_CLIPBOARD_FILENAME);
+        if (unlink(QUBES_CLIPBOARD_FILENAME))
+            err(1, "unlink " QUBES_CLIPBOARD_FILENAME);
     }
     save_clipboard_source_vmname("");
+    close(fd);
 }
 
 static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
@@ -1206,17 +1202,17 @@ _Static_assert(CURSOR_X11_MAX == CURSOR_X11 + XC_num_glyphs, "protocol bug");
 static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
 {
     struct msg_cursor untrusted_msg;
-    int cursor_id;
+    uint32_t cursor_id;
     Cursor cursor;
 
     read_struct(g->vchan, untrusted_msg);
     /* sanitize start */
     if (untrusted_msg.cursor & CURSOR_X11) {
         VERIFY(untrusted_msg.cursor < CURSOR_X11_MAX);
-        cursor_id = untrusted_msg.cursor & ~CURSOR_X11;
+        cursor_id = untrusted_msg.cursor & ~(uint32_t)CURSOR_X11;
     } else {
         VERIFY(untrusted_msg.cursor == CURSOR_DEFAULT);
-        cursor_id = -1;
+        cursor_id = UINT32_MAX;
     }
     /* sanitize end */
 
@@ -1224,8 +1220,8 @@ static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
         fprintf(stderr, "handle_cursor, cursor = 0x%x\n",
                 untrusted_msg.cursor);
 
-    if (cursor_id < 0)
-        cursor = None;
+    if (cursor_id == UINT32_MAX)
+        cursor = XCB_NONE;
     else {
         /*
          * Should be true if CURSOR_X11_MAX == CURSOR_X11 + XC_num_glyphs,
@@ -1245,7 +1241,6 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 {
     struct msg_hdr hdr;
     char *data;
-    int len;
     Time clipboard_file_xevent_time;
 
     /* copy */
@@ -1296,6 +1291,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
             if (g->log_level > 0)
                 fprintf(stderr, "secure paste: %s\n", ret?"success":"failed");
         } else {
+            uint32_t len;
             hdr.type = MSG_CLIPBOARD_DATA;
             if (g->log_level > 0)
                 fprintf(stderr, "secure paste\n");
