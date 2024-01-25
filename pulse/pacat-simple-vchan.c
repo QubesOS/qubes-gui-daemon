@@ -1008,9 +1008,6 @@ static void vchan_rec_async_connect(pa_mainloop_api *UNUSED(a),
     u->mainloop_api->io_free(u->rec_ctrl_event);
     u->rec_ctrl_event = NULL;
 
-    if (u->never_block == -1)
-        u->never_block = libvchan_buffer_space(u->rec_ctrl) > 8192;
-
     /* when both vchans are connected, connect to the daemon */
     if (libvchan_is_open(u->play_ctrl) == VCHAN_CONNECTED)
         connect_pa_daemon(u);
@@ -1021,8 +1018,8 @@ static _Noreturn void usage(char *arg0, int arg) {
     fprintf(stream, "usage: %s [-l] [--] domid domname\n",
             arg0 ? arg0 : "pacat-simple-vchan");
     fprintf(stream, "  -l - low-latency mode (higher CPU usage)\n");
-    fprintf(stream, "  -n - never block on vchan I/O (default if record buffer size is 8192 bytes or more)\n");
-    fprintf(stream, "  -b - always block on vchan I/O (default if record buffer size is less than 8192 bytes)\n");
+    fprintf(stream, "  -n - never block on vchan I/O (overrides previous -b option)\n");
+    fprintf(stream, "  -b - always block on vchan I/O (default, overrides previous -n option)\n");
     fprintf(stream, "  -h - print this message\n");
     if (fflush(NULL) || ferror(stdout) || ferror(stderr))
         exit(1);
@@ -1042,7 +1039,6 @@ int main(int argc, char *argv[])
     int i;
 
     memset(&u, 0, sizeof(u));
-    u.never_block = -1;
     if (argc <= 2)
         usage(argv[0], 1);
     while ((i = getopt(argc, argv, "+lnbh")) != -1) {
@@ -1051,10 +1047,10 @@ int main(int argc, char *argv[])
                 bufattr = &custom_bufattr;
                 break;
             case 'n':
-                u.never_block = 1;
+                u.never_block = true;
                 break;
             case 'b':
-                u.never_block = 0;
+                u.never_block = false;
                 break;
             case 'h':
                 usage(argv[0], 0);

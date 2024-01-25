@@ -1,6 +1,7 @@
 #ifndef __PACAT_SIMPLE_VCHAN_H
 #define __PACAT_SIMPLE_VCHAN_H
 
+#include <stdbool.h>
 #include <pulse/pulseaudio.h>
 #include <glib.h>
 #include <libvchan.h>
@@ -36,7 +37,7 @@ struct userdata {
     pa_io_event* control_socket_event;
     bool rec_allowed;
     bool rec_requested;
-    int8_t never_block;
+    bool never_block;
     bool pending_play_cork;
     bool draining;
 };
