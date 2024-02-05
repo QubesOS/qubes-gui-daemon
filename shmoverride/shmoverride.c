@@ -93,7 +93,7 @@ static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args) {
     struct shm_args_mfns *shm_args_mfns = (struct shm_args_mfns *) (
             ((uint8_t *) shm_args) + sizeof(struct shm_args_hdr));
 
-    pfntable = calloc(sizeof(xen_pfn_t), shm_args_mfns->count);
+    pfntable = calloc(shm_args_mfns->count, sizeof(xen_pfn_t));
     if (!pfntable)
         return NULL;
     for (i = 0; i < shm_args_mfns->count; i++)
