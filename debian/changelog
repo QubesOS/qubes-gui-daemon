@@ -1,3 +1,13 @@
+qubes-gui-daemon (4.2.5-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Always block on vchan I/O by default
+
+  [ Marek Marczykowski-Górecki ]
+  * shmoverride: fix parameters order
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 05 Feb 2024 04:29:18 +0100
+
 qubes-gui-daemon (4.2.4-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
