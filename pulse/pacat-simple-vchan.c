@@ -100,6 +100,11 @@ static void playback_stream_drain_cb(pa_stream *s, int success, void *userdata);
 
 void pacat_log(const char *fmt, ...) {
     va_list args;
+    struct timespec ts;
+
+    clock_gettime(CLOCK_REALTIME, &ts);
+
+    fprintf(stderr, "%10jd.%06ld ", ts.tv_sec, ts.tv_nsec / 1000);
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
     va_end(args);
