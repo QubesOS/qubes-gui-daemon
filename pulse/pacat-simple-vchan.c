@@ -81,11 +81,11 @@ static pa_sample_spec sample_spec = {
     .rate = 44100,
     .channels = 2
 };
-static const pa_buffer_attr custom_bufattr ={
+static pa_buffer_attr custom_bufattr ={
     .maxlength = (uint32_t)-1,
     .minreq = (uint32_t)-1,
     .prebuf = (uint32_t)-1,
-    .fragsize = 4096,
+    .fragsize = 2048,
     .tlength = 4096
 };
 const pa_buffer_attr * bufattr = NULL;
@@ -1032,12 +1032,14 @@ static void vchan_rec_async_connect(pa_mainloop_api *UNUSED(a),
 
 static _Noreturn void usage(char *arg0, int arg) {
     FILE *stream = arg ? stderr : stdout;
-    fprintf(stream, "usage: %s [-l] [--] domid domname\n",
+    fprintf(stream, "usage: %s [options] [--] domid domname\n",
             arg0 ? arg0 : "pacat-simple-vchan");
     fprintf(stream, "  -l - low-latency mode (higher CPU usage)\n");
     fprintf(stream, "  -n - never block on vchan I/O (overrides previous -b option)\n");
     fprintf(stream, "  -b - always block on vchan I/O (default, overrides previous -n option)\n");
     fprintf(stream, "  -v - verbose logging (a lot of output, may affect performance)\n");
+    fprintf(stream, "  -t size - target playback buffer fill, implies -l, default %d\n",
+            custom_bufattr.tlength);
     fprintf(stream, "  -h - print this message\n");
     if (fflush(NULL) || ferror(stdout) || ferror(stderr))
         exit(1);
@@ -1055,11 +1057,13 @@ int main(int argc, char *argv[])
     int pidfile_fd;
     int play_watch_fd, rec_watch_fd;
     int i;
+    unsigned long tlength;
+    char *endptr;
 
     memset(&u, 0, sizeof(u));
     if (argc <= 2)
         usage(argv[0], 1);
-    while ((i = getopt(argc, argv, "+lnbvh")) != -1) {
+    while ((i = getopt(argc, argv, "+lnbvt:h")) != -1) {
         switch (i) {
             case 'l':
                 bufattr = &custom_bufattr;
@@ -1073,6 +1077,18 @@ int main(int argc, char *argv[])
             case 'v':
                 verbose += 1;
                 break;
+            case 't':
+                errno = 0;
+                tlength = strtoul(optarg, &endptr, 0);
+                if (*endptr)
+                    errx(1, "Invalid -t argument: %s", optarg);
+                if (tlength > UINT32_MAX)
+                    errno = ERANGE;
+                if (errno)
+                    err(1, "Invalid -t argument: %s", optarg);
+                bufattr = &custom_bufattr;
+                custom_bufattr.tlength = tlength;
+                break;
             case 'h':
                 usage(argv[0], 0);
             default:
@@ -1082,7 +1098,6 @@ int main(int argc, char *argv[])
     if (argc - optind != 2)
         usage(argv[0], 1);
     const char *domid_str = argv[optind], *domname = argv[optind + 1];
-    char *endptr;
     errno = 0;
     long l_domid = strtol(domid_str, &endptr, 10);
     /* 0x7FF0 is DOMID_FIRST_RESERVED */
