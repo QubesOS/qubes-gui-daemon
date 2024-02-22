@@ -215,6 +215,16 @@ static void process_playback_data(struct userdata *u, pa_stream *s, size_t max_l
         return;
     }
 
+    if (verbose > 1) {
+        pa_usec_t latency = 0;
+        int negative;
+
+        if (pa_stream_get_latency(s, &latency, &negative))
+            pacat_log("pa_stream_get_latency() failed");
+
+        pacat_log("process_playback_data(): vchan data %d max_length %d latency %llu", space_in_vchan, max_length, latency);
+    }
+
     buffer_length = (size_t)space_in_vchan > max_length ? max_length : (size_t)space_in_vchan;
     if (!buffer_length)
         goto maybe_cork;
@@ -669,6 +679,8 @@ static void context_state_callback(pa_context *c, void *userdata) {
             pa_stream_set_event_callback(u->play_stream, stream_event_callback, u);
             pa_stream_set_buffer_attr_callback(u->play_stream, stream_buffer_attr_callback, u);
             flags = PA_STREAM_ADJUST_LATENCY;
+            if (verbose > 1)
+                flags |= PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING;
 
             if (pa_stream_connect_playback(u->play_stream, u->play_device, bufattr, flags, NULL /* volume */, NULL) < 0) {
                 pacat_log("pa_stream_connect_playback() failed: %s", pa_strerror(pa_context_errno(c)));
@@ -1025,6 +1037,7 @@ static _Noreturn void usage(char *arg0, int arg) {
     fprintf(stream, "  -l - low-latency mode (higher CPU usage)\n");
     fprintf(stream, "  -n - never block on vchan I/O (overrides previous -b option)\n");
     fprintf(stream, "  -b - always block on vchan I/O (default, overrides previous -n option)\n");
+    fprintf(stream, "  -v - verbose logging (a lot of output, may affect performance)\n");
     fprintf(stream, "  -h - print this message\n");
     if (fflush(NULL) || ferror(stdout) || ferror(stderr))
         exit(1);
@@ -1046,7 +1059,7 @@ int main(int argc, char *argv[])
     memset(&u, 0, sizeof(u));
     if (argc <= 2)
         usage(argv[0], 1);
-    while ((i = getopt(argc, argv, "+lnbh")) != -1) {
+    while ((i = getopt(argc, argv, "+lnbvh")) != -1) {
         switch (i) {
             case 'l':
                 bufattr = &custom_bufattr;
@@ -1056,6 +1069,9 @@ int main(int argc, char *argv[])
                 break;
             case 'b':
                 u.never_block = false;
+                break;
+            case 'v':
+                verbose += 1;
                 break;
             case 'h':
                 usage(argv[0], 0);
