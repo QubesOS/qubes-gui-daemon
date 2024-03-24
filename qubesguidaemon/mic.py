@@ -27,14 +27,14 @@ import qubes.ext
 import qubes.vm.adminvm
 
 
-class MicDevice(qubes.devices.DeviceInfo):
+class MicDevice(qubes.device_protocol.DeviceInfo):
     """Microphone device info class"""
 
     def __init__(self, backend_domain):
         super().__init__(
             backend_domain=backend_domain, ident="mic", devclass="mic")
         self._interfaces = [
-            qubes.devices.DeviceInterface("******", devclass="mic")]
+            qubes.device_protocol.DeviceInterface("******", devclass="mic")]
 
 
 class MicDeviceExtension(qubes.ext.Extension):
