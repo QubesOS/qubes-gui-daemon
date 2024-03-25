@@ -1032,10 +1032,8 @@ int main(int argc, char *argv[])
     struct userdata u;
     pa_glib_mainloop* m = NULL;
     pa_time_event *time_event = NULL;
-    int domid = -1;
     char *pidfile_path;
     int pidfile_fd;
-    int play_watch_fd, rec_watch_fd;
     int i;
 
     memset(&u, 0, sizeof(u));
@@ -1068,27 +1066,30 @@ int main(int argc, char *argv[])
     if (l_domid < 0 || l_domid >= 0x7FF0 || errno == ERANGE)
         errx(1, "domid %ld out of range 0 through %d inclusive", l_domid,
                 0x7FF0 - 1);
-    domid = l_domid;
     if (errno)
         err(1, "invalid domid %s", domid_str);
     if (*endptr)
         errx(1, "trailing junk after domid %s", domid_str);
-    if (create_pidfile(domid, &pidfile_path, &pidfile_fd) < 0)
+
+    u.domid = (int)l_domid;
+    u.name = domname;
+
+    if (create_pidfile(u.domid, &pidfile_path, &pidfile_fd) < 0)
         /* error already printed by create_pidfile() */
         exit(1);
+    goto main;
 
+main:
     u.ret = 1;
 
     g_mutex_init(&u.prop_mutex);
 
-    u.name = domname;
-
-    u.play_ctrl = libvchan_client_init_async(domid, QUBES_PA_SINK_VCHAN_PORT, &play_watch_fd);
+    u.play_ctrl = libvchan_client_init_async(u.domid, QUBES_PA_SINK_VCHAN_PORT, &u.play_watch_fd);
     if (!u.play_ctrl) {
         perror("libvchan_client_init_async");
         exit(1);
     }
-    u.rec_ctrl = libvchan_client_init_async(domid, QUBES_PA_SOURCE_VCHAN_PORT, &rec_watch_fd);
+    u.rec_ctrl = libvchan_client_init_async(u.domid, QUBES_PA_SOURCE_VCHAN_PORT, &u.rec_watch_fd);
     if (!u.rec_ctrl) {
         perror("libvchan_client_init_async");
         exit(1);
@@ -1125,15 +1126,15 @@ int main(int argc, char *argv[])
         goto quit;
     }
 
-    u.play_ctrl_event = u.mainloop_api->io_new(u.mainloop_api,
-            play_watch_fd, PA_IO_EVENT_INPUT, vchan_play_async_connect, &u);
+    u.play_ctrl_event = u.mainloop_api->io_new(
+        u.mainloop_api, u.play_watch_fd, PA_IO_EVENT_INPUT, vchan_play_async_connect, &u);
     if (!u.play_ctrl_event) {
         pacat_log("io_new play_ctrl failed");
         goto quit;
     }
 
-    u.rec_ctrl_event = u.mainloop_api->io_new(u.mainloop_api,
-            rec_watch_fd, PA_IO_EVENT_INPUT, vchan_rec_async_connect, &u);
+    u.rec_ctrl_event = u.mainloop_api->io_new(
+        u.mainloop_api, u.rec_watch_fd, PA_IO_EVENT_INPUT, vchan_rec_async_connect, &u);
     if (!u.rec_ctrl_event) {
         pacat_log("io_new rec_ctrl failed");
         goto quit;
@@ -1163,14 +1164,21 @@ quit:
         control_cleanup(&u);
     }
 
-    if (u.play_stream)
+    if (u.play_stream) {
         pa_stream_unref(u.play_stream);
+        u.play_stream = NULL;
+    }
 
-    if (u.rec_stream)
+    if (u.rec_stream) {
         pa_stream_unref(u.rec_stream);
+        u.rec_stream = NULL;
+    }
 
-    if (u.context)
+    if (u.context) {
+        pa_context_disconnect(u.context);
         pa_context_unref(u.context);
+        u.context = NULL;
+    }
 
     if (time_event) {
         assert(u.mainloop_api);
@@ -1217,5 +1225,9 @@ quit:
 
     unlink(pidfile_path);
     close(pidfile_fd);
+
+    if (!u.ret)
+        goto main;
+
     return u.ret;
 }
