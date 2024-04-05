@@ -1,3 +1,18 @@
+qubes-gui-daemon (4.2.6-1) unstable; urgency=medium
+
+  [ Demi Marie Obenour ]
+  * Clean up do_shm_update
+
+  [ Marek Marczykowski-Górecki ]
+  * pulse: add timestamps to log output
+  * pulse: add opt-in debug logging
+  * pulse: make tlength parameter configurable, reduce fragsize
+
+  [ Demi Marie Obenour ]
+  * Allow periods in qube names
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 05 Apr 2024 19:05:53 +0200
+
 qubes-gui-daemon (4.2.5-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
