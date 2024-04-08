@@ -22,7 +22,7 @@
 
 import subprocess
 
-import qubes.devices
+import qubes.device_protocol
 import qubes.ext
 import qubes.vm.adminvm
 
