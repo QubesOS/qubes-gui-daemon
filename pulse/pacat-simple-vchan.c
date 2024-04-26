@@ -1013,6 +1013,11 @@ static void vchan_rec_async_connect(pa_mainloop_api *UNUSED(a),
         connect_pa_daemon(u);
 }
 
+void cleanup_pidfile(char *pidfile_path, int pidfile_fd) {
+    unlink(pidfile_path);
+    close(pidfile_fd);
+}
+
 static _Noreturn void usage(char *arg0, int arg) {
     FILE *stream = arg ? stderr : stdout;
     fprintf(stream, "usage: %s [-l] [--] domid domname\n",
@@ -1087,12 +1092,14 @@ main:
     u.play_ctrl = libvchan_client_init_async(u.domid, QUBES_PA_SINK_VCHAN_PORT, &u.play_watch_fd);
     if (!u.play_ctrl) {
         perror("libvchan_client_init_async");
-        exit(1);
+        cleanup_pidfile(pidfile_path, pidfile_fd);
+        exit(u.ret);
     }
     u.rec_ctrl = libvchan_client_init_async(u.domid, QUBES_PA_SOURCE_VCHAN_PORT, &u.rec_watch_fd);
     if (!u.rec_ctrl) {
         perror("libvchan_client_init_async");
-        exit(1);
+        cleanup_pidfile(pidfile_path, pidfile_fd);
+        exit(u.ret);
     }
     if (setgid(getgid()) < 0) {
         perror("setgid");
@@ -1223,11 +1230,10 @@ quit:
 
     g_mutex_clear(&u.prop_mutex);
 
-    unlink(pidfile_path);
-    close(pidfile_fd);
-
     if (!u.ret)
         goto main;
+
+    cleanup_pidfile(pidfile_path, pidfile_fd);
 
     return u.ret;
 }
