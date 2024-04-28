@@ -1,3 +1,11 @@
+qubes-gui-daemon (4.2.7-1) unstable; urgency=medium
+
+  [ Frédéric Pierret (fepitre) ]
+  * pacat-simple-vchan: reconnect on vchan eof
+  * pacat-simple-vchan: improve cleanup
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Sun, 28 Apr 2024 03:19:03 +0200
+
 qubes-gui-daemon (4.2.6-1) unstable; urgency=medium
 
   [ Demi Marie Obenour ]
