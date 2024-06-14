@@ -41,6 +41,7 @@ Requires:	qubes-core-qrexec >= 4.1.5
 Requires:	python%{python3_pkgversion}-qubesimgconverter >= 4.1.4
 Requires:	socat
 Requires:	group(qubes)
+Requires:   (%{name}-selinux if selinux-policy)
 
 BuildRequires:	python%{python3_pkgversion}-devel
 BuildRequires:	python%{python3_pkgversion}-setuptools
@@ -63,6 +64,7 @@ BuildRequires:	qubes-core-libs
 BuildRequires:	qubes-gui-common-devel >= 3.2.0
 BuildRequires:	qubes-libvchan-@BACKEND_VMM@-devel
 BuildRequires:	qubes-utils-devel >= 4.2.10
+BuildRequires:  selinux-policy-devel
 
 Source0: %{name}-%{version}.tar.gz
 
@@ -110,13 +112,37 @@ Requires:   python%{python3_pkgversion}-setuptools
 Dom0 files for Qubes AUDIO virtualization. This include core-admin extension,
 policy files etc.
 
+%package selinux
+
+BuildRequires: selinux-policy
+%{?selinux_requires}
+
+Summary: SELinux policy for qubes-gui-daemon
+License: GPLv2+
+
+%description selinux
+SELinux policy for qubes-gui-daemon.  You need this package to run qubes-guid
+on a system where SELinux is in enforcing mode.
+
+%post selinux
+%selinux_modules_install %{_datadir}/selinux/packages/qubes-gui-daemon.pp || :
+
+%postun selinux
+if [ "$1" -eq 0 ]; then
+    %selinux_modules_uninstall %{_datadir}/selinux/packages/qubes-gui-daemon.pp
+fi || :
+
+%posttrans selinux
+%selinux_relabel_post
+exit 0
+
 %prep
 %setup -q
 
 %build
 %{?set_build_flags}
 make clean
-make all BACKEND_VMM=@BACKEND_VMM@
+make all all-selinux BACKEND_VMM=@BACKEND_VMM@
 
 %py3_build
 
@@ -125,6 +151,7 @@ make all BACKEND_VMM=@BACKEND_VMM@
 %install
 rm -rf $RPM_BUILD_ROOT
 %make_install
+make install-selinux DESTDIR=$RPM_BUILD_ROOT
 %py3_install
 
 %triggerin -- xorg-x11-server-Xorg
@@ -166,6 +193,9 @@ rm -f %{name}-%{version}
 %files -n qubes-audio-dom0
 %{python3_sitelib}/qubesguidaemon-*.egg-info
 %{python3_sitelib}/qubesguidaemon
+
+%files selinux
+%{_datadir}/selinux/packages/qubes-gui-daemon.pp
 
 %changelog
 @CHANGELOG@
