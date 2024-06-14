@@ -31,13 +31,17 @@ help:
 	    echo "make clean                <--- clean all the binary files";\
 	    exit 0;
 
+selinux_policies ::= qubes-gui-daemon.pp
+
 all_targets := gui-daemon/qubes-guid gui-daemon/qubes-guid.1 \
      shmoverride/shmoverride.so \
      shmoverride/X-wrapper-qubes pulse/pacat-simple-vchan \
      screen-layout-handler/watch-screen-layout-changes
 
+
 all: $(all_targets)
-.PHONY: $(all_targets) install tar clean help
+all-selinux: selinux/$(selinux_policies)
+.PHONY: $(all_targets) all-selinux install tar clean help
 
 gui-daemon/qubes-guid gui-daemon/qubes-guid.1:
 	$(MAKE) -C gui-daemon qubes-guid qubes-guid.1
@@ -54,6 +58,9 @@ pulse/pacat-simple-vchan:
 screen-layout-handler/watch-screen-layout-changes:
 	$(MAKE) -C screen-layout-handler watch-screen-layout-changes
 
+selinux/$(selinux_policies):
+	$(MAKE) -C selinux -f /usr/share/selinux/devel/Makefile
+
 install:
 	install -D gui-daemon/qubes-guid $(DESTDIR)/usr/bin/qubes-guid
 	install -m 0644 -D gui-daemon/qubes-guid.1 $(DESTDIR)$(MANDIR)/man1/qubes-guid.1
@@ -68,6 +75,9 @@ install:
 	install -D screen-layout-handler/watch-screen-layout-changes $(DESTDIR)/usr/libexec/qubes/watch-screen-layout-changes
 	install -D -m 0644 screen-layout-handler/qubes-screen-layout-watches.desktop $(DESTDIR)/etc/xdg/autostart/qubes-screen-layout-watches.desktop
 	$(MAKE) -C window-icon-updater install
+
+install-selinux:
+	install -D -t $(DESTDIR)/usr/share/selinux/packages selinux/$(selinux_policies)
 
 tar:
 	git archive --format=tar --prefix=qubes-gui/ HEAD -o qubes-gui.tar
