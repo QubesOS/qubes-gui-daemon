@@ -1,0 +1,21 @@
+policy_module(qubes-gui-daemon, 0.0.1)
+
+require {
+    type xserver_t, qubes_var_run_t;
+    type tmpfs_t;
+    type unconfined_t;
+}
+
+type qubes_gui_shmid_t;
+
+# Allow /run/qubes/shm.id.*
+filetrans_pattern(xserver_t, qubes_var_run_t, qubes_gui_shmid_t, file, "shm.id.0")
+filetrans_pattern(xserver_t, qubes_var_run_t, qubes_gui_shmid_t, file, "shm.id.1")
+filetrans_pattern(xserver_t, qubes_var_run_t, qubes_gui_shmid_t, file, "shm.id.2")
+filetrans_pattern(xserver_t, qubes_var_run_t, qubes_gui_shmid_t, file, "shm.id.3")
+filetrans_pattern(xserver_t, qubes_var_run_t, qubes_gui_shmid_t, file, "shm.id.4")
+allow xserver_t qubes_gui_shmid_t:file { create lock open read write map unlink getattr setattr };
+allow qubes_gui_shmid_t tmpfs_t:filesystem { associate };
+
+# until qubes-guid gets its own type
+allow unconfined_t qubes_gui_shmid_t:file mmap_rw_file_perms;
