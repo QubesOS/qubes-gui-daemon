@@ -1,3 +1,9 @@
+qubes-gui-daemon (4.3.1-1) unstable; urgency=medium
+
+  * Add basic SELinux policy
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 17 Jun 2024 04:27:04 +0200
+
 qubes-gui-daemon (4.3.0-1) unstable; urgency=medium
 
   [ Piotr Bartman ]
