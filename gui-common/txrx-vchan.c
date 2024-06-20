@@ -31,7 +31,6 @@
 #include "../include/txrx.h"
 
 void (*vchan_at_eof)(void) = NULL;
-int vchan_is_closed = 0;
 
 /* double buffered in gui-daemon to deal with deadlock
  * during send large clipboard content
@@ -70,6 +69,13 @@ static int write_data_exact(libvchan_t *vchan, char *buf, int size)
     return size;
 }
 
+int real_write_message(libvchan_t *vchan, char *hdr, int size, char *data, int datasize)
+{
+    write_data(vchan, hdr, size);
+    write_data(vchan, data, datasize);
+    return 0;
+}
+
 int write_data(libvchan_t *vchan, char *buf, int size)
 {
     int count;
@@ -86,26 +92,17 @@ int write_data(libvchan_t *vchan, char *buf, int size)
     return size;
 }
 
-int real_write_message(libvchan_t *vchan, char *hdr, int size, char *data, int datasize)
-{
-    write_data(vchan, hdr, size);
-    write_data(vchan, data, datasize);
-    return 0;
-}
-
 int read_data(libvchan_t *vchan, char *buf, int size)
 {
     int written = 0;
     int ret;
     while (written < size) {
-        while (!libvchan_data_ready(vchan))
-            wait_for_vchan_or_argfd_once(vchan, -1);
         ret = libvchan_read(vchan, buf + written, size - written);
         if (ret <= 0)
             handle_vchan_error(vchan, "read data");
         written += ret;
     }
-//      fprintf(stderr, "read %d bytes\n", size);
+    //      fprintf(stderr, "read %d bytes\n", size);
     return size;
 }
 
