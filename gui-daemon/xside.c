@@ -1318,6 +1318,41 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
 
         return 1;
     }
+
+    /* blank */
+    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->blank_seq_mask
+        && ev->keycode == XKeysymToKeycode(g->display, g->blank_seq_key)) {
+        if (ev->type != KeyPress)
+            return 1;
+        inter_appviewer_lock(g, 1);
+        clipboard_file_xevent_time = get_clipboard_file_xevent_timestamp();
+        if (clipboard_file_xevent_time > ev->time) {
+            /* some other clipboard operation happened in the meantime, discard
+             * request */
+            inter_appviewer_lock(g, 0);
+            fprintf(stderr,
+                    "received clipboard xevent after some other clipboard op, discarding\n");
+            return 1;
+        }
+        if (g->qrexec_clipboard) {
+            if (g->log_level > 0)
+                fprintf(stderr, "secure blank is not supported for stubdom GUI\n");
+        } else {
+            hdr.type = MSG_CLIPBOARD_DATA;
+            if (g->log_level > 0)
+                fprintf(stderr, "secure blank\n");
+            len = 0;
+            /* MSG_CLIPBOARD_DATA uses the window field to pass the length
+               of the blob */
+            hdr.window = len;
+            hdr.untrusted_len = len;
+            real_write_message(g->vchan, (char *) &hdr, sizeof(hdr),
+                data, len);
+        }
+        inter_appviewer_lock(g, 0);
+
+        return 1;
+    }
     return 0;
 }
 
@@ -4084,6 +4119,8 @@ static void load_default_config_values(Ghandles * g)
     g->copy_seq_key = XK_c;
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
+    g->blank_seq_mask = ControlMask | ShiftMask;
+    g->blank_seq_key = XK_b;
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
     g->startup_timeout = 45;
@@ -4152,6 +4189,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
          config_setting_get_member(group, "secure_paste_sequence"))) {
         parse_key_sequence(config_setting_get_string(setting),
                    &g->paste_seq_mask, &g->paste_seq_key);
+    }
+    if ((setting =
+         config_setting_get_member(group, "secure_blank_sequence"))) {
+        parse_key_sequence(config_setting_get_string(setting),
+                   &g->blank_seq_mask, &g->blank_seq_key);
     }
 
     if ((setting =
