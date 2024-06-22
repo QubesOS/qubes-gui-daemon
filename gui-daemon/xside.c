@@ -361,7 +361,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
     my_size_hints.height = vm_window->height;
 
     attr.override_redirect = vm_window->override_redirect;
-    attr.background_pixel = WhitePixel(g->display, DefaultScreen(g->display));
+    attr.background_pixel = g->window_background_pixel;
     child_win = XCreateWindow(g->display, g->root_win,
                     vm_window->x, vm_window->y,
                     vm_window->width,
@@ -690,6 +690,9 @@ static void mkghandles(Ghandles * g)
     else if (g->trayicon_mode == TRAY_TINT)
         init_tray_tint(g);
     /* nothing extra needed for TRAY_BORDER */
+    /* parse window background color */
+    g->window_background_pixel = parse_color(g->window_background_color_pre_parse,
+                                             g->display, g->screen).pixel;
     /* parse -p arguments now, as we have X server connection */
     parse_cmdline_prop(g);
     /* init window lists */
@@ -3791,7 +3794,7 @@ static void usage(FILE *stream)
     fprintf(stream, " --domid=ID, -d ID\tdomain ID running GUI agent\n");
     fprintf(stream, " --target-domid=ID, -t ID\tdomain ID of actual VM (may be different from --domid in case of stubdomain)\n");
     fprintf(stream, " --name=NAME, -N NAME\tVM name\n");
-    fprintf(stream, " --color=COLOR, -c COLOR\tVM color (in format 0xRRGGBB)\n");
+    fprintf(stream, " --color=COLOR, -c COLOR\tVM color (format 0xRRGGBB or color name)\n");
     fprintf(stream, " --label=LABEL_INDEX, -l LABEL_INDEX\tVM label index\n");
     fprintf(stream, " --icon=ICON, -i ICON\tIcon name (without suffix), or full icon path\n");
     fprintf(stream, " --qrexec-for-clipboard, -Q\tforce usage of Qrexec for clipboard operations\n");
@@ -4123,6 +4126,7 @@ static void load_default_config_values(Ghandles * g)
     g->trayicon_border = 0;
     g->trayicon_tint_reduce_saturation = 0;
     g->trayicon_tint_whitehack = 0;
+    g->window_background_color_pre_parse = "white";
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
@@ -4209,6 +4213,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
     if ((setting =
          config_setting_get_member(group, "trayicon_mode"))) {
         parse_trayicon_mode(g, config_setting_get_string(setting));
+    }
+
+    if ((setting =
+         config_setting_get_member(group, "window_background_color"))) {
+        g->window_background_color_pre_parse = config_setting_get_string(setting);
     }
 
     if ((setting =
