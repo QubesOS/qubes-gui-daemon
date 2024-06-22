@@ -283,27 +283,59 @@ static int x11_io_error_handler(Display * dpy)
     exit(1);
 }
 
+/*
+ * Infer a color value from the provided string using strtoul for
+ * hex-like input or for a name Xlib by way of /etc/X11/rgb.txt.
+ */
+static XColor parse_color(const char *str, Display *dpy, int screen)
+{
+    XColor xcolor;
+    Status status;
+    char *trimmed = (char *) str;
+    while (trimmed[0] == ' ') {  /* skip any leading spaces */
+        trimmed++;
+    }
+    if (trimmed[0] == '0' && (trimmed[1] == 'x' || trimmed[1] == 'X')) {
+        char *endptr;
+        unsigned int rgb;
+        errno = 0;
+        rgb = strtoul(trimmed, &endptr, 16);
+        if (errno) {
+            perror("strtoul");
+            fprintf(stderr, "Failed to parse color '%s'\n", trimmed);
+            exit(1);
+        } else if (endptr == trimmed ||
+                   /* Note: this check incorrectly rejects the
+                      specific case of trailing space on hex black,
+                      i.e. '0x000000 ' */
+                   (endptr[0] != '\0' && rgb == 0)) {
+            fprintf(stderr, "Failed to parse color '%s'\n", trimmed);
+            exit(1);
+        }
+        xcolor.blue = (rgb & 0xff) * 257;
+        rgb >>= 8;
+        xcolor.green = (rgb & 0xff) * 257;
+        rgb >>= 8;
+        xcolor.red = (rgb & 0xff) * 257;
+        status = XAllocColor(dpy, XDefaultColormap(dpy, screen), &xcolor);
+    } else {
+        XColor dummy;
+        status = XAllocNamedColor(dpy, XDefaultColormap(dpy, screen), trimmed,
+                                  &xcolor, &dummy);
+    }
+    if (status == 0) {
+        fprintf(stderr, "Failed to allocate color when parsing '%s'\n", trimmed);
+        exit(1);
+    }
+    return xcolor;
+}
 
 /* prepare graphic context for painting colorful frame and set RGB value of the
  * color */
 static void get_frame_gc(Ghandles * g, const char *name)
 {
     XGCValues values;
-    XColor fcolor, dummy;
-    if (name[0] == '0' && (name[1] == 'x' || name[1] == 'X')) {
-        unsigned int rgb = strtoul(name, 0, 16);
-        fcolor.blue = (rgb & 0xff) * 257;
-        rgb >>= 8;
-        fcolor.green = (rgb & 0xff) * 257;
-        rgb >>= 8;
-        fcolor.red = (rgb & 0xff) * 257;
-        XAllocColor(g->display,
-                XDefaultColormap(g->display, g->screen),
-                &fcolor);
-    } else
-        XAllocNamedColor(g->display,
-                 XDefaultColormap(g->display, g->screen),
-                 name, &fcolor, &dummy);
+    XColor fcolor = parse_color(name, g->display, g->screen);
     g->label_color_rgb =
         (fcolor.red >> 8) << 16 |
         (fcolor.green >> 8) << 8 |
