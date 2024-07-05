@@ -1,3 +1,14 @@
+qubes-gui-daemon (4.3.2-1) unstable; urgency=medium
+
+  [ Euwiiwueir ]
+  * Factor out a function to parse color from string
+  * qubes-guid: add window_background_color setting
+
+  [ Frédéric Pierret (fepitre) ]
+  * Reformat according to python-black
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 05 Jul 2024 17:28:35 +0200
+
 qubes-gui-daemon (4.3.1-1) unstable; urgency=medium
 
   * Add basic SELinux policy
