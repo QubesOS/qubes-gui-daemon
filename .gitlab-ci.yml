@@ -13,5 +13,5 @@ variables:
 
 lint:
   extends: .lint
-  script:
-    - black $BLACK_ARGS qubesguidaemon
+  variables:
+    DIR: qubesguidaemon
