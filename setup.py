@@ -25,13 +25,11 @@
 from setuptools import setup
 
 setup(
-    name='qubesguidaemon',
-    version=open('version').read().strip(),
-    packages=['qubesguidaemon'],
+    name="qubesguidaemon",
+    version=open("version").read().strip(),
+    packages=["qubesguidaemon"],
     entry_points={
-        'qubes.ext':
-            'mic = qubesguidaemon.mic:MicDeviceExtension',
-        'qubes.devices':
-            'mic = qubesguidaemon.mic:MicDevice',
+        "qubes.ext": "mic = qubesguidaemon.mic:MicDeviceExtension",
+        "qubes.devices": "mic = qubesguidaemon.mic:MicDevice",
     },
 )

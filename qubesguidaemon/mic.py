@@ -33,10 +33,14 @@ class MicDevice(qubes.device_protocol.DeviceInfo):
     def __init__(self, backend_domain, product, manufacturer):
         super().__init__(
             backend_domain=backend_domain,
-            ident="mic", devclass="mic",
-            product=product, manufacturer=manufacturer)
+            ident="mic",
+            devclass="mic",
+            product=product,
+            manufacturer=manufacturer,
+        )
         self._interfaces = [
-            qubes.device_protocol.DeviceInterface("******", devclass="mic")]
+            qubes.device_protocol.DeviceInterface("******", devclass="mic")
+        ]
 
 
 class MicDeviceExtension(qubes.ext.Extension):
@@ -49,18 +53,19 @@ class MicDeviceExtension(qubes.ext.Extension):
 
     def get_device(self, app):
         return MicDevice(
-            app.domains[0], product="microphone", manufacturer="build-in")
+            app.domains[0], product="microphone", manufacturer="build-in"
+        )
 
-    @qubes.ext.handler('device-list:mic')
+    @qubes.ext.handler("device-list:mic")
     def on_device_list_mic(self, vm, event):
         """List microphone device
 
         Currently, this assumes audio being handled in dom0. When adding support
         for GUI domain, this needs to be changed
         """
-        return self.on_device_get_mic(vm, event, 'mic')
+        return self.on_device_get_mic(vm, event, "mic")
 
-    @qubes.ext.handler('device-get:mic')
+    @qubes.ext.handler("device-get:mic")
     def on_device_get_mic(self, vm, event, ident):
         """Get microphone device
 
@@ -72,30 +77,31 @@ class MicDeviceExtension(qubes.ext.Extension):
         if not isinstance(vm, qubes.vm.adminvm.AdminVM):
             return
 
-        if ident != 'mic':
+        if ident != "mic":
             return
 
         yield self.get_device(vm.app)
 
-    @qubes.ext.handler('device-list-attached:mic')
+    @qubes.ext.handler("device-list-attached:mic")
     def on_device_list_attached_mic(self, vm, event, persistent=None):
         """List attached microphone to the VM"""
 
         if persistent is True:
             return
 
-        audiovm = getattr(vm, 'audiovm', None)
+        audiovm = getattr(vm, "audiovm", None)
 
         if audiovm is None or not audiovm.is_running():
             return
 
         untrusted_audio_input = audiovm.untrusted_qdb.read(
-            '/audio-input/{}'.format(vm.name))
-        if untrusted_audio_input == b'1':
+            "/audio-input/{}".format(vm.name)
+        )
+        if untrusted_audio_input == b"1":
             # (device, options)
             yield (self.get_device(vm.app), {})
 
-    @qubes.ext.handler('device-pre-attach:mic')
+    @qubes.ext.handler("device-pre-attach:mic")
     async def on_device_pre_attach_mic(self, vm, event, device, options):
         """Attach microphone to the VM"""
 
@@ -103,46 +109,57 @@ class MicDeviceExtension(qubes.ext.Extension):
         assert device == self.get_device(vm.app)
         if options:
             raise qubes.exc.QubesException(
-                'mic device does not support options')
+                "mic device does not support options"
+            )
 
-        audiovm = getattr(vm, 'audiovm', None)
+        audiovm = getattr(vm, "audiovm", None)
 
         if audiovm is None:
             raise qubes.exc.QubesException(
-                "VM {} has no AudioVM set".format(vm))
+                "VM {} has no AudioVM set".format(vm)
+            )
 
         if not audiovm.is_running():
             raise qubes.exc.QubesVMNotRunningError(
-                audiovm, "Audio VM {} isn't running".format(audiovm))
+                audiovm, "Audio VM {} isn't running".format(audiovm)
+            )
         try:
             await audiovm.run_service_for_stdio(
-                'qubes.AudioInputEnable+{}'.format(vm.name))
+                "qubes.AudioInputEnable+{}".format(vm.name)
+            )
         except subprocess.CalledProcessError:
             raise qubes.exc.QubesVMError(
-                vm, 'Failed to attach audio input from {!s} to {!s}: '
-                'pulseaudio agent not running'.format(audiovm, vm))
+                vm,
+                "Failed to attach audio input from {!s} to {!s}: "
+                "pulseaudio agent not running".format(audiovm, vm),
+            )
 
     # pylint: disable=unused-argument
-    @qubes.ext.handler('device-pre-detach:mic')
+    @qubes.ext.handler("device-pre-detach:mic")
     async def on_device_pre_detach_mic(self, vm, event, device):
         """Detach microphone from the VM"""
 
         # there is only one microphone
         assert device == self.get_device(vm.app)
 
-        audiovm = getattr(vm, 'audiovm', None)
+        audiovm = getattr(vm, "audiovm", None)
 
         if audiovm is None:
             raise qubes.exc.QubesException(
-                "VM {} has no AudioVM set".format(vm))
+                "VM {} has no AudioVM set".format(vm)
+            )
 
         if not audiovm.is_running():
             raise qubes.exc.QubesVMNotRunningError(
-                audiovm, "Audio VM {} isn't running".format(audiovm))
+                audiovm, "Audio VM {} isn't running".format(audiovm)
+            )
         try:
             await audiovm.run_service_for_stdio(
-                'qubes.AudioInputDisable+{}'.format(vm.name))
+                "qubes.AudioInputDisable+{}".format(vm.name)
+            )
         except subprocess.CalledProcessError:
             raise qubes.exc.QubesVMError(
-                vm, 'Failed to detach audio input from {!s} to {!s}: '
-                'pulseaudio agent not running'.format(audiovm, vm))
+                vm,
+                "Failed to detach audio input from {!s} to {!s}: "
+                "pulseaudio agent not running".format(audiovm, vm),
+            )
