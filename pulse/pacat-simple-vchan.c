@@ -458,6 +458,9 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
             case QUBES_PA_SOURCE_START_CMD:
                 g_mutex_lock(&u->prop_mutex);
                 u->rec_requested = 1;
+                if (!qdb_write(u->qdb, u->qdb_request_path, "1", 1)) {
+                    pacat_log("Failed to write QubesDB %s: %s", u->qdb_request_path, strerror(errno));
+                }
                 if (u->rec_allowed) {
                     pacat_log("Recording start");
                     pa_stream_cork(u->rec_stream, 0, NULL, u);
@@ -468,6 +471,9 @@ static void vchan_rec_callback(pa_mainloop_api *UNUSED(a),
             case QUBES_PA_SOURCE_STOP_CMD:
                 g_mutex_lock(&u->prop_mutex);
                 u->rec_requested = 0;
+                if (!qdb_write(u->qdb, u->qdb_request_path, "0", 1)) {
+                    pacat_log("Failed to write QubesDB %s: %s", u->qdb_request_path, strerror(errno));
+                }
                 if (!pa_stream_is_corked(u->rec_stream)) {
                     pacat_log("Recording stop");
                     pa_stream_cork(u->rec_stream, 1, NULL, u);
@@ -809,101 +815,108 @@ static void check_vchan_eof_timer(pa_mainloop_api*a, pa_time_event* e,
     a->time_restart(e, &restart_tv);
 }
 
+int is_rec_allowed_from_qdb(struct userdata *u) {
+    int new_rec_allowed;
+    char *qdb_entry = qdb_read(u->qdb, u->qdb_config_path, NULL);
+
+    if (qdb_entry != NULL) {
+        if (strcmp(qdb_entry, "0") == 0) {
+            new_rec_allowed = 0;
+        } else if (strcmp(qdb_entry, "1") == 0) {
+            new_rec_allowed = 1;
+        } else {
+            pacat_log("invalid value from Qubes DB");
+            new_rec_allowed = -1;
+        }
+    } else {
+        new_rec_allowed = -errno;
+        if (new_rec_allowed == -ENOENT)
+            pacat_log("no %s entry in QubesDB", u->qdb_config_path);
+        else
+            pacat_log("unable to obtain %s entry from QubesDB", u->qdb_config_path);
+    }
+
+    free(qdb_entry);
+
+    return new_rec_allowed;
+}
+
 static void control_socket_callback(pa_mainloop_api *UNUSED(a),
-        pa_io_event *UNUSED(e), int fd, pa_io_event_flags_t f,
+        pa_io_event *UNUSED(e), int UNUSED(fd), pa_io_event_flags_t f,
         void *userdata) {
+
     struct userdata *u = userdata;
-    int client_fd;
-    char command_buffer[32];
-    size_t command_len = 0;
-    int ret;
     int new_rec_allowed = -1;
 
     if (!(f & PA_IO_EVENT_INPUT))
         return;
 
-    client_fd = accept(fd, NULL, NULL);
-    if (client_fd < 0) {
-        pacat_log("Accept control connection failed: %s", strerror(errno));
-        return;
-    }
-
-    /* read until either:
-     *  - end of command (\n) is found
-     *  - EOF
-     */
-    do {
-        ret = read(client_fd, command_buffer+command_len, sizeof(command_buffer)-command_len);
-        if (ret < 0) {
-            pacat_log("Control client read failed: %s", strerror(errno));
-            return;
-        }
-        command_len += ret;
-        if (ret == 0)
-            break;
-    } while (!memchr(command_buffer + (command_len-ret), '\n', ret));
-
-    if (strncmp(command_buffer, "audio-input 0\n", command_len) == 0) {
-        new_rec_allowed = 0;
-    } else if (strncmp(command_buffer, "audio-input 1\n", command_len) == 0) {
-        new_rec_allowed = 1;
-    } else {
-        pacat_log("Invalid command buffer");
-        return;
-    }
-    if (new_rec_allowed != -1) {
+    new_rec_allowed = is_rec_allowed_from_qdb(u);
+    if (new_rec_allowed >= 0) {
         g_mutex_lock(&u->prop_mutex);
-        u->rec_allowed = new_rec_allowed;
-        pacat_log("Setting audio-input to %s", u->rec_allowed ? "enabled" : "disabled");
-        if (u->rec_allowed && u->rec_requested) {
-            pacat_log("Recording start");
-            pa_stream_cork(u->rec_stream, 0, NULL, NULL);
-        } else if (!u->rec_allowed && u->rec_stream &&
-                (u->rec_requested || !pa_stream_is_corked(u->rec_stream))) {
-            pacat_log("Recording stop");
-            pa_stream_cork(u->rec_stream, 1, NULL, NULL);
+        if (new_rec_allowed != u->rec_allowed) {
+            u->rec_allowed = new_rec_allowed;
+            pacat_log("Setting audio-input to %s", u->rec_allowed ? "enabled" : "disabled");
+            if (u->rec_allowed && u->rec_requested) {
+                pacat_log("Recording start");
+                pa_stream_cork(u->rec_stream, 0, NULL, NULL);
+            } else if (!u->rec_allowed && u->rec_stream &&
+                    (u->rec_requested || !pa_stream_is_corked(u->rec_stream))) {
+                pacat_log("Recording stop");
+                pa_stream_cork(u->rec_stream, 1, NULL, NULL);
+            }
+            if (!qdb_write(u->qdb, u->qdb_status_path, new_rec_allowed ? "1" : "0", 1)) {
+                pacat_log("Failed to write QubesDB %s: %s", u->qdb_status_path, strerror(errno));
+            }
         }
         g_mutex_unlock(&u->prop_mutex);
-        if (!qdb_write(u->qdb, u->qdb_path, new_rec_allowed ? "1" : "0", 1)) {
-            pacat_log("Failed to write QubesDB %s: %s", u->qdb_path, strerror(errno));
-        }
     }
-    /* accept only one command per connection */
-    close(client_fd);
 }
 
 static int setup_control(struct userdata *u) {
     int socket_fd = -1;
-    /* better safe than sorry - zero initialize the buffer */
-    struct sockaddr_un addr = { 0 };
+    int rec_allowed;
 
-    socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (socket_fd == -1) {
-        pacat_log("socket failed: %s", strerror(errno));
+    u->qdb = qdb_open(NULL);
+    if (!u->qdb) {
+        pacat_log("qdb_open failed: %s", strerror(errno));
         goto fail;
     }
 
-    if ((size_t)snprintf(addr.sun_path, sizeof(addr.sun_path),
-                "/var/run/qubes/audio-control.%s", u->name)
-            >= sizeof(addr.sun_path)) {
-        pacat_log("VM name too long");
-        goto fail;
-    }
-    /* without this line, the bind() fails in many linux versions
-       with Invalid Argument, and mic cannot attach */
-    addr.sun_family = AF_UNIX;
-
-    /* ignore result */
-    unlink(addr.sun_path);
-
-    if (bind(socket_fd, &addr, sizeof(addr)) == -1) {
-        pacat_log("bind to %s failed: %s", addr.sun_path, strerror(errno));
+    // QubesDB mic status: it allows to retrieve the daemon status when mic is allowed
+    if (asprintf(&u->qdb_status_path, "/audio-input/%s", u->name) < 0) {
+        pacat_log("QubesDB path setup failed: %s", strerror(errno));
+        u->qdb_config_path = NULL;
         goto fail;
     }
 
-    if (listen(socket_fd, 5) == -1) {
-        pacat_log("listen on %s failed: %s", addr.sun_path, strerror(errno));
+    // QubesDB mic requested: it allows to know if an application has requested the mic
+    if (asprintf(&u->qdb_request_path, "/audio-input-request/%s", u->name) < 0) {
+        pacat_log("QubesDB path setup failed: %s", strerror(errno));
+        u->qdb_config_path = NULL;
         goto fail;
+    }
+
+    // QubesDB mic allowed: set authorization for using mic
+    if (asprintf(&u->qdb_config_path, "/audio-input-config/%s", u->name) < 0) {
+        pacat_log("QubesDB path setup failed: %s", strerror(errno));
+        u->qdb_config_path = NULL;
+        goto fail;
+    }
+    // Setup a QubesDB watch to get authorization on demand
+    if (!qdb_watch(u->qdb, u->qdb_config_path)) {
+        pacat_log("failed to setup watch on %s: %m\n", u->qdb_config_path);
+        goto fail;
+    }
+
+    socket_fd = qdb_watch_fd(u->qdb);
+    if (socket_fd < 0)
+        goto fail;
+
+   rec_allowed = is_rec_allowed_from_qdb(u);
+    if (rec_allowed >= 0) {
+        pacat_log("mic allowed: initial value read from Qubes DB '%d'", rec_allowed);
+        u->rec_allowed = rec_allowed;
     }
 
     u->control_socket_event = u->mainloop_api->io_new(u->mainloop_api,
@@ -913,31 +926,20 @@ static int setup_control(struct userdata *u) {
         goto fail;
     }
 
-    u->qdb = qdb_open(NULL);
-    if (!u->qdb) {
-        pacat_log("qdb_open failed: %s", strerror(errno));
-        goto fail;
-    }
-
-    if (asprintf(&u->qdb_path, "/audio-input/%s", u->name) < 0) {
-        pacat_log("QubesDB path setup failed: %s", strerror(errno));
-        u->qdb_path = NULL;
-        goto fail;
-    }
-
-    if (!qdb_write(u->qdb, u->qdb_path, "0", 1)) {
-        pacat_log("qdb_write failed: %s", strerror(errno));
-        goto fail;
-    }
-
     u->control_socket_fd = socket_fd;
 
     return 0;
 
 fail:
-    if (u->qdb_path)
-        free(u->qdb_path);
-    u->qdb_path = NULL;
+    if (u->qdb_config_path)
+        free(u->qdb_config_path);
+    u->qdb_config_path = NULL;
+    if (u->qdb_status_path)
+        free(u->qdb_status_path);
+    u->qdb_status_path = NULL;
+    if (u->qdb_request_path)
+        free(u->qdb_request_path);
+    u->qdb_request_path = NULL;
     if (u->qdb)
         qdb_close(u->qdb);
     u->qdb = NULL;
@@ -956,10 +958,12 @@ static void control_cleanup(struct userdata *u) {
         u->mainloop_api->io_free(u->control_socket_event);
     if (u->control_socket_fd > 0)
         close(u->control_socket_fd);
-    if (u->qdb && u->qdb_path)
-        qdb_rm(u->qdb, u->qdb_path);
-    if (u->qdb_path)
-        free(u->qdb_path);
+    if (u->qdb_config_path)
+        free(u->qdb_config_path);
+    if (u->qdb_status_path)
+        free(u->qdb_status_path);
+    if (u->qdb_request_path)
+        free(u->qdb_request_path);
     if (u->qdb)
         qdb_close(u->qdb);
 }
