@@ -31,10 +31,13 @@ class MicDevice(qubes.device_protocol.DeviceInfo):
     """Microphone device info class"""
 
     def __init__(self, backend_domain, product, manufacturer):
-        super().__init__(
+        port = qubes.device_protocol.Port(
             backend_domain=backend_domain,
-            ident="mic",
-            devclass="mic",
+            port_id="mic",
+            devclass="mic"
+        )
+        super().__init__(
+            port,
             product=product,
             manufacturer=manufacturer,
         )
