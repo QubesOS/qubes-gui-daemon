@@ -32,7 +32,9 @@ struct userdata {
 
     GMutex prop_mutex;
     qdb_handle_t qdb;
-    char *qdb_path;
+    char *qdb_config_path;
+    char *qdb_status_path;
+    char *qdb_request_path;
     int control_socket_fd;
     pa_io_event* control_socket_event;
     bool rec_allowed;

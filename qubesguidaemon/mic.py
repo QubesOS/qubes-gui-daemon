@@ -51,7 +51,8 @@ class MicDeviceExtension(qubes.ext.Extension):
     def __init__(self):
         super(MicDeviceExtension, self).__init__()
 
-    def get_device(self, app):
+    @staticmethod
+    def get_device(app):
         return MicDevice(
             app.domains[0], product="microphone", manufacturer="build-in"
         )
@@ -95,11 +96,11 @@ class MicDeviceExtension(qubes.ext.Extension):
             return
 
         untrusted_audio_input = audiovm.untrusted_qdb.read(
-            "/audio-input/{}".format(vm.name)
+            "/audio-input-config/{}".format(vm.name)
         )
         if untrusted_audio_input == b"1":
             # (device, options)
-            yield (self.get_device(vm.app), {})
+            yield self.get_device(vm.app), {}
 
     @qubes.ext.handler("device-pre-attach:mic")
     async def on_device_pre_attach_mic(self, vm, event, device, options):
@@ -123,15 +124,23 @@ class MicDeviceExtension(qubes.ext.Extension):
             raise qubes.exc.QubesVMNotRunningError(
                 audiovm, "Audio VM {} isn't running".format(audiovm)
             )
-        try:
-            await audiovm.run_service_for_stdio(
-                "qubes.AudioInputEnable+{}".format(vm.name)
-            )
-        except subprocess.CalledProcessError:
-            raise qubes.exc.QubesVMError(
-                vm,
-                "Failed to attach audio input from {!s} to {!s}: "
-                "pulseaudio agent not running".format(audiovm, vm),
+
+        if audiovm.features.check_with_netvm(
+            "supported-rpc.qubes.AudioInputEnable", False
+        ):
+            try:
+                await audiovm.run_service_for_stdio(
+                    "qubes.AudioInputEnable+{}".format(vm.name)
+                )
+            except subprocess.CalledProcessError:
+                raise qubes.exc.QubesVMError(
+                    vm,
+                    "Failed to attach audio input from {!s} to {!s}: "
+                    "pulseaudio agent not running".format(audiovm, vm),
+                )
+        else:
+            audiovm.untrusted_qdb.write(
+                "/audio-input-config/{}".format(vm.name), "1"
             )
 
     # pylint: disable=unused-argument
@@ -153,13 +162,72 @@ class MicDeviceExtension(qubes.ext.Extension):
             raise qubes.exc.QubesVMNotRunningError(
                 audiovm, "Audio VM {} isn't running".format(audiovm)
             )
-        try:
-            await audiovm.run_service_for_stdio(
-                "qubes.AudioInputDisable+{}".format(vm.name)
+
+        if audiovm.features.check_with_netvm(
+            "supported-rpc.qubes.AudioInputDisable", False
+        ):
+            try:
+                await audiovm.run_service_for_stdio(
+                    "qubes.AudioInputDisable+{}".format(vm.name)
+                )
+            except subprocess.CalledProcessError:
+                raise qubes.exc.QubesVMError(
+                    vm,
+                    "Failed to detach audio input from {!s} to {!s}: "
+                    "pulseaudio agent not running".format(audiovm, vm),
+                )
+        else:
+            audiovm.untrusted_qdb.write(
+                "/audio-input-config/{}".format(vm.name), "0"
             )
-        except subprocess.CalledProcessError:
-            raise qubes.exc.QubesVMError(
-                vm,
-                "Failed to detach audio input from {!s} to {!s}: "
-                "pulseaudio agent not running".format(audiovm, vm),
+
+    @qubes.ext.handler("property-set:audiovm")
+    def on_property_set(self, subject, event, name, newvalue, oldvalue=None):
+        if not subject.is_running() or not newvalue:
+            return
+        if not newvalue.is_running():
+            subject.log.warning(
+                "Cannot attach mic to {!s}: "
+                "AudioVM '{!s}' is powered off.".format(subject, newvalue)
+            )
+        if newvalue == oldvalue:
+            return
+        if oldvalue and oldvalue.is_running():
+            mic_allowed = oldvalue.untrusted_qdb.read(
+                "/audio-input-config/{}".format(subject.name)
+            )
+            if mic_allowed is None:
+                return
+            try:
+                mic_allowed_value = mic_allowed.decode("ascii")
+            except UnicodeError:
+                raise qubes.exc.QubesVMError(
+                    subject,
+                    "Cannot decode ASCII value for '/audio-input-config/{!s}'".format(
+                        subject.name
+                    ),
+                )
+            if mic_allowed_value in ("0", "1"):
+                newvalue.untrusted_qdb.write(
+                    "/audio-input-config/{}".format(subject.name),
+                    mic_allowed_value,
+                )
+            else:
+                raise qubes.exc.QubesVMError(
+                    subject,
+                    "Invalid value '{!s}' for '/audio-input-config/{!s}' from {!s}".format(
+                        mic_allowed_value, subject.name, oldvalue
+                    ),
+                )
+
+    @qubes.ext.handler("domain-qdb-create")
+    def on_domain_qdb_create(self, vm, event):
+        if vm.audiovm and vm.audiovm.is_running():
+            # Remove previous config, status and request entries on audiovm start
+            vm.audiovm.untrusted_qdb.rm(
+                "/audio-input-config/{}".format(vm.name)
+            )
+            vm.audiovm.untrusted_qdb.rm("/audio-input/{}".format(vm.name))
+            vm.audiovm.untrusted_qdb.rm(
+                "/audio-input-request/{}".format(vm.name)
             )
