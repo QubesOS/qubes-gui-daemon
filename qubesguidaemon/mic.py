@@ -32,18 +32,14 @@ class MicDevice(DeviceInfo):
 
     def __init__(self, backend_domain, product, manufacturer):
         port = Port(
-            backend_domain=backend_domain,
-            port_id="mic",
-            devclass="mic"
+            backend_domain=backend_domain, port_id="mic", devclass="mic"
         )
         super().__init__(
             port,
             product=product,
             manufacturer=manufacturer,
         )
-        self._interfaces = [
-            DeviceInterface("******", devclass="mic")
-        ]
+        self._interfaces = [DeviceInterface("******", devclass="mic")]
 
 
 class MicDeviceExtension(qubes.ext.Extension):
