@@ -22,25 +22,24 @@
 
 import subprocess
 
-import qubes.device_protocol
 import qubes.ext
 import qubes.vm.adminvm
+from qubes.device_protocol import Port, DeviceInterface, DeviceInfo
 
 
-class MicDevice(qubes.device_protocol.DeviceInfo):
+class MicDevice(DeviceInfo):
     """Microphone device info class"""
 
     def __init__(self, backend_domain, product, manufacturer):
+        port = Port(
+            backend_domain=backend_domain, port_id="mic", devclass="mic"
+        )
         super().__init__(
-            backend_domain=backend_domain,
-            ident="mic",
-            devclass="mic",
+            port,
             product=product,
             manufacturer=manufacturer,
         )
-        self._interfaces = [
-            qubes.device_protocol.DeviceInterface("******", devclass="mic")
-        ]
+        self._interfaces = [DeviceInterface("******", devclass="mic")]
 
 
 class MicDeviceExtension(qubes.ext.Extension):
