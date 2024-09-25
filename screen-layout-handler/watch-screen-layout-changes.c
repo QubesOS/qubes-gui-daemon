@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <poll.h>
 
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
@@ -29,6 +30,8 @@ int main(int argc, char **argv) {
     signal(SIGCHLD, SIG_IGN);
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGTERM);
+    sigaddset(&sigmask, SIGINT);
+    sigaddset(&sigmask, SIGHUP);
     if (sigprocmask(SIG_BLOCK, &sigmask, NULL) == -1)
         err(1, "Couldn't block signals for graceful signal recovery");
 
@@ -52,19 +55,17 @@ int main(int argc, char **argv) {
     for (;;) {
         int layout_changed;
         XEvent ev;
-        fd_set in_fds;
-        assert(sigfd >= 0 && sigfd < FD_SETSIZE && "sigfd too large");
-        assert(x11_fd >= 0 && x11_fd < FD_SETSIZE && "x11_fd too large");
-        FD_ZERO(&in_fds);
-        FD_SET(sigfd, &in_fds);
-        FD_SET(x11_fd, &in_fds);
+        struct pollfd fds[2] = {
+            { .fd = sigfd, .events = POLLIN | POLLHUP, .revents = 0 },
+            { .fd = x11_fd, .events = POLLIN | POLLHUP, .revents = 0 },
+        };
 
-        if (select(FD_SETSIZE, &in_fds, NULL, NULL, NULL) == -1) {
+        if (poll(fds, 2, -1) == -1) {
             XCloseDisplay(d);
-            err(1, "select");
+            err(1, "poll");
         }
 
-        if (FD_ISSET(sigfd, &in_fds)) {
+        if (fds[0].revents) {
             /* This must be SIGTERM as we are not listening on anything else */
             break;
         }
