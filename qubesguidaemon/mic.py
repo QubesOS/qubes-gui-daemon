@@ -144,11 +144,11 @@ class MicDeviceExtension(qubes.ext.Extension):
 
     # pylint: disable=unused-argument
     @qubes.ext.handler("device-pre-detach:mic")
-    async def on_device_pre_detach_mic(self, vm, event, device):
+    async def on_device_pre_detach_mic(self, vm, event, port):
         """Detach microphone from the VM"""
 
         # there is only one microphone
-        assert device == self.get_device(vm.app)
+        assert port == self.get_device(vm.app).port
 
         audiovm = getattr(vm, "audiovm", None)
 
