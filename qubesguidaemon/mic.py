@@ -66,7 +66,7 @@ class MicDeviceExtension(qubes.ext.Extension):
         return self.on_device_get_mic(vm, event, "mic")
 
     @qubes.ext.handler("device-get:mic")
-    def on_device_get_mic(self, vm, event, ident):
+    def on_device_get_mic(self, vm, event, port_id):
         """Get microphone device
 
         Currently, this assumes audio being handled in dom0. When adding support
@@ -77,7 +77,7 @@ class MicDeviceExtension(qubes.ext.Extension):
         if not isinstance(vm, qubes.vm.adminvm.AdminVM):
             return
 
-        if ident != "mic":
+        if port_id != "mic":
             return
 
         yield self.get_device(vm.app)
