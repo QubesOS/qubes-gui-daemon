@@ -37,6 +37,8 @@
 #include <sys/wait.h>
 #include <sys/resource.h>
 #include <sys/uio.h>
+#include <sys/queue.h>
+#include <sys/random.h>
 #include <signal.h>
 #include <poll.h>
 #include <errno.h>
@@ -111,6 +113,13 @@ static Ghandles ghandles;
 #pragma GCC poison _x _y
 
 #define ignore_result(x) do { __typeof__(x) __attribute__((unused)) _ignore=(x); } while (0)
+
+/* xbuf state and definitions */
+TAILQ_HEAD(tailhead, xbuf_entry) xbuf_head;
+union xbuf_rand xbuf_rand_data;
+long xbuf_lower_bound = 0;
+long xbuf_prev_release_time = 0;
+long xbuf_max_delay = 0;
 
 static int (*default_x11_io_error_handler)(Display *dpy);
 static void inter_appviewer_lock(Ghandles *g, int mode);
@@ -2386,11 +2395,61 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 
 }
 
-/* dispatch local Xserver event */
-static void process_xevent(Ghandles * g)
+/* get current time */
+static long xbuf_current_time_ms()
 {
-    XEvent event_buffer;
-    XNextEvent(g->display, &event_buffer);
+    struct timespec spec;
+    clock_gettime(CLOCK_MONOTONIC, &spec);
+    return (spec.tv_sec) * 1000 + (spec.tv_nsec) / 1000000;
+}
+
+/* get double-bounded random number */
+static long xbuf_random_between(long lower, long upper)
+{
+    long maxval;
+    long randval;
+    size_t randsize;
+    if (lower >= upper)
+        return upper;
+
+    maxval = upper - lower + 1;
+    if (maxval > UINT32_MAX)
+        return UINT32_MAX;
+    
+    do {
+        randsize = getrandom(xbuf_rand_data.raw, sizeof(uint64_t), 0);
+        if (randsize != sizeof(uint64_t))
+            continue;
+    } while (xbuf_rand_data.val >= UINT64_MAX - (UINT64_MAX % maxval));
+
+    randval = (long)(xbuf_rand_data.val % maxval);
+    return lower + randval;
+}
+
+/* queue input event */
+static void xbuf_queue_xevent(XEvent xev)
+{
+    long current_time;
+    long random_delay;
+    struct xbuf_entry *new_xbuf_entry;
+
+    current_time = xbuf_current_time_ms();
+    xbuf_lower_bound = min(max(xbuf_prev_release_time - current_time, 0), xbuf_max_delay);
+    random_delay = xbuf_random_between(xbuf_lower_bound, xbuf_max_delay);
+    new_xbuf_entry = malloc(sizeof(struct xbuf_entry));
+    if (new_xbuf_entry == NULL) {
+        perror("Could not allocate xbuf_entry:");
+        exit(1);
+    }
+    new_xbuf_entry->time = current_time + random_delay;
+    new_xbuf_entry->xev = xev;
+    TAILQ_INSERT_TAIL(&xbuf_head, new_xbuf_entry, entries);
+    xbuf_prev_release_time = new_xbuf_entry->time;
+}
+
+/* dispatch local Xserver event */
+static void process_xevent_core(Ghandles * g, XEvent event_buffer)
+{
     switch (event_buffer.type) {
     case KeyPress:
     case KeyRelease:
@@ -2446,6 +2505,55 @@ static void process_xevent(Ghandles * g)
         }
         break;
     default:;
+    }
+}
+
+/* dispatch queued events */
+static void xbuf_release_xevents(Ghandles * g)
+{
+    long current_time;
+    struct xbuf_entry *current_xbuf_entry;
+
+    current_time = xbuf_current_time_ms();
+    while ((current_xbuf_entry = TAILQ_FIRST(&xbuf_head))
+        && (current_time >= current_xbuf_entry->time)) {
+        XEvent event_buffer = current_xbuf_entry->xev;
+        process_xevent_core(g, event_buffer);
+        TAILQ_REMOVE(&xbuf_head, current_xbuf_entry, entries);
+        free(current_xbuf_entry);
+    }
+}
+
+/* handle or queue local Xserver event */
+static void process_xevent(Ghandles * g)
+{
+    XEvent event_buffer;
+    XNextEvent(g->display, &event_buffer);
+    if (xbuf_max_delay > 0) {
+        switch (event_buffer.type) {
+        case ReparentNotify:
+        case ConfigureNotify:
+        case EnterNotify:
+        case LeaveNotify:
+        case Expose:
+        case MapNotify:
+        case PropertyNotify:
+        case ClientMessage:
+            process_xevent_core(g, event_buffer);
+            break;
+        default:
+            // Buffered:
+            //     KeyPress
+            //     KeyRelease
+            //     ButtonPress
+            //     ButtonRelease
+            //     MotionNotify
+            //     FocusIn
+            //     FocusOut
+            xbuf_queue_xevent(event_buffer);
+        }
+    } else {
+        process_xevent_core(g, event_buffer);
     }
 }
 
@@ -4242,6 +4350,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
             exit(1);
         }
     }
+
+    if ((setting =
+         config_setting_get_member(group, "xbuf_max_delay"))) {
+        xbuf_max_delay = config_setting_get_int(setting);
+    }
 }
 
 static void parse_config(Ghandles * g)
@@ -4364,11 +4477,13 @@ int main(int argc, char **argv)
     /* parse cmdline, possibly overriding values from config */
     parse_cmdline(&ghandles, argc, argv);
     get_boot_lock(ghandles.domid);
+    /* init event queue */
+    TAILQ_INIT(&xbuf_head);
 
     if (!ghandles.nofork) {
         // daemonize...
         if (pipe(pipe_notify) < 0) {
-            perror("canot create pipe:");
+            perror("cannot create pipe:");
             exit(1);
         }
 
@@ -4559,8 +4674,11 @@ int main(int argc, char **argv)
                 handle_message(&ghandles);
                 busy = 1;
             }
+            if (xbuf_max_delay > 0) {
+                xbuf_release_xevents(&ghandles);
+            }
         } while (busy);
-        wait_for_vchan_or_argfd(ghandles.vchan, xfd);
+        wait_for_vchan_or_argfd_once(ghandles.vchan, xfd);
     }
     return 0;
 }

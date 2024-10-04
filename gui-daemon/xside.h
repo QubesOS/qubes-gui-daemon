@@ -82,6 +82,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <unistd.h>
+#include <sys/queue.h>
 #include <libvchan.h>
 #include <X11/Xlib.h>
 #include <xcb/xcb.h>
@@ -242,6 +243,17 @@ struct _global_handles {
 };
 
 typedef struct _global_handles Ghandles;
+
+struct xbuf_entry {
+    XEvent xev;
+    long time;
+    TAILQ_ENTRY(xbuf_entry) entries;
+};
+
+union xbuf_rand {
+    uint64_t val;
+    char raw[sizeof(uint64_t)];
+};
 
 #define ASSERT_HEIGHT_UNSIGNED(h)                                                      \
     do {                                                                               \
