@@ -69,7 +69,7 @@
 /* Supported protocol version */
 
 #define PROTOCOL_VERSION_MAJOR UINT32_C(1)
-#define PROTOCOL_VERSION_MINOR UINT32_C(7)
+#define PROTOCOL_VERSION_MINOR UINT32_C(8)
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
@@ -791,25 +791,7 @@ static struct windowdata *check_nonmanaged_window(Ghandles * g, XID id)
     return item->data;
 }
 
-/* caller must take inter_appviewer_lock first */
-static Time get_clipboard_file_xevent_timestamp() {
-    FILE *file;
-    Time timestamp;
-
-    file = fopen(QUBES_CLIPBOARD_FILENAME ".xevent", "r");
-    if (!file) {
-        perror("open " QUBES_CLIPBOARD_FILENAME ".xevent");
-        return 0;
-    }
-    if (fscanf(file, "%lu", &timestamp) < 1) {
-        fprintf(stderr, "Failed to load " QUBES_CLIPBOARD_FILENAME " file (empty?)\n");
-        timestamp = 0;
-    }
-    fclose(file);
-    return timestamp;
-}
-
-/* caller must take inter_appviewer_lock first */
+/* caller must take inter_appviewer_lock first. for legacy applications */
 static void save_clipboard_file_xevent_timestamp(Time timestamp) {
     FILE *file;
     mode_t old_umask;
@@ -826,6 +808,7 @@ static void save_clipboard_file_xevent_timestamp(Time timestamp) {
     umask(old_umask);
 }
 
+/* for legacy applications */
 static void save_clipboard_source_vmname(const char *vmname) {
     FILE *file;
     mode_t old_umask;
@@ -842,28 +825,151 @@ static void save_clipboard_source_vmname(const char *vmname) {
     umask(old_umask);
 }
 
+/* caller must take inter_appviewer_lock first */
+static void save_clipboard_metadata(struct clipboard_metadata *metadata) {
+    FILE *file;
+    mode_t old_umask;
+
+    /* grant group write */
+    old_umask = umask(0002);
+    file = fopen(QUBES_CLIPBOARD_FILENAME ".metadata", "w");
+    if (!file) {
+        perror("Can not create " QUBES_CLIPBOARD_FILENAME ".metadata file");
+        exit(1);
+    }
+    /* Save in JSON format in key,value pairs for easy parsing.
+     * Keys always inside "" (double-quotes). vmname value is also inside "" */
+    fprintf(file, "{\n");
+    fprintf(file, "\"vmname\":\"%s\",\n", metadata->vmname);
+    fprintf(file, "\"xevent_timestamp\":%lu,\n", metadata->xevent_timestamp);
+    fprintf(file, "\"successful\":%d,\n", metadata->successful);
+    fprintf(file, "\"copy_action\":%d,\n", metadata->copy_action);
+    fprintf(file, "\"paste_action\":%d,\n", metadata->paste_action);
+    fprintf(file, "\"malformed_request\":%d,\n", metadata->malformed_request);
+    fprintf(file, "\"oversized_request\":%d,\n", metadata->oversized_request);
+    fprintf(file, "\"cleared\":%d,\n", metadata->cleared);
+    fprintf(file, "\"qrexec_clipboard\":%d,\n", metadata->qrexec_clipboard);
+    fprintf(file, "\"sent_size\":%d,\n", metadata->sent_size);
+    fprintf(file, "\"buffer_size\":%d,\n", metadata->buffer_size);
+    fprintf(file, "\"protocol_version_xside\":%d,\n", metadata->protocol_version_xside);
+    fprintf(file, "\"protocol_version_vmside\":%d\n", metadata->protocol_version_vmside);
+    // other key,value pairs could be added if needed in future
+    fprintf(file, "}\n");
+    fclose(file);
+    umask(old_umask);
+}
+
+static bool load_clipboard_metadata(struct clipboard_metadata *metadata) {
+    FILE *file;
+    char line[256];
+    char key[256];
+    char value[256];
+
+    file = fopen(QUBES_CLIPBOARD_FILENAME ".metadata", "r");
+    if (!file) {
+        perror("Can not open " QUBES_CLIPBOARD_FILENAME ".metadata file");
+        return false;
+    }
+    // Load JSON format
+    while (fgets(line, sizeof(line), file) != NULL) {
+        if (strcmp(line, "") == 0) continue;
+        if (strcmp(line, "{") == 0) continue;
+        if (strcmp(line, "}") == 0) continue;
+        if (! sscanf(line, "\"%[A-Za-z0-9]\":%[\"A-Za-z0-9]s,", key, value)) {
+            fprintf (stderr, "Failed to parse metadata line: %s\n", line);
+            return false;
+        }
+        if (strcmp(key, "vmname") == 0) {
+            /* value should be less than allowed maximum vmlenght + 2
+             * considering the quotation marks */
+            if (strlen(value) >= 32 + 2) return false;
+            if (strlen(value) < 2) return false;
+            strncpy (metadata->vmname, value + 1, strlen(value) - 2);
+        } else if (strcmp(key, "xevent_timestamp") == 0) {
+            sscanf(value, "%lu", &metadata->xevent_timestamp);
+        } else if (strcmp(key, "successful") == 0) {
+            sscanf(value, "%d", (int *)&metadata->successful);
+        } else if (strcmp(key, "copy_action") == 0) {
+            sscanf(value, "%d", (int *)&metadata->copy_action);
+        } else if (strcmp(key, "paste_action") == 0) {
+            sscanf(value, "%d", (int *)&metadata->paste_action);
+        } else if (strcmp(key, "malformed_request") == 0) {
+            sscanf(value, "%d", (int *)&metadata->malformed_request);
+        } else if (strcmp(key, "oversized_request") == 0) {
+            sscanf(value, "%d", (int *)&metadata->oversized_request);
+        } else if (strcmp(key, "cleared") == 0) {
+            sscanf(value, "%d", (int *)&metadata->cleared);
+        } else if (strcmp(key, "qrexec_clipboard") == 0) {
+            sscanf(value, "%d", (int *)&metadata->qrexec_clipboard);
+        } else if (strcmp(key, "sent_size") == 0) {
+            sscanf(value, "%d", &metadata->sent_size);
+        } else if (strcmp(key, "buffer_size") == 0) {
+            sscanf(value, "%d", &metadata->buffer_size);
+        } else if (strcmp(key, "protocol_version_vmside") == 0) {
+            sscanf(value, "%x", &metadata->protocol_version_vmside);
+        } else if (strcmp(key, "protocol_version_xside") == 0) {
+            sscanf(value, "%x", &metadata->protocol_version_xside);
+        }
+    }
+    fclose(file);
+    return metadata->cleared;
+}
+
+/* caller must take inter_appviewer_lock first */
+static void clear_clipboard(struct clipboard_metadata *metadata) {
+    if (truncate(QUBES_CLIPBOARD_FILENAME, 0)) {
+        perror("failed to truncate " QUBES_CLIPBOARD_FILENAME ", trying unlink instead\n");
+        unlink(QUBES_CLIPBOARD_FILENAME);
+    }
+    metadata->cleared = true;
+    save_clipboard_metadata(metadata);
+    save_clipboard_source_vmname("");
+}
+
+static Time get_clipboard_xevent_timestamp() {
+    struct clipboard_metadata metadata = {0};
+    load_clipboard_metadata(&metadata);
+    return metadata.xevent_timestamp;
+}
+
 /* fetch clippboard content from file */
 /* lock already taken in is_special_keypress() */
 static void get_qubes_clipboard(Ghandles *g, char **data, int *len)
 {
     FILE *file;
     *len = 0;
+    struct clipboard_metadata metadata = {0};
+    strcpy(metadata.vmname, g->vmname);
+    metadata.paste_action = true;
+    metadata.xevent_timestamp = g->clipboard_xevent_time;
+    metadata.buffer_size = g->clipboard_buffer_size;
+    metadata.protocol_version_vmside = g->protocol_version;
+    metadata.protocol_version_xside = PROTOCOL_VERSION(
+        PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
+    metadata.successful = false;
     file = fopen(QUBES_CLIPBOARD_FILENAME, "r");
     if (!file)
         return;
     if (fseek(file, 0, SEEK_END) < 0) {
         show_error_message(g, "secure paste: failed to seek in " QUBES_CLIPBOARD_FILENAME);
-        goto close_done;
+        fclose(file);
+        clear_clipboard(&metadata);
+        return;
     }
     *len = ftell(file);
     if (*len < 0) {
         *len = 0;
         show_error_message(g, "secure paste: failed to determine size of "
             QUBES_CLIPBOARD_FILENAME);
-        goto close_done;
+        fclose(file);
+        clear_clipboard(&metadata);
+        return;
     }
-    if (*len == 0)
-        goto close_done;
+    if (*len == 0) {
+        fclose(file);
+        clear_clipboard(&metadata);
+        return;
+    }
     *data = malloc(*len);
     if (!*data) {
         perror("malloc");
@@ -875,7 +981,9 @@ static void get_qubes_clipboard(Ghandles *g, char **data, int *len)
         *len = 0;
         show_error_message(g, "secure paste: failed to seek in "
             QUBES_CLIPBOARD_FILENAME);
-        goto close_done;
+        fclose(file);
+        clear_clipboard(&metadata);
+        return;
     }
     *len=fread(*data, 1, *len, file);
     if (*len < 0) {
@@ -884,17 +992,17 @@ static void get_qubes_clipboard(Ghandles *g, char **data, int *len)
         *data=NULL;
         show_error_message(g, "secure paste: failed to read from "
             QUBES_CLIPBOARD_FILENAME);
-        goto close_done;
+        fclose(file);
+        clear_clipboard(&metadata);
+        return;
     }
-close_done:
     fclose(file);
-    if (truncate(QUBES_CLIPBOARD_FILENAME, 0)) {
-        perror("failed to truncate " QUBES_CLIPBOARD_FILENAME ", trying unlink instead\n");
-        unlink(QUBES_CLIPBOARD_FILENAME);
-    }
-    save_clipboard_source_vmname("");
+    metadata.sent_size = *len;
+    metadata.successful = true;
+    clear_clipboard(&metadata);
 }
 
+/* This is specific to Microsoft Windows and non-X11 compliant OS */
 static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
     char *path_stdin, *path_stdout, *service_call;
     pid_t pid;
@@ -939,8 +1047,9 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
             }
             umask(old_umask);
             if (op == CLIPBOARD_COPY) {
-                rl.rlim_cur = MAX_CLIPBOARD_SIZE;
-                rl.rlim_max = MAX_CLIPBOARD_SIZE;
+                // TODO: Handle qrexec clipboard buffer size overflow gracefully
+                rl.rlim_cur = g->clipboard_buffer_size;
+                rl.rlim_max = g->clipboard_buffer_size;
                 setrlimit(RLIMIT_FSIZE, &rl);
             }
             dup2(fd, 1);
@@ -967,20 +1076,30 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
+/* This is specific to Microsoft Windows and non-X11 compliant OS */
 static int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
     int ret;
+    struct clipboard_metadata metadata = {0};
+
+    strcpy(metadata.vmname, g->vmname);
+    metadata.copy_action = true;
+    metadata.qrexec_clipboard = true;
+    metadata.xevent_timestamp = g->clipboard_xevent_time;
+    metadata.buffer_size = g->clipboard_buffer_size;
+    metadata.protocol_version_vmside = g->protocol_version;
+    metadata.protocol_version_xside = PROTOCOL_VERSION(
+        PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
 
     inter_appviewer_lock(g, 1);
     ret = run_clipboard_rpc(g, CLIPBOARD_COPY);
     if (ret) {
         save_clipboard_source_vmname(g->vmname);
         save_clipboard_file_xevent_timestamp(g->clipboard_xevent_time);
+        metadata.successful = true;
+        save_clipboard_metadata(&metadata);
     } else {
-        if (truncate(QUBES_CLIPBOARD_FILENAME, 0)) {
-            perror("failed to truncate " QUBES_CLIPBOARD_FILENAME ", trying unlink instead\n");
-            unlink(QUBES_CLIPBOARD_FILENAME);
-        }
-        save_clipboard_source_vmname("");
+        metadata.successful = false;
+        clear_clipboard(&metadata);
     }
 
     inter_appviewer_lock(g, 0);
@@ -990,14 +1109,20 @@ static int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
 /* lock already taken in is_special_keypress() */
 static int paste_qubes_clipboard_using_qrexec(Ghandles * g) {
     int ret;
+    struct clipboard_metadata metadata = {0};
 
     ret = run_clipboard_rpc(g, CLIPBOARD_PASTE);
     if (ret) {
-        if (truncate(QUBES_CLIPBOARD_FILENAME, 0)) {
-            perror("failed to truncate " QUBES_CLIPBOARD_FILENAME ", trying unlink instead\n");
-            unlink(QUBES_CLIPBOARD_FILENAME);
-        }
-        save_clipboard_source_vmname("");
+        strcpy(metadata.vmname, g->vmname);
+        metadata.paste_action = true;
+        metadata.qrexec_clipboard = true;
+        metadata.xevent_timestamp = g->clipboard_xevent_time;
+        metadata.buffer_size = g->clipboard_buffer_size;
+        metadata.protocol_version_vmside = g->protocol_version;
+        metadata.protocol_version_xside = PROTOCOL_VERSION(
+            PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
+        metadata.successful = true;
+        clear_clipboard(&metadata);
     }
 
     return ret;
@@ -1006,7 +1131,7 @@ static int paste_qubes_clipboard_using_qrexec(Ghandles * g) {
 
 /* handle VM message: MSG_CLIPBOARD_DATA
  *  - checks if clipboard data was requested
- *  - store it in file
+ *  - store it in file (+ its metadata)
  */
 static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
 {
@@ -1016,11 +1141,35 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
     Time clipboard_file_xevent_time;
     mode_t old_umask;
 
+    struct clipboard_metadata metadata = {0};
+    strcpy(metadata.vmname, g->vmname);
+    metadata.copy_action = true;
+    metadata.xevent_timestamp = g->clipboard_xevent_time;
+    metadata.sent_size = untrusted_len;
+    metadata.buffer_size = g->clipboard_buffer_size;
+    metadata.protocol_version_vmside = g->protocol_version;
+    metadata.protocol_version_xside = PROTOCOL_VERSION(
+                    PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
+
     if (g->log_level > 0)
         fprintf(stderr, "handle_clipboard_data, len=0x%x\n",
             untrusted_len);
-    if (untrusted_len > MAX_CLIPBOARD_SIZE) {
-        fprintf(stderr, "clipboard data len 0x%x?\n",
+    if ((g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_4X) &&
+                    (untrusted_len > MAX_CLIPBOARD_SIZE)) {
+        /* malformed clipboard sizes for GUI protocol 1.7 and older */
+        metadata.malformed_request = true;
+    } else if (untrusted_len > MAX_CLIPBOARD_BUFFER_SIZE + 1) {
+        /* malformed clipboard sizes for GUI protocol 1.8 */
+        metadata.malformed_request = true;
+    } else if (untrusted_len > g->clipboard_buffer_size) {
+        /* clipboard size over VM limit */
+        metadata.oversized_request = true;
+        if (g->log_level > 0)
+            fprintf(stderr, "clipboard data len %d exceeds VM's allowed!\n",
+                untrusted_len);
+    }
+    if (metadata.malformed_request) {
+        fprintf(stderr, "clipboard data len 0x%x exceeds maximum allowed!\n",
             untrusted_len);
         exit(1);
     }
@@ -1038,8 +1187,14 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
             "received clipboard data when not requested\n");
         return;
     }
+    if (metadata.oversized_request) {
+        free(untrusted_data);
+        metadata.successful = false;
+        clear_clipboard(&metadata);
+        return;
+    }
     inter_appviewer_lock(g, 1);
-    clipboard_file_xevent_time = get_clipboard_file_xevent_timestamp();
+    clipboard_file_xevent_time = get_clipboard_xevent_timestamp();
     /* X11 time is just 32-bit miliseconds counter, which make it wrap every
      * ~50 days - something that is realistic. Handle that wrapping too. */
     if (clipboard_file_xevent_time - g->clipboard_xevent_time < (1UL<<31)) {
@@ -1068,6 +1223,8 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
     }
     save_clipboard_source_vmname(g->vmname);
     save_clipboard_file_xevent_timestamp(g->clipboard_xevent_time);
+    metadata.successful = true;
+    save_clipboard_metadata(&metadata);
 error:
     umask(old_umask);
     inter_appviewer_lock(g, 0);
@@ -1275,7 +1432,7 @@ static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
 }
 
 /* check and handle guid-special keys
- * currently only for inter-vm clipboard copy
+ * currently only for inter-vm clipboard copy/paste
  */
 static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
 {
@@ -1300,7 +1457,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
             hdr.window = remote_winid;
             hdr.untrusted_len = 0;
             if (g->log_level > 0)
-                fprintf(stderr, "secure copy\n");
+                fprintf(stderr, "secure copy succeeded\n");
             write_struct(g->vchan, hdr);
         }
         return 1;
@@ -1312,7 +1469,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
         if (ev->type != KeyPress)
             return 1;
         inter_appviewer_lock(g, 1);
-        clipboard_file_xevent_time = get_clipboard_file_xevent_timestamp();
+        clipboard_file_xevent_time = get_clipboard_xevent_timestamp();
         /* X11 time is just 32-bit miliseconds counter, which make it wrap every
          * ~50 days - something that is realistic. Handle that wrapping too. */
         if (clipboard_file_xevent_time - ev->time < (1UL<<31)) {
@@ -3778,6 +3935,7 @@ struct option longopts[] = {
     { "trayicon-mode", required_argument, NULL, opt_trayicon_mode },
     { "screensaver-name", required_argument, NULL, opt_screensaver_name },
     { "help", no_argument, NULL, 'h' },
+    { "version", no_argument, NULL, 'V' },   // V is virtual and not a short option
     { 0, 0, 0, 0 },
 };
 static const char optstring[] = "+C:d:t:N:c:l:i:K:vqQnafIp:Th";
@@ -3807,6 +3965,9 @@ static void usage(FILE *stream)
     fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
     fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: tint\n");
     fprintf(stream, " --screensaver-name\tscreensaver window name, can be repeated, default: xscreensaver\n");
+    fprintf(stream, " --max-clipboard-size=SIZE\tmaximum clipboard size VM is allowed to send to global clipboard\n");
+    fprintf(stream, " --help, -h\tshow command help\n");
+    fprintf(stream, " --version\tshow protocol version\n");
     fprintf(stream, " --override-redirect=disabled\tdisable the “override redirect” flag (will likely break applications)\n");
     fprintf(stream, "\n");
     fprintf(stream, "Log levels:\n");
@@ -3841,6 +4002,11 @@ static void parse_cmdline_config_path(Ghandles * g, int argc, char **argv)
             }
         } else if (opt == 'h') {
             usage(stdout);
+            exit(0);
+        } else if (opt == 'V') {
+            fprintf(stdout, "Qubes GUI Daemon protocol version: %d.%d\n",
+                    PROTOCOL_VERSION_MAJOR,
+                    PROTOCOL_VERSION_MINOR);
             exit(0);
         }
     }
@@ -4119,6 +4285,7 @@ static void load_default_config_values(Ghandles * g)
     g->copy_seq_key = XK_c;
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
+    g->clipboard_buffer_size = DEFAULT_CLIPBOARD_BUFFER_SIZE;
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
     g->startup_timeout = 45;
@@ -4191,6 +4358,20 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
     }
 
     if ((setting =
+         config_setting_get_member(group, "max_clipboard_size"))) {
+        int value = config_setting_get_int(setting);
+        if (value > MAX_CLIPBOARD_BUFFER_SIZE || value < MIN_CLIPBOARD_BUFFER_SIZE) {
+            fprintf(stderr,
+                    "unsupported value ‘%d’ for max_clipboard_size "
+                    "(must be between %d to %d characters).\n",
+                    value, MAX_CLIPBOARD_BUFFER_SIZE, MIN_CLIPBOARD_BUFFER_SIZE);
+            exit(1);
+        } else {
+            g->clipboard_buffer_size = value;
+        }
+    }
+
+    if ((setting =
          config_setting_get_member(group, "allow_utf8_titles"))) {
         g->allow_utf8_titles = config_setting_get_bool(setting);
     }
@@ -4237,7 +4418,7 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
             g->disable_override_redirect = 0;
         else {
             fprintf(stderr,
-                    "unsupported value ‘%s’ for override_redirect (must be ‘disabled’ or ‘allow’\n",
+                    "unsupported value ‘%s’ for override_redirect (must be ‘disabled’ or ‘allow’)\n",
                     value);
             exit(1);
         }

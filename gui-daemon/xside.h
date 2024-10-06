@@ -218,6 +218,7 @@ struct _global_handles {
     KeySym copy_seq_key;    /* key for secure-copy key sequence */
     int paste_seq_mask;    /* modifiers mask for secure-paste key sequence */
     KeySym paste_seq_key;    /* key for secure-paste key sequence */
+    unsigned int clipboard_buffer_size;    /* maximum clipboard size limit */
     int qrexec_clipboard;    /* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
     int use_kdialog;    /* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
     int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
@@ -303,6 +304,23 @@ static inline void put_shm_image(
                       0),
         "xcb_shm_put_image");
 }
+
+/* Inter-VM shared clipboard metadata (output is JSON)*/
+struct clipboard_metadata {
+    char vmname[32];            /* name of VM */
+    Time xevent_timestamp;      /* timestamp of keypress which triggered copy event */
+    bool successful;            /* if operation was successful */
+    bool copy_action;           /* if it was a copy action */
+    bool paste_action;          /* if it was a paste action */
+    bool malformed_request;     /* if VM tried to violate its protocol specs */
+    bool oversized_request;     /* if VM tried to send over its limit */
+    bool cleared;               /* if clipboard data is cleared */
+    bool qrexec_clipboard;      /* if clipboard data is from MS-Windows or similar */
+    unsigned int sent_size;     /* number of bytes sent by vmside */
+    unsigned int buffer_size;   /* maximum allowed clipboard size for this vm */
+    uint32_t protocol_version_vmside;    /* inter-vm clipboard GUI protocol version - vmside */
+    uint32_t protocol_version_xside;     /* inter-vm clipboard GUI protocol version - xside */
+};
 
 #define QUBES_NO_SHM_SEGMENT ((xcb_shm_seg_t)-1)
 
