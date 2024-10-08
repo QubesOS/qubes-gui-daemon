@@ -19,8 +19,9 @@
 # with this program; if not, see <http://www.gnu.org/licenses/>.
 
 """Microphone control extension"""
-
+import asyncio
 import subprocess
+import sys
 
 import qubes.ext
 import qubes.vm.adminvm
@@ -116,7 +117,7 @@ class MicDeviceExtension(qubes.ext.Extension):
         assert device == self.get_device(vm.app)
         if options:
             raise qubes.exc.QubesException(
-                "mic device does not support options"
+                'Microphone assignment does not support user options'
             )
 
         audiovm = getattr(vm, "audiovm", None)
@@ -187,6 +188,14 @@ class MicDeviceExtension(qubes.ext.Extension):
                 "/audio-input-config/{}".format(vm.name), "0"
             )
 
+    @qubes.ext.handler('device-pre-assign:mic')
+    async def on_device_assign_mic(self, vm, event, device, options):
+        # pylint: disable=unused-argument
+
+        if options:
+            raise qubes.exc.QubesException(
+                'Microphone assignment does not support user options')
+
     @qubes.ext.handler("property-set:audiovm")
     def on_property_set(self, subject, event, name, newvalue, oldvalue=None):
         if not subject.is_running() or not newvalue:
@@ -237,3 +246,51 @@ class MicDeviceExtension(qubes.ext.Extension):
             vm.audiovm.untrusted_qdb.rm(
                 "/audio-input-request/{}".format(vm.name)
             )
+
+    async def attach_and_notify(self, vm, assignment):
+        # bypass DeviceCollection logic preventing double attach
+        device = assignment.device
+        if assignment.mode.value == "ask-to-attach":
+            allowed = await qubes.ext.utils.confirm_device_attachment(
+                device, {vm: assignment})
+            allowed = allowed.strip()
+            if vm.name != allowed:
+                return
+        await self.on_device_pre_attach_mic(
+            vm, 'device-pre-attach:mic', device, assignment.options)
+        await vm.fire_event_async(
+            'device-attach:mic', device=device, options=assignment.options)
+
+    @qubes.ext.handler('domain-start')
+    async def on_domain_start(self, vm, _event, **_kwargs):
+        # pylint: disable=unused-argument
+        to_attach = {}
+        assignments = vm.devices['mic'].get_assigned_devices()
+        # the most specific assignments first
+        for assignment in reversed(sorted(assignments)):
+            for device in assignment.devices:
+                if isinstance(device, qubes.device_protocol.UnknownDevice):
+                    continue
+                if device.attachment:
+                    continue
+                if not assignment.matches(device):
+                    print(
+                        "Unrecognized identity, skipping attachment of device "
+                        f"from the port {assignment}", file=sys.stderr)
+                    continue
+                # chose first assignment (the most specific) and ignore rest
+                if device not in to_attach:
+                    # make it unique
+                    to_attach[device] = assignment.clone(device=device)
+        for assignment in to_attach.values():
+            asyncio.ensure_future(self.attach_and_notify(vm, assignment))
+
+    @qubes.ext.handler('domain-shutdown')
+    async def on_domain_shutdown(self, vm, _event, **_kwargs):
+        # pylint: disable=unused-argument
+        mic = self.get_device(vm.app)
+        if mic in vm.devices['mic'].get_attached_devices():
+            asyncio.ensure_future(vm.fire_event_async(
+                f'device-detach:mic', port=mic.port
+            ))
+
