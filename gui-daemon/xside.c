@@ -69,7 +69,7 @@
 /* Supported protocol version */
 
 #define PROTOCOL_VERSION_MAJOR UINT32_C(1)
-#define PROTOCOL_VERSION_MINOR UINT32_C(7)
+#define PROTOCOL_VERSION_MINOR UINT32_C(8)
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
@@ -939,8 +939,8 @@ static int run_clipboard_rpc(Ghandles * g, enum clipboard_op op) {
             }
             umask(old_umask);
             if (op == CLIPBOARD_COPY) {
-                rl.rlim_cur = MAX_CLIPBOARD_SIZE;
-                rl.rlim_max = MAX_CLIPBOARD_SIZE;
+                rl.rlim_cur = g->clipboard_buffer_size;
+                rl.rlim_max = g->clipboard_buffer_size;
                 setrlimit(RLIMIT_FSIZE, &rl);
             }
             dup2(fd, 1);
@@ -1013,16 +1013,17 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
     FILE *file;
     char *untrusted_data;
     size_t untrusted_data_sz;
+    bool clipboard_buffer_exceeded = false;
     Time clipboard_file_xevent_time;
     mode_t old_umask;
 
     if (g->log_level > 0)
         fprintf(stderr, "handle_clipboard_data, len=0x%x\n",
             untrusted_len);
-    if (untrusted_len > MAX_CLIPBOARD_SIZE) {
-        fprintf(stderr, "clipboard data len 0x%x?\n",
+    if (untrusted_len > g->clipboard_buffer_size) {
+        clipboard_buffer_exceeded = true;
+        fprintf(stderr, "clipboard data len 0x%x exceeds maximum allowed!\n",
             untrusted_len);
-        exit(1);
     }
     /* now sanitized */
     untrusted_data_sz = untrusted_len;
@@ -1057,7 +1058,8 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
         show_error_message(g, "secure copy: failed to open file " QUBES_CLIPBOARD_FILENAME);
         goto error;
     }
-    if (fwrite(untrusted_data, 1, untrusted_data_sz, file) != untrusted_data_sz) {
+    if (! clipboard_buffer_exceeded)    // do not write anything to output if size exceeds limit
+            if (fwrite(untrusted_data, 1, untrusted_data_sz, file) != untrusted_data_sz) {
         fclose(file);
         show_error_message(g, "secure copy: failed to write to file " QUBES_CLIPBOARD_FILENAME);
         goto error;
@@ -3778,6 +3780,7 @@ struct option longopts[] = {
     { "trayicon-mode", required_argument, NULL, opt_trayicon_mode },
     { "screensaver-name", required_argument, NULL, opt_screensaver_name },
     { "help", no_argument, NULL, 'h' },
+    { "version", no_argument, NULL, 'V' },   // V is virtual and not a short option
     { 0, 0, 0, 0 },
 };
 static const char optstring[] = "+C:d:t:N:c:l:i:K:vqQnafIp:Th";
@@ -3807,6 +3810,8 @@ static void usage(FILE *stream)
     fprintf(stream, " --title-name, -T\tprefix window titles with VM name\n");
     fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: tint\n");
     fprintf(stream, " --screensaver-name\tscreensaver window name, can be repeated, default: xscreensaver\n");
+    fprintf(stream, " --help, -h\tshow command help\n");
+    fprintf(stream, " --version\tshow program version\n");
     fprintf(stream, " --override-redirect=disabled\tdisable the “override redirect” flag (will likely break applications)\n");
     fprintf(stream, "\n");
     fprintf(stream, "Log levels:\n");
@@ -3841,6 +3846,11 @@ static void parse_cmdline_config_path(Ghandles * g, int argc, char **argv)
             }
         } else if (opt == 'h') {
             usage(stdout);
+            exit(0);
+        } else if (opt == 'V') {
+            fprintf(stdout, "Qubes GUI Daemon v%d.%d\n",
+                    PROTOCOL_VERSION_MAJOR,
+                    PROTOCOL_VERSION_MINOR);
             exit(0);
         }
     }
@@ -4119,6 +4129,7 @@ static void load_default_config_values(Ghandles * g)
     g->copy_seq_key = XK_c;
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
+    g->clipboard_buffer_size = DEFAULT_CLIPBOARD_BUFFER_SIZE;
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
     g->startup_timeout = 45;
@@ -4191,6 +4202,20 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
     }
 
     if ((setting =
+         config_setting_get_member(group, "max_clipboard_size"))) {
+        int value = config_setting_get_int(setting);
+        if (value > MAX_CLIPBOARD_BUFFER_SIZE || value < MIN_CLIPBOARD_BUFFER_SIZE) {
+            fprintf(stderr,
+                    "unsupported value ‘%d’ for max_clipboard_size "
+                    "(must be between %d to %d characters).\n",
+                    value, MAX_CLIPBOARD_BUFFER_SIZE, MIN_CLIPBOARD_BUFFER_SIZE);
+            exit(1);
+        } else {
+            g->clipboard_buffer_size = value;
+        }
+    }
+
+    if ((setting =
          config_setting_get_member(group, "allow_utf8_titles"))) {
         g->allow_utf8_titles = config_setting_get_bool(setting);
     }
@@ -4237,7 +4262,7 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
             g->disable_override_redirect = 0;
         else {
             fprintf(stderr,
-                    "unsupported value ‘%s’ for override_redirect (must be ‘disabled’ or ‘allow’\n",
+                    "unsupported value ‘%s’ for override_redirect (must be ‘disabled’ or ‘allow’)\n",
                     value);
             exit(1);
         }

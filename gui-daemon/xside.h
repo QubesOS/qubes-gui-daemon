@@ -90,6 +90,11 @@
 #include <qubes-gui-protocol.h>
 #include "util.h"
 
+/* default, minimum and maximum clipboard buffer lenght */
+#define DEFAULT_CLIPBOARD_BUFFER_SIZE 64000   // make this 1000 bytes less than previous value so it works with older vmside agent
+#define MIN_CLIPBOARD_BUFFER_SIZE 256
+#define MAX_CLIPBOARD_BUFFER_SIZE MAX_CLIPBOARD_SIZE
+
 #define QUBES_POLICY_EVAL_SIMPLE_SOCKET ("/etc/qubes-rpc/" QUBES_SERVICE_EVAL_SIMPLE)
 #define QREXEC_PRELUDE_CLIPBOARD_PASTE (QUBES_SERVICE_EVAL_SIMPLE "+" QUBES_SERVICE_CLIPBOARD_PASTE " dom0 keyword adminvm")
 
@@ -218,6 +223,7 @@ struct _global_handles {
     KeySym copy_seq_key;    /* key for secure-copy key sequence */
     int paste_seq_mask;    /* modifiers mask for secure-paste key sequence */
     KeySym paste_seq_key;    /* key for secure-paste key sequence */
+    unsigned int clipboard_buffer_size;    /* maximum clipboard character limit */
     int qrexec_clipboard;    /* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
     int use_kdialog;    /* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
     int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
