@@ -39,7 +39,14 @@ class MicDevice(DeviceInfo):
             product=product,
             manufacturer=manufacturer,
         )
-        self._interfaces = [DeviceInterface("******", devclass="mic")]
+        self._interfaces = [DeviceInterface("000000", devclass="mic")]
+
+    @property
+    def device_id(self) -> str:
+        """
+        Get identification of a device not related to port.
+        """
+        return "dom0:mic::m000000"
 
 
 class MicDeviceExtension(qubes.ext.Extension):
