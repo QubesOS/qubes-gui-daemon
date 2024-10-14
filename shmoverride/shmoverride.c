@@ -533,24 +533,26 @@ static int try_init(void)
         fputs("snprintf() failed!\n", stderr);
         abort();
     }
-    shmid_filename = __shmid_filename;
-    fprintf(stderr, "shmoverride: running with shm file %s\n", shmid_filename);
+    fprintf(stderr, "shmoverride: running with shm file %s\n", __shmid_filename);
 
     /* Try to lock the shm.id file (don't rely on whether it exists, a previous
      * process might have crashed).
      */
-    idfd = open(shmid_filename, O_RDWR | O_CLOEXEC | O_CREAT | O_NOCTTY, 0600);
+    idfd = open(__shmid_filename, O_RDWR | O_CLOEXEC | O_CREAT | O_NOCTTY, 0600);
     if (idfd < 0) {
         fprintf(stderr, "shmoverride opening %s: %s\n",
-            shmid_filename, strerror(errno));
+            __shmid_filename, strerror(errno));
         goto cleanup;
     }
     if (flock(idfd, LOCK_EX | LOCK_NB) < 0) {
         fprintf(stderr, "shmoverride flock %s: %s\n",
-                shmid_filename, strerror(errno));
+                __shmid_filename, strerror(errno));
         /* There is probably an alive process holding the file, give up. */
         goto cleanup;
     }
+    /* Save shmid file for cleanup only after taking the lock */
+    shmid_filename = __shmid_filename;
+
     if (ftruncate(idfd, SHM_ARGS_SIZE) < 0) {
         perror("shmoverride ftruncate");
         goto cleanup;
