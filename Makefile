@@ -35,7 +35,9 @@ selinux_policies ::= qubes-gui-daemon.pp
 
 all_targets := gui-daemon/qubes-guid gui-daemon/qubes-guid.1 \
      shmoverride/shmoverride.so \
-     shmoverride/X-wrapper-qubes pulse/pacat-simple-vchan \
+     shmoverride/X-wrapper-qubes \
+	 shmoverride/Xwayland-wrapper \
+	 pulse/pacat-simple-vchan \
      screen-layout-handler/watch-screen-layout-changes
 
 
@@ -52,6 +54,9 @@ shmoverride/shmoverride.so:
 shmoverride/X-wrapper-qubes:
 	(cd shmoverride; $(MAKE) X-wrapper-qubes)
 
+shmoverride/Xwayland-wrapper:
+	(cd shmoverride; $(MAKE) Xwayland-wrapper)
+
 pulse/pacat-simple-vchan:
 	$(MAKE) -C pulse pacat-simple-vchan
 
@@ -67,6 +72,7 @@ install:
 	install -D pulse/pacat-simple-vchan $(DESTDIR)/usr/bin/pacat-simple-vchan
 	install -D shmoverride/X-wrapper-qubes $(DESTDIR)/usr/bin/X-wrapper-qubes
 	install -D shmoverride/shmoverride.so $(DESTDIR)$(LIBDIR)/qubes-gui-daemon/shmoverride.so
+	install -D shmoverride/Xwayland-wrapper $(DESTDIR)/usr/libexec/qubes/wrappers/Xwayland
 	install -D -m 0644 gui-daemon/guid.conf $(DESTDIR)/etc/qubes/guid.conf
 	install -D gui-daemon/qubes-localgroup.sh $(DESTDIR)/etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
 	install -D -m 0644 common/90-default-gui-daemon.policy $(DESTDIR)/etc/qubes/policy.d/90-default-gui-daemon.policy
