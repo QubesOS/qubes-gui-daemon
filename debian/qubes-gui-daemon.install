@@ -1,6 +1,7 @@
 usr/bin/X.qubes
 usr/bin/qubes-guid
 usr/libexec/qubes/watch-screen-layout-changes
+usr/libexec/qubes/wrappers/Xwayland
 usr/share/man/man1/qubes-guid.1
 usr/lib/*/qubes-gui-daemon/shmoverride.so
 usr/lib/qubes/icon-receiver
