@@ -498,7 +498,12 @@ static int try_init(void)
     } else if (!(real_munmap = dlsym(RTLD_NEXT, "munmap"))) {
         fprintf(stderr, "shmoverride: no munmap?: %s\n", dlerror());
         abort();
-    } else if ((gntdev_fd = open("/dev/xen/gntdev", O_PATH | O_CLOEXEC | O_NOCTTY)) == -1) {
+    }
+
+    if ((display = get_display()) < 0)
+        goto cleanup;
+
+    if ((gntdev_fd = open("/dev/xen/gntdev", O_PATH | O_CLOEXEC | O_NOCTTY)) == -1) {
         perror("open /dev/xen/gntdev");
         goto cleanup;
     } else if (real_fstat(VER gntdev_fd, &global_buf)) {
@@ -508,6 +513,7 @@ static int try_init(void)
         fprintf(stderr, "/dev/xen/gntdev is not a character special file");
         goto cleanup;
     }
+
 #ifdef XENCTRL_HAS_XC_INTERFACE
     xc_hnd = xc_interface_open(NULL, NULL, 0);
     if (!xc_hnd) {
@@ -524,9 +530,6 @@ static int try_init(void)
         perror("shmoverride: xengnttab_open failed");
         goto cleanup; // Allow it to run when not under Xen.
     }
-
-    if ((display = get_display()) < 0)
-        goto cleanup;
 
     if ((unsigned int)snprintf(__shmid_filename, sizeof __shmid_filename,
         SHMID_FILENAME_PREFIX "%d", display) >= sizeof __shmid_filename) {
