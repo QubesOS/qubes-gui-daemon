@@ -178,6 +178,7 @@ rm -f %{name}-%{version}
 /etc/xdg/autostart/qubes-icon-receiver.desktop
 /etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
 /usr/libexec/qubes/watch-screen-layout-changes
+/usr/libexec/qubes/wrappers/Xwayland
 /usr/lib/qubes/icon-receiver
 %config %{_sysconfdir}/qubes-rpc/qubes.WindowIconUpdater
 %config %{_sysconfdir}/qubes/rpc-config/qubes.WindowIconUpdater

@@ -72,6 +72,8 @@ static int (*real_munmap) (void *shmaddr, size_t len);
 static int (*real_fstat64) (VER_ARG int fd, struct stat64 *buf);
 static int (*real_fstat)(VER_ARG int fd, struct stat *buf);
 
+static int try_init(void);
+
 static struct stat global_buf;
 static int gntdev_fd = -1;
 
@@ -84,7 +86,7 @@ static int xc_hnd;
 static xengnttab_handle *xgt;
 static char __shmid_filename[SHMID_FILENAME_LEN];
 static char *shmid_filename = NULL;
-static int idfd = -1, display = -1;
+static int idfd = -1, display = -1, init_called = 0;
 
 static uint8_t *mmap_mfns(struct shm_args_hdr *shm_args) {
     uint8_t *map;
@@ -150,6 +152,8 @@ ASM_DEF(void *, mmap,
         real_fstat64 = FSTAT64;
         real_fstat = FSTAT;
     }
+
+    try_init();
 
 #if defined MAP_ANON && defined MAP_ANONYMOUS && (MAP_ANONYMOUS) != (MAP_ANON)
 # error header bug (def mismatch)
@@ -217,6 +221,9 @@ ASM_DEF(int, munmap, void *addr, size_t len)
 {
     if (len > SIZE_MAX - XC_PAGE_SIZE)
         abort();
+
+    try_init();
+
     const uintptr_t addr_int = (uintptr_t)addr;
     const uintptr_t rounded_addr = addr_int & ~(uintptr_t)(XC_PAGE_SIZE - 1);
     return real_munmap((void *)rounded_addr, len + (addr_int - rounded_addr));
@@ -350,7 +357,7 @@ static bool parse_display_name(const char *const ptr, int *display_num)
     return true;
 }
 
-static int get_display(void)
+static int get_display(const char *progname_allowlist)
 {
     ssize_t res;
     int fd, rc = -1, display = 0;
@@ -369,6 +376,7 @@ static int get_display(void)
         return rc;
     }
 
+    bool argv0 = progname_allowlist != NULL;
     bool skip = true; /* Skip argv[0] (the program name) */
     while(true) {
         errno = 0;
@@ -381,6 +389,35 @@ static int get_display(void)
         }
         size_t length = (size_t)res;
         assert(ptr && ptr[length] == '\0');
+
+        if (argv0) {
+            char *current_item, *next_item;
+            char *allowlist_copy = strdup(progname_allowlist);
+            char *progname = strrchr(ptr, '/');
+
+            if (!allowlist_copy) {
+                perror("allowlist copy");
+                goto cleanup;
+            }
+
+            if (progname)
+                /* skip '/' */
+                progname++;
+            else
+                progname = ptr;
+
+            next_item = allowlist_copy;
+            while ((current_item = strsep(&next_item, " ")) != NULL) {
+                if (strcmp(current_item, progname) == 0)
+                    break;
+            }
+            free(allowlist_copy);
+            /* abort if not found */
+            if (!current_item) {
+                fprintf(stderr, "skipping shmoverride in %s\n", progname);
+                goto cleanup;
+            }
+        }
 
         /*
          * Skip option arguments.  Some options take more than one argument,
@@ -438,6 +475,7 @@ static int assign_off(off_t *off) {
 
 #define STAT(id)                                          \
 ASM_DEF(int, f ## id, int filedes, struct id *buf) {      \
+    try_init();                                           \
     int res = real_f ## id(VER filedes, buf);             \
     if (res ||                                            \
         !S_ISCHR(buf->st_mode) ||                         \
@@ -454,6 +492,7 @@ STAT(stat64)
 #ifdef _STAT_VER
 #define STAT(id)                                                    \
 ASM_DEF(int, __fx ## id, int ver, int filedes, struct id *buf) {    \
+    try_init();                                                     \
     if (ver != _STAT_VER) {                                         \
         fprintf(stderr,                                             \
                 "Wrong _STAT_VER: got %d, expected %d, libc has incompatibly changed\n", \
@@ -467,9 +506,13 @@ STAT(stat64)
 #undef STAT
 #endif
 
-int __attribute__ ((constructor)) initfunc(void)
+static int try_init(void)
 {
-    unsetenv("LD_PRELOAD");
+    // Ideally it is being called in constructor, if something is calling this before
+    // constructor - we're assuming it is not multi-threaded code.
+    if (__builtin_expect(init_called, 1)) return 0;
+    init_called = 1;
+
     fprintf(stderr, "shmoverride constructor running\n");
     dlerror();
     if (!(real_mmap = dlsym(RTLD_NEXT, "mmap64"))) {
@@ -484,7 +527,14 @@ int __attribute__ ((constructor)) initfunc(void)
     } else if (!(real_munmap = dlsym(RTLD_NEXT, "munmap"))) {
         fprintf(stderr, "shmoverride: no munmap?: %s\n", dlerror());
         abort();
-    } else if ((gntdev_fd = open("/dev/xen/gntdev", O_PATH | O_CLOEXEC | O_NOCTTY)) == -1) {
+    }
+
+    if ((display = get_display(getenv("SHMOVERRIDE_PROGLIST"))) < 0)
+        goto cleanup;
+
+    unsetenv("LD_PRELOAD");
+
+    if ((gntdev_fd = open("/dev/xen/gntdev", O_PATH | O_CLOEXEC | O_NOCTTY)) == -1) {
         perror("open /dev/xen/gntdev");
         goto cleanup;
     } else if (real_fstat(VER gntdev_fd, &global_buf)) {
@@ -494,6 +544,7 @@ int __attribute__ ((constructor)) initfunc(void)
         fprintf(stderr, "/dev/xen/gntdev is not a character special file");
         goto cleanup;
     }
+
 #ifdef XENCTRL_HAS_XC_INTERFACE
     xc_hnd = xc_interface_open(NULL, NULL, 0);
     if (!xc_hnd) {
@@ -511,32 +562,31 @@ int __attribute__ ((constructor)) initfunc(void)
         goto cleanup; // Allow it to run when not under Xen.
     }
 
-    if ((display = get_display()) < 0)
-        goto cleanup;
-
     if ((unsigned int)snprintf(__shmid_filename, sizeof __shmid_filename,
         SHMID_FILENAME_PREFIX "%d", display) >= sizeof __shmid_filename) {
         fputs("snprintf() failed!\n", stderr);
         abort();
     }
-    shmid_filename = __shmid_filename;
-    fprintf(stderr, "shmoverride: running with shm file %s\n", shmid_filename);
+    fprintf(stderr, "shmoverride: running with shm file %s\n", __shmid_filename);
 
     /* Try to lock the shm.id file (don't rely on whether it exists, a previous
      * process might have crashed).
      */
-    idfd = open(shmid_filename, O_RDWR | O_CLOEXEC | O_CREAT | O_NOCTTY, 0600);
+    idfd = open(__shmid_filename, O_RDWR | O_CLOEXEC | O_CREAT | O_NOCTTY, 0600);
     if (idfd < 0) {
         fprintf(stderr, "shmoverride opening %s: %s\n",
-            shmid_filename, strerror(errno));
+            __shmid_filename, strerror(errno));
         goto cleanup;
     }
     if (flock(idfd, LOCK_EX | LOCK_NB) < 0) {
         fprintf(stderr, "shmoverride flock %s: %s\n",
-                shmid_filename, strerror(errno));
+                __shmid_filename, strerror(errno));
         /* There is probably an alive process holding the file, give up. */
         goto cleanup;
     }
+    /* Save shmid file for cleanup only after taking the lock */
+    shmid_filename = __shmid_filename;
+
     if (ftruncate(idfd, SHM_ARGS_SIZE) < 0) {
         perror("shmoverride ftruncate");
         goto cleanup;
@@ -580,6 +630,10 @@ cleanup:
     }
     shm_args = NULL;
     return 0;
+}
+int __attribute__ ((constructor)) initfunc(void)
+{
+    return try_init();
 }
 
 int __attribute__ ((destructor)) descfunc(void)

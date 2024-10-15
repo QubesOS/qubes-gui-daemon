@@ -33,7 +33,7 @@ extra_cflags := -g -O2 -I../include/ -fPIC -Wall -Wextra -Werror \
 		-I../include -fvisibility=hidden -pthread
 CC=gcc
 
-all: shmoverride.so X-wrapper-qubes
+all: shmoverride.so X-wrapper-qubes Xwayland-wrapper
 
 shmoverride.so: shmoverride.o ./list.o
 	$(CC) $(CFLAGS) $(extra_cflags) -shared -o shmoverride.so \
@@ -43,8 +43,11 @@ vpath %.c ../common
 
 X-wrapper-qubes: X-wrapper-qubes.o
 
+Xwayland-wrapper: Xwayland-wrapper.in
+	sed -e "s,@SHMOVERRIDE_LIB_PATH@,$(LIBDIR)/qubes-gui-daemon/shmoverride.so," < $< > $@
+
 clean:
-	rm -f ./*~ ./*.o shmoverride.so X-wrapper-qubes
+	rm -f ./*~ ./*.o shmoverride.so X-wrapper-qubes Xwayland-wrapper
 
 %.o: %.c Makefile
 	$(CC) -MD -MP -MF $@.dep -c -o $@ $(extra_cflags) $(CFLAGS) $<
