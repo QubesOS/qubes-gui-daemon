@@ -388,7 +388,7 @@ def main():
     args = parser.parse_args()
 
     if not args.force:
-        if (not os.path.exists('/var/run/qubes-service/guivm-gui-agent') and
+        if (not os.path.exists('/var/run/qubes-service/guivm') and
             not os.path.exists('/etc/qubes-release')):
 
             print('Not in GuiVM or dom0, exiting '
