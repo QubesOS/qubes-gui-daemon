@@ -38,8 +38,6 @@ int vchan_is_closed = 0;
  */
 int double_buffered = 1;
 
-static int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd);
-
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void)) {
     vchan_at_eof = new_vchan_at_eof;
 }
@@ -99,7 +97,7 @@ int read_data(libvchan_t *vchan, char *buf, int size)
     int ret;
     while (written < size) {
         while (!libvchan_data_ready(vchan))
-            wait_for_vchan_or_argfd_once(vchan, -1);
+            wait_for_vchan_or_argfd_once(vchan, -1, 1000);
         ret = libvchan_read(vchan, buf + written, size - written);
         if (ret <= 0)
             handle_vchan_error(vchan, "read data");
@@ -109,7 +107,7 @@ int read_data(libvchan_t *vchan, char *buf, int size)
     return size;
 }
 
-static int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd)
+int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd, int timeout)
 {
     int ret;
     write_data(vchan, NULL, 0);    // trigger write of queued data, if any present
@@ -117,7 +115,7 @@ static int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd)
         { .fd = libvchan_fd_for_select(vchan), .events = POLLIN, .revents = 0 },
         { .fd = fd, .events = POLLIN, .revents = 0 },
     };
-    ret = poll(fds, fd == -1 ? 1 : 2, 1000);
+    ret = poll(fds, fd == -1 ? 1 : 2, timeout);
     if (ret < 0) {
         if (errno == EINTR)
             return -1;
@@ -138,12 +136,5 @@ static int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd)
         // clear libvchan_fd pending state 
         libvchan_wait(vchan);
     }
-    return ret;
-}
-
-int wait_for_vchan_or_argfd(libvchan_t *vchan, int fd)
-{
-    int ret;
-    while ((ret=wait_for_vchan_or_argfd_once(vchan, fd)) == 0);
     return ret;
 }

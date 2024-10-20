@@ -37,6 +37,8 @@
 #include <sys/wait.h>
 #include <sys/resource.h>
 #include <sys/uio.h>
+#include <sys/queue.h>
+#include <sys/random.h>
 #include <signal.h>
 #include <poll.h>
 #include <errno.h>
@@ -2386,11 +2388,71 @@ static void process_xevent_xembed(Ghandles * g, const XClientMessageEvent * ev)
 
 }
 
-/* dispatch local Xserver event */
-static void process_xevent(Ghandles * g)
+/* get current time */
+static int64_t ebuf_current_time_ms()
 {
-    XEvent event_buffer;
-    XNextEvent(g->display, &event_buffer);
+    int64_t timeval;
+    struct timespec spec;
+    clock_gettime(CLOCK_MONOTONIC, &spec);
+    timeval = (((int64_t)spec.tv_sec) * 1000LL) + (((int64_t)spec.tv_nsec) / 1000000LL);
+    return timeval;
+}
+
+/* get random delay value */
+static uint32_t ebuf_random_delay(Ghandles * g, uint32_t lower_bound)
+{
+    uint32_t maxval;
+    uint32_t randval;
+    size_t randsize;
+    union ebuf_rand ebuf_rand_data;
+
+    if (lower_bound >= g->ebuf_max_delay) {
+        fprintf(stderr,
+                "Bug detected - lower_bound >= g->ebuf_max_delay, events may get briefly stuck");
+        return g->ebuf_max_delay;
+    }
+
+    maxval = g->ebuf_max_delay - lower_bound + 1;
+    
+    do {
+        randsize = getrandom(ebuf_rand_data.raw, sizeof(uint32_t), 0);
+        if (randsize != sizeof(uint32_t))
+            continue;
+    } while (ebuf_rand_data.val >= UINT32_MAX - (UINT32_MAX % maxval));
+
+    randval = ebuf_rand_data.val % maxval;
+    return lower_bound + randval;
+}
+
+/* queue input event */
+static void ebuf_queue_xevent(Ghandles * g, XEvent xev)
+{
+    int64_t current_time;
+    uint32_t random_delay;
+    struct ebuf_entry *new_ebuf_entry;
+    uint32_t lower_bound;
+
+    current_time = ebuf_current_time_ms();
+    lower_bound = min(max(g->ebuf_prev_release_time - current_time, 0), g->ebuf_max_delay);
+    random_delay = ebuf_random_delay(g, lower_bound);
+    new_ebuf_entry = malloc(sizeof(struct ebuf_entry));
+    if (new_ebuf_entry == NULL) {
+        perror("Could not allocate ebuf_entry:");
+        exit(1);
+    }
+    if (current_time > 0 && random_delay > (LONG_MAX - current_time)) {
+        fprintf(stderr, "Event scheduler overflow detected, cannot continue");
+        exit(1);
+    }
+    new_ebuf_entry->time = current_time + random_delay;
+    new_ebuf_entry->xev = xev;
+    TAILQ_INSERT_TAIL(&(g->ebuf_head), new_ebuf_entry, entries);
+    g->ebuf_prev_release_time = new_ebuf_entry->time;
+}
+
+/* dispatch local Xserver event */
+static void process_xevent_core(Ghandles * g, XEvent event_buffer)
+{
     switch (event_buffer.type) {
     case KeyPress:
     case KeyRelease:
@@ -2446,6 +2508,40 @@ static void process_xevent(Ghandles * g)
         }
         break;
     default:;
+    }
+}
+
+/* dispatch queued events */
+static void ebuf_release_xevents(Ghandles * g)
+{
+    int64_t current_time;
+    struct ebuf_entry *current_ebuf_entry;
+
+    current_time = ebuf_current_time_ms();
+    while ((current_ebuf_entry = TAILQ_FIRST(&(g->ebuf_head)))
+        && (current_time >= current_ebuf_entry->time)) {
+        XEvent event_buffer = current_ebuf_entry->xev;
+        process_xevent_core(g, event_buffer);
+        TAILQ_REMOVE(&(g->ebuf_head), current_ebuf_entry, entries);
+        free(current_ebuf_entry);
+    }
+    current_ebuf_entry = TAILQ_FIRST(&(g->ebuf_head));
+    if (current_ebuf_entry == NULL) {
+        g->ebuf_next_timeout = VCHAN_DEFAULT_POLL_DURATION;
+    } else {
+        g->ebuf_next_timeout = (int)(current_ebuf_entry->time - current_time);
+    }
+}
+
+/* handle or queue local Xserver event */
+static void process_xevent(Ghandles * g)
+{
+    XEvent event_buffer;
+    XNextEvent(g->display, &event_buffer);
+    if (g->ebuf_max_delay > 0) {
+        ebuf_queue_xevent(g, event_buffer);
+    } else {
+        process_xevent_core(g, event_buffer);
     }
 }
 
@@ -4237,10 +4333,22 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
             g->disable_override_redirect = 0;
         else {
             fprintf(stderr,
-                    "unsupported value ‘%s’ for override_redirect (must be ‘disabled’ or ‘allow’\n",
+                    "unsupported value '%s' for override_redirect (must be 'disabled' or 'allow')\n",
                     value);
             exit(1);
         }
+    }
+
+    if ((setting =
+         config_setting_get_member(group, "events_max_delay"))) {
+        int delay_val = config_setting_get_int(setting);
+        if (delay_val < 0 || delay_val > 5000) {
+            fprintf(stderr,
+                    "unsupported value '%d' for events_max_delay (must be >= 0 and <= 5000)",
+                    delay_val);
+            exit(1);
+        }
+        g->ebuf_max_delay = delay_val;
     }
 }
 
@@ -4364,11 +4472,13 @@ int main(int argc, char **argv)
     /* parse cmdline, possibly overriding values from config */
     parse_cmdline(&ghandles, argc, argv);
     get_boot_lock(ghandles.domid);
+    /* init event queue */
+    TAILQ_INIT(&(ghandles.ebuf_head));
 
     if (!ghandles.nofork) {
         // daemonize...
         if (pipe(pipe_notify) < 0) {
-            perror("canot create pipe:");
+            perror("cannot create pipe:");
             exit(1);
         }
 
@@ -4559,8 +4669,15 @@ int main(int argc, char **argv)
                 handle_message(&ghandles);
                 busy = 1;
             }
+            if (ghandles.ebuf_max_delay > 0) {
+                ebuf_release_xevents(&ghandles);
+            }
         } while (busy);
-        wait_for_vchan_or_argfd(ghandles.vchan, xfd);
+        if (ghandles.ebuf_max_delay > 0) {
+            wait_for_vchan_or_argfd_once(ghandles.vchan, xfd, ghandles.ebuf_next_timeout);
+        } else {
+            wait_for_vchan_or_argfd_once(ghandles.vchan, xfd, VCHAN_DEFAULT_POLL_DURATION);
+        }
     }
     return 0;
 }
