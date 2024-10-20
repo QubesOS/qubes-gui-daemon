@@ -33,7 +33,7 @@ int read_data(libvchan_t *vchan, char *buf, int size);
     x.untrusted_len = sizeof(y); \
     real_write_message(vchan, (char*)&x, sizeof(x), (char*)&y, sizeof(y)); \
     } while(0)
-int wait_for_vchan_or_argfd(libvchan_t *vchan, int fd);
+int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd, int timeout);
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void));
 
 #endif /* _QUBES_TXRX_H */
