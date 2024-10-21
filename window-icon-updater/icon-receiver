@@ -342,7 +342,7 @@ class IconReceiver(object):
         try:
             # Parse header from qrexec
             header = await reader.readuntil(b'\0')
-            header_parts = header.decode('ascii').split(' ').restrip('\x00')
+            header_parts = header.decode('ascii').restrip('\x00').split(' ')
             assert len(header_parts) >= 2, header_parts
 
             service_name = header_parts[0]
