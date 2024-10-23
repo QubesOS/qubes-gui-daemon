@@ -859,60 +859,83 @@ static void save_clipboard_metadata(struct clipboard_metadata *metadata) {
     umask(old_umask);
 }
 
-static bool load_clipboard_metadata(struct clipboard_metadata *metadata) {
+static bool load_clipboard_metadata(struct clipboard_metadata *metadata, bool logging) {
     FILE *file;
     char line[256];
-    char key[256];
-    char value[256];
+    char key[256] = {0};
+    char value[256] = {0};
 
     file = fopen(QUBES_CLIPBOARD_FILENAME ".metadata", "r");
     if (!file) {
-        perror("Can not open " QUBES_CLIPBOARD_FILENAME ".metadata file");
+        if (logging)
+            perror("Can not open " QUBES_CLIPBOARD_FILENAME ".metadata file");
         return false;
     }
     // Load JSON format
     while (fgets(line, sizeof(line), file) != NULL) {
+        if (strlen(line) == 0) continue;
+        if (line[strlen(line) - 1] != '\n') {
+            fprintf (stderr, "Clipboard metadata line over 255 characters: %s...\n", line);
+            return false;
+        }
+        line[strlen(line) - 1] = 0;   // remove the trailing `\n` for easy parsing
         if (strcmp(line, "") == 0) continue;
         if (strcmp(line, "{") == 0) continue;
         if (strcmp(line, "}") == 0) continue;
-        if (! sscanf(line, "\"%[A-Za-z0-9]\":%[\"A-Za-z0-9]s,", key, value)) {
-            fprintf (stderr, "Failed to parse metadata line: %s\n", line);
+        if (sscanf(line, "\"%[A-Za-z0-9_-]\":%[\"A-Za-z0-9_-]", key, value) != 2) {
+            fprintf (stderr, "Failed to parse clipboard metadata line: %s\n", line);
             return false;
         }
         if (strcmp(key, "vmname") == 0) {
             /* value should be less than allowed maximum vmlenght + 2
              * considering the quotation marks */
-            if (strlen(value) >= 32 + 2) return false;
-            if (strlen(value) < 2) return false;
+            int vlen = strlen(value);
+            if ((vlen >= 32 + 2) ||
+                (vlen < 2) ||
+                (value[0] != '"') ||
+                (value[vlen - 1] != '"')) {
+                    fprintf (stderr, "Clipboard vmname value should be less than 32 characters and between double-quotes: %s\n", line);
+                    return false;
+            }
             strncpy (metadata->vmname, value + 1, strlen(value) - 2);
-        } else if (strcmp(key, "xevent_timestamp") == 0) {
-            sscanf(value, "%lu", &metadata->xevent_timestamp);
+            continue;
+        }
+
+        /* From this point on, all recognized values are essentially integers */
+        long unsigned int dummy;
+        if (sscanf(value, "%lu", &dummy) != 1) {
+            fprintf (stderr, "Failed to parse clipboard metadata: key=%s, value=%s\n", key, value);
+            return false;
+        }
+
+        if (strcmp(key, "xevent_timestamp") == 0) {
+            metadata->xevent_timestamp = dummy;
         } else if (strcmp(key, "successful") == 0) {
-            sscanf(value, "%d", (int *)&metadata->successful);
+            metadata->successful = dummy;
         } else if (strcmp(key, "copy_action") == 0) {
-            sscanf(value, "%d", (int *)&metadata->copy_action);
+            metadata->copy_action = dummy;
         } else if (strcmp(key, "paste_action") == 0) {
-            sscanf(value, "%d", (int *)&metadata->paste_action);
+            metadata->paste_action = dummy;
         } else if (strcmp(key, "malformed_request") == 0) {
-            sscanf(value, "%d", (int *)&metadata->malformed_request);
+            metadata->malformed_request = dummy;
         } else if (strcmp(key, "oversized_request") == 0) {
-            sscanf(value, "%d", (int *)&metadata->oversized_request);
+            metadata->oversized_request = dummy;
         } else if (strcmp(key, "cleared") == 0) {
-            sscanf(value, "%d", (int *)&metadata->cleared);
+            metadata->cleared = dummy;
         } else if (strcmp(key, "qrexec_clipboard") == 0) {
-            sscanf(value, "%d", (int *)&metadata->qrexec_clipboard);
+            metadata->qrexec_clipboard = dummy;
         } else if (strcmp(key, "sent_size") == 0) {
-            sscanf(value, "%d", &metadata->sent_size);
+            metadata->sent_size = dummy;
         } else if (strcmp(key, "buffer_size") == 0) {
-            sscanf(value, "%d", &metadata->buffer_size);
+            metadata->buffer_size = dummy;
         } else if (strcmp(key, "protocol_version_vmside") == 0) {
-            sscanf(value, "%x", &metadata->protocol_version_vmside);
+            metadata->protocol_version_vmside = dummy;
         } else if (strcmp(key, "protocol_version_xside") == 0) {
-            sscanf(value, "%x", &metadata->protocol_version_xside);
+            metadata->protocol_version_xside = dummy;
         }
     }
     fclose(file);
-    return metadata->cleared;
+    return true;
 }
 
 /* caller must take inter_appviewer_lock first */
@@ -926,10 +949,29 @@ static void clear_clipboard(struct clipboard_metadata *metadata) {
     save_clipboard_source_vmname("");
 }
 
-static Time get_clipboard_xevent_timestamp() {
+/* caller must take inter_appviewer_lock first */
+static Time get_clipboard_xevent_timestamp(bool logging) {
     struct clipboard_metadata metadata = {0};
-    load_clipboard_metadata(&metadata);
-    return metadata.xevent_timestamp;
+    FILE *file;
+
+    /* do not do a detailed logging for metadata parsing. handle non-existent
+     * .metadata file independently here */
+    file = fopen(QUBES_CLIPBOARD_FILENAME ".metadata", "r");
+    if (!file) {
+        if (logging)
+            perror("Can not get xevent timestamp from non-existent " QUBES_CLIPBOARD_FILENAME ".metadata");
+        return 0;
+    } else {
+       fclose(file);
+    }
+
+    if (!load_clipboard_metadata(&metadata, logging)) {
+        if (logging)
+            perror("Can not get xevent timestamp from " QUBES_CLIPBOARD_FILENAME ".metadata");
+        return 0;
+    } else {
+        return metadata.xevent_timestamp;
+    }
 }
 
 /* fetch clippboard content from file */
@@ -1193,8 +1235,15 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
         clear_clipboard(&metadata);
         return;
     }
+    if (metadata.sent_size == 0) {
+        /* source vm clipboard is empty. clear .data and update .metadata */
+        free(untrusted_data);
+        metadata.successful = true;
+        clear_clipboard(&metadata);
+        return;
+    }
     inter_appviewer_lock(g, 1);
-    clipboard_file_xevent_time = get_clipboard_xevent_timestamp();
+    clipboard_file_xevent_time = get_clipboard_xevent_timestamp(g->log_level > 0);
     /* X11 time is just 32-bit miliseconds counter, which make it wrap every
      * ~50 days - something that is realistic. Handle that wrapping too. */
     if (clipboard_file_xevent_time - g->clipboard_xevent_time < (1UL<<31)) {
@@ -1469,7 +1518,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
         if (ev->type != KeyPress)
             return 1;
         inter_appviewer_lock(g, 1);
-        clipboard_file_xevent_time = get_clipboard_xevent_timestamp();
+        clipboard_file_xevent_time = get_clipboard_xevent_timestamp(g->log_level > 0);
         /* X11 time is just 32-bit miliseconds counter, which make it wrap every
          * ~50 days - something that is realistic. Handle that wrapping too. */
         if (clipboard_file_xevent_time - ev->time < (1UL<<31)) {
@@ -3934,6 +3983,7 @@ struct option longopts[] = {
     { "title-name", no_argument, NULL, 'T' },
     { "trayicon-mode", required_argument, NULL, opt_trayicon_mode },
     { "screensaver-name", required_argument, NULL, opt_screensaver_name },
+    { "max-clipboard-size", required_argument, NULL, 'X' },
     { "help", no_argument, NULL, 'h' },
     { "version", no_argument, NULL, 'V' },   // V is virtual and not a short option
     { 0, 0, 0, 0 },
@@ -4243,6 +4293,16 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
             }
             g->screensaver_names[screensaver_name_num++] = strdup(optarg);
             break;
+        case 'X':
+            unsigned int value;
+            if (sscanf(optarg, "%u", &value) != 1)
+                errx(1, "maximum clipboardsize '%s' is not an integer", optarg);
+            if (value > MAX_CLIPBOARD_BUFFER_SIZE || value < MIN_CLIPBOARD_BUFFER_SIZE)
+                errx(1, "unsupported value ‘%d’ for --max-clipboard-size "
+                        "(must be between %d to %d characters)",
+                        value, MAX_CLIPBOARD_BUFFER_SIZE, MIN_CLIPBOARD_BUFFER_SIZE);
+            g->clipboard_buffer_size = value;
+            break;
         default:
             usage(stderr);
             exit(1);
@@ -4365,7 +4425,6 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
                     "unsupported value ‘%d’ for max_clipboard_size "
                     "(must be between %d to %d characters).\n",
                     value, MAX_CLIPBOARD_BUFFER_SIZE, MIN_CLIPBOARD_BUFFER_SIZE);
-            exit(1);
         } else {
             g->clipboard_buffer_size = value;
         }
