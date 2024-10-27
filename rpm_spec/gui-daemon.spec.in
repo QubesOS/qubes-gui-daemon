@@ -61,7 +61,7 @@ BuildRequires:	help2man
 BuildRequires:	gcc
 BuildRequires:	qubes-core-libs-devel >= 1.6.1
 BuildRequires:	qubes-core-libs
-BuildRequires:	qubes-gui-common-devel >= 3.2.0
+BuildRequires:	qubes-gui-common-devel >= 4.3.0
 BuildRequires:	qubes-libvchan-@BACKEND_VMM@-devel
 BuildRequires:	qubes-utils-devel >= 4.2.10
 BuildRequires:  selinux-policy-devel

@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>
 Build-Depends:
  debhelper (>= 10),
- qubes-gui-common,
+ qubes-gui-common (>= 4.3.0),
  config-package-dev,
  libxen-dev,
  libvchan-xen-dev,
