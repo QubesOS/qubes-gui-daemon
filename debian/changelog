@@ -1,3 +1,24 @@
+qubes-gui-daemon (4.3.4-1) unstable; urgency=medium
+
+  [ Yaroslav Bolyukin ]
+  * fix: shmoverride hooks in presence of other constructors calling
+    fstat
+
+  [ Marek Marczykowski-Górecki ]
+  * Add Xwayland wrapper similar to the one for Xorg
+  * shmoverride: do not remove the shmid file if taking the lock fails
+  * CI: switch to R4.3
+
+  [ Ali Mirjamali ]
+  * Make maximum clipboard buffer lenght configurable
+  * Switching CI to R4.3
+  * Improve clipboard .metadata parsing
+
+  [ Marek Marczykowski-Górecki ]
+  * Bump required qubes-gui-common version
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Sun, 27 Oct 2024 03:28:47 +0100
+
 qubes-gui-daemon (4.3.3-1) unstable; urgency=medium
 
   [ Frédéric Pierret (fepitre) ]
