@@ -72,6 +72,8 @@
 
 #define MAX_SCREENSAVER_NAMES 10
 
+#define VCHAN_DEFAULT_POLL_DURATION 1000
+
 #ifdef __GNUC__
 #  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
 #else
@@ -82,6 +84,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <unistd.h>
+#include <sys/queue.h>
 #include <libvchan.h>
 #include <X11/Xlib.h>
 #include <xcb/xcb.h>
@@ -137,6 +140,17 @@ struct extra_prop {
     int format; /* data format (8, 16, 32) */
     void *data; /* actual data */
     int nelements; /* data size, in "format" units */
+};
+
+struct ebuf_entry {
+    XEvent xev;
+    int64_t time;
+    TAILQ_ENTRY(ebuf_entry) entries;
+};
+
+union ebuf_rand {
+    uint32_t val;
+    char raw[sizeof(uint32_t)];
 };
 
 /* global variables
@@ -240,6 +254,11 @@ struct _global_handles {
     int xen_fd; /* O_PATH file descriptor to /dev/xen/gntdev */
     int xen_dir_fd; /* file descriptor to /dev/xen */
     bool permit_subwindows : 1; /* Permit subwindows */
+    uint32_t ebuf_max_delay;
+    /* ebuf state */
+    TAILQ_HEAD(tailhead, ebuf_entry) ebuf_head;
+    int64_t ebuf_prev_release_time;
+    int ebuf_next_timeout;
 };
 
 typedef struct _global_handles Ghandles;
