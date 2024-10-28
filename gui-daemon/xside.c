@@ -4196,7 +4196,7 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
             g->disable_override_redirect = 0;
         else {
             fprintf(stderr,
-                    "unsupported value ‘%s’ for override_redirect (must be ‘disabled’ or ‘allow’\n",
+                    "unsupported value '%s' for override_redirect (must be 'disabled' or 'allow')\n",
                     value);
             exit(1);
         }
