@@ -4327,7 +4327,7 @@ int main(int argc, char **argv)
     if (!ghandles.nofork) {
         // daemonize...
         if (pipe(pipe_notify) < 0) {
-            perror("canot create pipe:");
+            perror("cannot create pipe:");
             exit(1);
         }
 
