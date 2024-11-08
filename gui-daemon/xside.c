@@ -64,6 +64,7 @@
 #include "trayicon.h"
 #include "shm-args.h"
 #include "util.h"
+#include "unistd.h"
 #include <qubes/pure.h>
 
 /* Supported protocol version */
@@ -385,7 +386,17 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
                 ButtonPressMask | ButtonReleaseMask |
                 PointerMotionMask | EnterWindowMask | LeaveWindowMask |
                 FocusChangeMask | StructureNotifyMask | PropertyChangeMask);
-    XSetWMProtocols(g->display, child_win, &g->wmDeleteMessage, 1);
+
+    /* setting WM_CLIENT_MACHINE, _NET_WM_PID, _NET_WM_PING */
+    XSetWMClientMachine(g->display, child_win, &g->hostname);
+    XChangeProperty(g->display, child_win, g->wm_pid, XA_CARDINAL,
+            32 /* bits */ , PropModeReplace,
+            (unsigned char *) &g->pid, 1);
+    Atom protocols[2];
+    protocols[0] = g->wmDeleteMessage;
+    protocols[1] = g->wm_ping;
+    XSetWMProtocols(g->display, child_win, protocols, 2);
+
     if (g->icon_data) {
         XChangeProperty(g->display, child_win, g->net_wm_icon, XA_CARDINAL, 32,
                 PropModeReplace, (unsigned char *) g->icon_data,
@@ -423,6 +434,7 @@ static Window mkwindow(Ghandles * g, struct windowdata *vm_window)
             32, PropModeReplace,
             (const unsigned char *)&vm_window->remote_winid,
             1);
+
     /* extra properties from command line */
     for (i = 0; i < MAX_EXTRA_PROPS; i++) {
         if (g->extra_props[i].prop) {
@@ -600,6 +612,8 @@ static void intern_global_atoms(Ghandles *const g) {
         { &g->wm_user_time, "_NET_WM_USER_TIME" },
         { &g->wmDeleteMessage, "WM_DELETE_WINDOW" },
         { &g->net_supported, "_NET_SUPPORTED" },
+        { &g->wm_pid, "_NET_WM_PID" },
+        { &g->wm_ping, "_NET_WM_PING" },
     };
     Atom labels[QUBES_ARRAY_SIZE(atoms_to_intern)];
     const char *names[QUBES_ARRAY_SIZE(atoms_to_intern)];
@@ -644,6 +658,14 @@ retry:
  * most of them are handles to local Xserver structures */
 static void mkghandles(Ghandles * g)
 {
+    char buf[256];
+    char *list[1] = { buf };
+    if (gethostname(buf, sizeof(buf)) == -1) {
+        fprintf(stderr, "Cannot get GUIVM hostname!\n");
+        exit(1);
+    }
+    XStringListToTextProperty(list, 1, &g->hostname);
+    g->pid = getpid();
     int ev_base, err_base; /* ignore */
     XWindowAttributes attr;
     int i;
@@ -2649,6 +2671,15 @@ static void process_xevent(Ghandles * g)
                     (int) event_buffer.xclient.window);
             process_xevent_close(g,
                          event_buffer.xclient.window);
+        } else if ((Atom)event_buffer.xclient.data.l[0] ==
+               g->wm_ping) {
+            XClientMessageEvent *ev = (XClientMessageEvent *) &event_buffer;
+            ev->window = g->root_win;
+            XSendEvent(g->display, g->root_win, False,
+                            (SubstructureNotifyMask|SubstructureRedirectMask),
+                            &event_buffer);
+            if (g->log_level > 1)
+                fprintf(stderr, "Received ping request from Window Manager\n");
         }
         break;
     default:;
@@ -4570,6 +4601,7 @@ static void get_boot_lock(int domid)
 }
 
 static void cleanup() {
+    XFree(ghandles.hostname.value);
     XCloseDisplay(ghandles.display);
     unset_alive_flag();
     close(ghandles.inter_appviewer_lock_fd);
