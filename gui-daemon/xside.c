@@ -4357,7 +4357,7 @@ static void load_default_config_values(Ghandles * g)
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
-static void parse_key_sequence(const char *seq, int *mask, KeySym * key)
+static void parse_key_sequence(const char *seq, int *mask, KeySym * key, char *vmname)
 {
     const char *seqp = seq;
     char *name;
@@ -4381,6 +4381,15 @@ static void parse_key_sequence(const char *seq, int *mask, KeySym * key)
     if (seq == NULL)
         return;
 
+    // Option to disable hotkeys. Good for dom0 with dedicated GUIVMs or untrusted VMs
+    if ((strcasecmp(seq, "disable") == 0) || (strcasecmp(seq, "none") == 0)) {
+        *key = NoSymbol;
+        fprintf(stderr,
+            "Warning: Disabling copy or paste hotkeys for %s\n",
+            vmname);
+        return;
+    }
+
     *mask = 0;
     do {
         found_modifier = 0;
@@ -4397,8 +4406,9 @@ static void parse_key_sequence(const char *seq, int *mask, KeySym * key)
     *key = XStringToKeysym(seqp);
     if (*key == NoSymbol) {
         fprintf(stderr,
-            "Warning: key sequence (%s) is invalid (will be disabled)\n",
-            seq);
+            "Error: key sequence (%s) set for %s is invalid\n",
+            seq, vmname);
+        exit(1);
     }
 }
 
@@ -4409,12 +4419,12 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
     if ((setting =
          config_setting_get_member(group, "secure_copy_sequence"))) {
         parse_key_sequence(config_setting_get_string(setting),
-                   &g->copy_seq_mask, &g->copy_seq_key);
+                   &g->copy_seq_mask, &g->copy_seq_key, (char *)&g->vmname);
     }
     if ((setting =
          config_setting_get_member(group, "secure_paste_sequence"))) {
         parse_key_sequence(config_setting_get_string(setting),
-                   &g->paste_seq_mask, &g->paste_seq_key);
+                   &g->paste_seq_mask, &g->paste_seq_key, (char *)&g->vmname);
     }
 
     if ((setting =
