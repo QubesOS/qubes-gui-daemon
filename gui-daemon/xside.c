@@ -3068,8 +3068,15 @@ static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
     read_struct(g->vchan, untrusted_msg);
     /* sanitize start */
     untrusted_msg.data[sizeof(untrusted_msg.data) - 1] = 0;
+    // If the agent has changed the end of very long title to U+2026 but utf8 is disabled
+    if (!g->allow_utf8_titles
+        && strlen(untrusted_msg.data) > 3
+        && strcmp(untrusted_msg.data + strlen(untrusted_msg.data) - 3, "\xE2\x80\xA6") == 0) {
+        strcpy(untrusted_msg.data + strlen(untrusted_msg.data) - 3, "...");
+    }
     sanitize_string_from_vm((unsigned char *) (untrusted_msg.data),
                 g->allow_utf8_titles);
+
     if (g->prefix_titles)
         snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, untrusted_msg.data);
     else
