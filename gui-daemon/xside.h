@@ -171,6 +171,9 @@ struct _global_handles {
     Atom wm_state_maximized_horz; /* Atom: _NET_WM_STATE_MAXIMIZED_HORZ */
     Atom wm_user_time_window; /* Atom: _NET_WM_USER_TIME_WINDOW */
     Atom wm_user_time; /* Atom: _NET_WM_USER_TIME */
+    Atom net_wm_name; /* Atom: _NET_WM_NAME */
+    Atom net_wm_icon_name; /* Atom: _NET_WM_ICON_NAME */
+    Atom utf8_string; /* Atom: UTF8_STRING */
     int shm_major_opcode;   /* MIT-SHM extension opcode */
     /* shared memory handling */
     struct shm_args_hdr *shm_args;    /* shared memory with Xorg */
