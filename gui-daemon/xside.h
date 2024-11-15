@@ -218,6 +218,8 @@ struct _global_handles {
     KeySym copy_seq_key;    /* key for secure-copy key sequence */
     int paste_seq_mask;    /* modifiers mask for secure-paste key sequence */
     KeySym paste_seq_key;    /* key for secure-paste key sequence */
+    int multipaste_seq_mask;    /* modifiers mask for secure-multipaste key sequence */
+    KeySym multipaste_seq_key;    /* key for secure-multipaste key sequence */
     unsigned int clipboard_buffer_size;    /* maximum clipboard size limit */
     int qrexec_clipboard;    /* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
     int use_kdialog;    /* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
