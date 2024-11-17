@@ -1,3 +1,17 @@
+qubes-gui-daemon (4.3.5-1) unstable; urgency=medium
+
+  [ Piotr Bartman-Szwarc ]
+  * q-dev: port
+  * q-dev: cleanup
+  * q-dev: lint
+  * q-dev: update argument name ident -> port_id
+  * q-dev: update argument name device -> port
+  * q-dev: add less confusing device_id of microphone
+  * q-dev: mic auto-attach
+  * q-dev: cleanup mic.py
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Sun, 17 Nov 2024 03:56:10 +0100
+
 qubes-gui-daemon (4.3.4-1) unstable; urgency=medium
 
   [ Yaroslav Bolyukin ]
