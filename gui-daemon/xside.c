@@ -2912,6 +2912,12 @@ static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
     read_struct(g->vchan, untrusted_msg);
     /* sanitize start */
     untrusted_msg.data[sizeof(untrusted_msg.data) - 1] = 0;
+    /* change the end of very long window titles to ... */
+    if (strlen(untrusted_msg.data) == (sizeof(untrusted_msg.data) - 1)) {
+            untrusted_msg.data[sizeof(untrusted_msg.data) - 2] = '.';
+            untrusted_msg.data[sizeof(untrusted_msg.data) - 3] = '.';
+            untrusted_msg.data[sizeof(untrusted_msg.data) - 4] = '.';
+    }
     sanitize_string_from_vm((unsigned char *) (untrusted_msg.data),
                 g->allow_utf8_titles);
     if (g->prefix_titles)
