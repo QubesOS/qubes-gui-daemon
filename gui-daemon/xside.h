@@ -159,6 +159,8 @@ union ebuf_rand {
 struct _global_handles {
     /* local X server handles and attributes */
     Display *display;
+    XTextProperty hostname;   /* dom0 or GUIVM hostname */
+    pid_t pid;                /* GUI daemon PID */
     int screen;        /* shortcut to the default screen */
     Window root_win;    /* root attributes */
     int root_width;        /* size of root window */
@@ -185,6 +187,8 @@ struct _global_handles {
     Atom wm_state_maximized_horz; /* Atom: _NET_WM_STATE_MAXIMIZED_HORZ */
     Atom wm_user_time_window; /* Atom: _NET_WM_USER_TIME_WINDOW */
     Atom wm_user_time; /* Atom: _NET_WM_USER_TIME */
+    Atom wm_pid; /* Atom: _NET_WM_PID */
+    Atom wm_ping; /* Atom: _NET_WM_PING */
     int shm_major_opcode;   /* MIT-SHM extension opcode */
     /* shared memory handling */
     struct shm_args_hdr *shm_args;    /* shared memory with Xorg */
