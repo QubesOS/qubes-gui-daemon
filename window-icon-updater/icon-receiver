@@ -342,7 +342,7 @@ class IconReceiver(object):
         try:
             # Parse header from qrexec
             header = await reader.readuntil(b'\0')
-            header_parts = header.decode('ascii').split(' ')
+            header_parts = header.decode('ascii').rstrip('\x00').split(' ')
             assert len(header_parts) >= 2, header_parts
 
             service_name = header_parts[0]
@@ -388,7 +388,7 @@ def main():
     args = parser.parse_args()
 
     if not args.force:
-        if (not os.path.exists('/var/run/qubes-service/guivm-gui-agent') and
+        if (not os.path.exists('/var/run/qubes-service/guivm') and
             not os.path.exists('/etc/qubes-release')):
 
             print('Not in GuiVM or dom0, exiting '
