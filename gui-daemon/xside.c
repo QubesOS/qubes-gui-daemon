@@ -616,6 +616,9 @@ static void intern_global_atoms(Ghandles *const g) {
         { &g->net_supported, "_NET_SUPPORTED" },
         { &g->wm_pid, "_NET_WM_PID" },
         { &g->wm_ping, "_NET_WM_PING" },
+        { &g->net_wm_name, "_NET_WM_NAME" },
+        { &g->net_wm_icon_name, "_NET_WM_ICON_NAME" },
+        { &g->utf8_string, "UTF8_STRING" },
     };
     Atom labels[QUBES_ARRAY_SIZE(atoms_to_intern)];
     const char *names[QUBES_ARRAY_SIZE(atoms_to_intern)];
@@ -3066,7 +3069,11 @@ static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
     Xutf8TextListToTextProperty(g->display, list, 1, XUTF8StringStyle,
                     &text_prop);
     XSetWMName(g->display, vm_window->local_winid, &text_prop);
+    XChangeProperty(g->display, vm_window->local_winid, g->net_wm_name,
+        g->utf8_string, 8, PropModeReplace, (unsigned char *) buf, strlen(buf));
     XSetWMIconName(g->display, vm_window->local_winid, &text_prop);
+    XChangeProperty(g->display, vm_window->local_winid, g->net_wm_icon_name,
+        g->utf8_string, 8, PropModeReplace, (unsigned char *) buf, strlen(buf));
     XFree(text_prop.value);
 }
 

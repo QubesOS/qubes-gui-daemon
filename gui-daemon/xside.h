@@ -189,6 +189,9 @@ struct _global_handles {
     Atom wm_user_time; /* Atom: _NET_WM_USER_TIME */
     Atom wm_pid; /* Atom: _NET_WM_PID */
     Atom wm_ping; /* Atom: _NET_WM_PING */
+    Atom net_wm_name; /* Atom: _NET_WM_NAME */
+    Atom net_wm_icon_name; /* Atom: _NET_WM_ICON_NAME */
+    Atom utf8_string; /* Atom: UTF8_STRING */
     int shm_major_opcode;   /* MIT-SHM extension opcode */
     /* shared memory handling */
     struct shm_args_hdr *shm_args;    /* shared memory with Xorg */
