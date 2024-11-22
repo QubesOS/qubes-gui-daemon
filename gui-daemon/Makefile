@@ -31,7 +31,7 @@ extra_cflags := -I../include/ -g -O2 -Wall -Wextra -Werror -pie -fPIC \
 		-fno-strict-aliasing \
 		-fno-strict-overflow \
 		-fno-delete-null-pointer-checks \
-		-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GNU_SOURCE -Werror=missing-prototypes
+		-Wp,-D_GNU_SOURCE -Werror=missing-prototypes
 
 LDLIBS := $(shell pkg-config --libs $(pkgs)) -lqubes-pure
 all: qubes-guid # qubes-guid.1
