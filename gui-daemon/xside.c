@@ -880,6 +880,7 @@ static void save_clipboard_metadata(struct clipboard_metadata *metadata) {
     fprintf(file, "\"buffer_size\":%d,\n", metadata->buffer_size);
     fprintf(file, "\"protocol_version_xside\":%d,\n", metadata->protocol_version_xside);
     fprintf(file, "\"protocol_version_vmside\":%d\n", metadata->protocol_version_vmside);
+    fprintf(file, "\"timeout\":%d\n", metadata->timeout);
     // other key,value pairs could be added if needed in future
     fprintf(file, "}\n");
     fclose(file);
@@ -959,6 +960,8 @@ static bool load_clipboard_metadata(struct clipboard_metadata *metadata, bool lo
             metadata->protocol_version_vmside = dummy;
         } else if (strcmp(key, "protocol_version_xside") == 0) {
             metadata->protocol_version_xside = dummy;
+        } else if (strcmp(key, "timeout") == 0) {
+            metadata->timeout = dummy;
         }
     }
     fclose(file);
@@ -1219,6 +1222,13 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
     metadata.protocol_version_vmside = g->protocol_version;
     metadata.protocol_version_xside = PROTOCOL_VERSION(
                     PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
+    metadata.timeout = g->clipboard_timeout;
+
+    // if a clipboard timeout child is pending, terminate it and clear its PID.
+    if (g->clipboard_timeout_pid) {
+        kill(g->clipboard_timeout_pid, SIGTERM);
+        g->clipboard_timeout_pid = 0;
+    }
 
     if (g->log_level > 0)
         fprintf(stderr, "handle_clipboard_data, len=0x%x\n",
@@ -1301,6 +1311,42 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
     save_clipboard_file_xevent_timestamp(g->clipboard_xevent_time);
     metadata.successful = true;
     save_clipboard_metadata(&metadata);
+
+    if (g->clipboard_timeout > 0) {
+        struct stat st0, st1;
+        if (lstat(QUBES_CLIPBOARD_FILENAME, &st0) == -1) {
+            perror("Can not get clipboard data file status");
+            exit(1);
+        }
+        switch (g->clipboard_timeout_pid = fork()) {
+            case -1:
+                perror("fork");
+                exit(1);
+            case 0:
+                if (sleep(g->clipboard_timeout) != 0) {
+                    perror("Clipboard clearing timeout was interrupted");
+                    _exit(1);
+                }
+                inter_appviewer_lock(g, 1);
+                if (lstat(QUBES_CLIPBOARD_FILENAME, &st1) == -1) {
+                    perror("Can not get clipboard data file status");
+                    _exit(1);
+                }
+                if (st0.st_mtime == st1.st_mtime) {
+                    old_umask = umask(0007);
+                    metadata.copy_action = false;
+                    metadata.timeout = g->clipboard_timeout;
+                    clear_clipboard(&metadata);
+                    umask(old_umask);
+                    if (g->log_level > 1)
+                        fprintf(stderr, "Clipboard cleared after %d seconds\n",
+                            g->clipboard_timeout);
+                }
+                inter_appviewer_lock(g, 0);
+                _exit(1);
+        }
+    }
+
 error:
     umask(old_umask);
     inter_appviewer_lock(g, 0);
@@ -4494,6 +4540,8 @@ static void load_default_config_values(Ghandles * g)
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
     g->clipboard_buffer_size = DEFAULT_CLIPBOARD_BUFFER_SIZE;
+    g->clipboard_timeout = 0;
+    g->clipboard_timeout_pid = 0;
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
     g->startup_timeout = 45;
@@ -4586,6 +4634,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
         } else {
             g->clipboard_buffer_size = value;
         }
+    }
+
+    if ((setting =
+         config_setting_get_member(group, "clipboard_timeout"))) {
+        g->clipboard_timeout = config_setting_get_int(setting);
     }
 
     if ((setting =
@@ -4976,6 +5029,8 @@ int main(int argc, char **argv)
                 ebuf_release_xevents(&ghandles);
             }
         } while (busy);
+        if (ghandles.clipboard_timeout_pid > 0)
+            kill(ghandles.clipboard_timeout_pid, SIGTERM);
         if (ghandles.ebuf_max_delay > 0) {
             wait_for_vchan_or_argfd_once(ghandles.vchan, xfd, ghandles.ebuf_next_timeout);
         } else {
