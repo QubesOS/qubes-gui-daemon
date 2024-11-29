@@ -1,3 +1,29 @@
+qubes-gui-daemon (4.3.6-1) unstable; urgency=medium
+
+  [ Aaron Rainbolt ]
+  * Typo fix, change "canot" to "cannot"
+  * Replace magic quotes with normal quotes in parse_vm_config
+  * Add event buffering for cloaking user input patterns
+
+  [ Ali Mirjamali ]
+  * Handle `disable` & `none` for secure copy/paste
+  * Add `_NET_WM_PING` support
+  * Add `_NET_WM_NAME` & `_NET_WM_ICON_NAME` support
+
+  [ qubest ]
+  * Update guivm service name
+  * remove trailing x00 The trailing x00 in the request header make the
+    domain name as follow (domainx00). Which cause a bug when listing
+    domains using qubesadminapi. This bug occured when the icon-receiver
+    is running on guivm other than dom0.
+  * Move rstrip before split
+  * change restrip to rstrip
+
+  [ Marek Marczykowski-Górecki ]
+  * Leave defining _FORTIFY_SOURCE to distribution policy
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 29 Nov 2024 04:02:02 +0100
+
 qubes-gui-daemon (4.3.5-1) unstable; urgency=medium
 
   [ Piotr Bartman-Szwarc ]
