@@ -847,9 +847,18 @@ static void control_socket_callback(pa_mainloop_api *UNUSED(a),
 
     struct userdata *u = userdata;
     int new_rec_allowed = -1;
+    char *watch_path;
 
     if (!(f & PA_IO_EVENT_INPUT))
         return;
+
+    watch_path = qdb_read_watch(u->watch_qdb);
+    if (!watch_path) {
+        pacat_log("Failed to read the qdb watch");
+        return;
+    }
+    /* don't bother checking which watch fired, there is just one */
+    free(watch_path);
 
     new_rec_allowed = is_rec_allowed_from_qdb(u);
     if (new_rec_allowed >= 0) {
@@ -903,13 +912,20 @@ static int setup_control(struct userdata *u) {
         u->qdb_config_path = NULL;
         goto fail;
     }
+
     // Setup a QubesDB watch to get authorization on demand
-    if (!qdb_watch(u->qdb, u->qdb_config_path)) {
+    u->watch_qdb = qdb_open(NULL);
+    if (!u->watch_qdb) {
+        pacat_log("qdb_open (watch) failed: %s", strerror(errno));
+        goto fail;
+    }
+
+    if (!qdb_watch(u->watch_qdb, u->qdb_config_path)) {
         pacat_log("failed to setup watch on %s: %m\n", u->qdb_config_path);
         goto fail;
     }
 
-    socket_fd = qdb_watch_fd(u->qdb);
+    socket_fd = qdb_watch_fd(u->watch_qdb);
     if (socket_fd < 0)
         goto fail;
 
@@ -946,8 +962,9 @@ fail:
     if (u->control_socket_event)
         u->mainloop_api->io_free(u->control_socket_event);
     u->control_socket_event = NULL;
-    if (socket_fd >= 0)
-        close(socket_fd);
+    if (u->watch_qdb)
+        qdb_close(u->watch_qdb);
+    u->watch_qdb = NULL;
 
     return 1;
 }
@@ -964,6 +981,8 @@ static void control_cleanup(struct userdata *u) {
         free(u->qdb_status_path);
     if (u->qdb_request_path)
         free(u->qdb_request_path);
+    if (u->watch_qdb)
+        qdb_close(u->watch_qdb);
     if (u->qdb)
         qdb_close(u->qdb);
 }
