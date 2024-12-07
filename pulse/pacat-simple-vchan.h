@@ -32,6 +32,7 @@ struct userdata {
 
     GMutex prop_mutex;
     qdb_handle_t qdb;
+    qdb_handle_t watch_qdb; // separate connection for watches
     char *qdb_config_path;
     char *qdb_status_path;
     char *qdb_request_path;
