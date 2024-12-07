@@ -857,11 +857,13 @@ static void control_socket_callback(pa_mainloop_api *UNUSED(a),
         pacat_log("Failed to read the qdb watch");
         return;
     }
+    pacat_log("got watch event on %s", watch_path);
     /* don't bother checking which watch fired, there is just one */
     free(watch_path);
 
     new_rec_allowed = is_rec_allowed_from_qdb(u);
     if (new_rec_allowed >= 0) {
+        pacat_log("new rec allowed value: %d, old value %d", new_rec_allowed, u->rec_allowed);
         g_mutex_lock(&u->prop_mutex);
         if (new_rec_allowed != u->rec_allowed) {
             u->rec_allowed = new_rec_allowed;
