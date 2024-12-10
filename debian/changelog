@@ -1,3 +1,9 @@
+qubes-gui-daemon (4.3.7-1) unstable; urgency=medium
+
+  * audio: fix reacting on mic enable/disable requests
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Tue, 10 Dec 2024 19:29:44 +0100
+
 qubes-gui-daemon (4.3.6-1) unstable; urgency=medium
 
   [ Aaron Rainbolt ]
