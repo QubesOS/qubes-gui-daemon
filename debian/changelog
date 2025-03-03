@@ -1,3 +1,22 @@
+qubes-gui-daemon (4.2.9-1) unstable; urgency=medium
+
+  [ Marek Marczykowski-Górecki ]
+  * Leave defining _FORTIFY_SOURCE to distribution policy
+  * shmoverride: do not remove the shmid file if taking the lock fails
+
+  [ qubest ]
+  * remove trailing x00 The trailing x00 in the request header make the
+    domain name as follow (domainx00). Which cause a bug when listing
+    domains using qubesadminapi. This bug occured when the icon-receiver
+    is running on guivm other than dom0.
+  * Move rstrip before split
+  * change restrip to rstrip
+
+  [ Aaron Rainbolt ]
+  * Typo fix, change "canot" to "cannot"
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 03 Mar 2025 14:39:48 +0100
+
 qubes-gui-daemon (4.2.8-1) unstable; urgency=medium
 
   * Add basic SELinux policy
