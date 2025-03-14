@@ -1177,23 +1177,35 @@ static int fetch_qubes_clipboard_using_qrexec(Ghandles * g) {
 
 /* lock already taken in is_special_keypress() */
 static int paste_qubes_clipboard_using_qrexec(Ghandles * g) {
+    struct stat statbuf;
     int ret;
     struct clipboard_metadata metadata = {0};
+    strcpy(metadata.vmname, g->vmname);
+    metadata.paste_action = true;
+    metadata.qrexec_clipboard = true;
+    metadata.xevent_timestamp = g->clipboard_xevent_time;
+    metadata.buffer_size = g->clipboard_buffer_size;
+    metadata.protocol_version_vmside = g->protocol_version;
+    metadata.protocol_version_xside = PROTOCOL_VERSION(
+        PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
+    metadata.successful = false;
+
+    /* Query clipboard file stat to determine its size for metadata */
+    if (stat(QUBES_CLIPBOARD_FILENAME, &statbuf)) {
+        show_error_message(g, "secure paste: failed to get status of " QUBES_CLIPBOARD_FILENAME);
+        clear_clipboard(&metadata);
+        return -1;
+    }
+    metadata.sent_size = statbuf.st_size;
 
     ret = run_clipboard_rpc(g, CLIPBOARD_PASTE);
     if (ret) {
-        strcpy(metadata.vmname, g->vmname);
-        metadata.paste_action = true;
-        metadata.qrexec_clipboard = true;
-        metadata.xevent_timestamp = g->clipboard_xevent_time;
-        metadata.buffer_size = g->clipboard_buffer_size;
-        metadata.protocol_version_vmside = g->protocol_version;
-        metadata.protocol_version_xside = PROTOCOL_VERSION(
-            PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
         metadata.successful = true;
-        clear_clipboard(&metadata);
+    } else {
+        metadata.successful = false;
     }
 
+    clear_clipboard(&metadata);
     return ret;
 }
 
