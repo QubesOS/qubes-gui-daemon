@@ -1,3 +1,10 @@
+qubes-gui-daemon (4.3.8-1) unstable; urgency=medium
+
+  [ Ali Mirjamali ]
+  * Fix clipboard paste metadata for qrexec (Windows)
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 17 Mar 2025 03:49:55 +0100
+
 qubes-gui-daemon (4.3.7-1) unstable; urgency=medium
 
   * audio: fix reacting on mic enable/disable requests
