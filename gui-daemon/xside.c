@@ -3357,8 +3357,8 @@ static bool should_keep_on_top(Ghandles *g, Window window) {
 
 
 /* Move a newly mapped override_redirect window below windows that need to be
- * kept on top, i.e. screen lockers. */
-static void restack_windows(Ghandles *g, struct windowdata *vm_window)
+ * kept on top, i.e. screen lockers. Returns new index (-1 == top of all) */
+static int restack_windows(Ghandles *g, struct windowdata *vm_window)
 {
     Window root;
     Window parent;
@@ -3372,7 +3372,7 @@ static void restack_windows(Ghandles *g, struct windowdata *vm_window)
 
     if (!children_list) {
         fprintf(stderr, "XQueryTree returned an empty list\n");
-        return;
+        return 0;
     }
 
     /* Traverse children_list, looking for bottom-most window that
@@ -3408,6 +3408,7 @@ static void restack_windows(Ghandles *g, struct windowdata *vm_window)
     }
 
     XFree(children_list);
+    return goal_pos;
 }
 
 
@@ -3466,7 +3467,12 @@ static void handle_map(Ghandles * g, struct windowdata *vm_window)
     (void) XMapWindow(g->display, vm_window->local_winid);
 
     if (vm_window->override_redirect) {
-        restack_windows(g, vm_window);
+        if (restack_windows(g, vm_window) == -1) {
+            // Ensure override redirect window is raised after mapping
+            // But only if no screensaver is active
+            XRaiseWindow(g->display, vm_window->local_winid);
+            XFlush(g->display);  // Ensure raise takes effect immediately
+        }
     }
 }
 

@@ -2,3 +2,4 @@
 *.dep
 tags
 pkgs/
+gui-daemon/qubes-guid
