@@ -1,3 +1,14 @@
+qubes-gui-daemon (4.3.9-1) unstable; urgency=medium
+
+  [ Ali Mirjamali ]
+  * Replace U+2026 with `...` if utf8 is disabled
+  * Assure Popup Windows (override-redirect) open over parent
+
+  [ Marek Marczykowski-Górecki ]
+  * Cache window name length when checking for truncated string
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Tue, 10 Jun 2025 04:23:06 +0200
+
 qubes-gui-daemon (4.3.8-1) unstable; urgency=medium
 
   [ Ali Mirjamali ]
