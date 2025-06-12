@@ -30,6 +30,7 @@ struct userdata {
     pa_io_event* play_ctrl_event;
     pa_io_event* rec_ctrl_event;
 
+    pa_channel_map channel_map;
     GMutex prop_mutex;
     qdb_handle_t qdb;
     qdb_handle_t watch_qdb; // separate connection for watches
@@ -38,11 +39,13 @@ struct userdata {
     char *qdb_request_path;
     int control_socket_fd;
     pa_io_event* control_socket_event;
+    bool rec_stream_connect_in_progress;
     bool rec_allowed;
     bool rec_requested;
     bool never_block;
     bool pending_play_cork;
     bool draining;
+    bool play_corked;
 
     int domid;
     int play_watch_fd, rec_watch_fd;
