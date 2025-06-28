@@ -48,7 +48,7 @@ Description: Qubes GUI virtualization (GUI VM side)
 Package: qubes-audio-daemon
 Architecture: any
 Depends:
- pulseaudio,
+ pulseaudio | pipewire-pulse,
  ${shlibs:Depends},
  ${misc:Depends}
 Replaces: qubes-gui-daemon-pulseaudio (<< 4.1.21~)
