@@ -1377,10 +1377,10 @@ static bool write_all(int socket, void *buf, size_t len) {
     return true;
 }
 
-static int evaluate_clipboard_policy_dom0(Ghandles *g,
+static bool evaluate_clipboard_policy_dom0(Ghandles *g,
         const char *const source_vm) {
     const int sockfd = socket(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0);
-    int status = 0;
+    bool status = false;
     if (sockfd < 0) {
         perror("socket");
         return false;
@@ -1458,6 +1458,7 @@ static int evaluate_clipboard_policy(Ghandles * g) {
     int fd;
     ssize_t len;
     char source_vm[255];
+    bool result;
 
     fd = open(QUBES_CLIPBOARD_FILENAME ".source", O_RDONLY);
     if (fd < 0)
@@ -1476,9 +1477,18 @@ static int evaluate_clipboard_policy(Ghandles * g) {
     }
     source_vm[len] = 0;
     if (g->in_dom0)
-        return evaluate_clipboard_policy_dom0(g, source_vm);
+        result = evaluate_clipboard_policy_dom0(g, source_vm);
     else
-        return evaluate_clipboard_policy_domU(g, source_vm);
+        result = evaluate_clipboard_policy_domU(g, source_vm);
+    if (!result) {
+        char error_msg[1024];
+        snprintf(error_msg, sizeof(error_msg),
+            "Pasting from %s to %s is denied by policies",
+            source_vm,
+            g->vmname);
+        show_message(g, "ERROR", error_msg, NOTIFY_EXPIRES_DEFAULT);
+    }
+    return result;
 }
 
 _Static_assert(CURSOR_X11_MAX == CURSOR_X11 + XC_num_glyphs, "protocol bug");
