@@ -34,7 +34,7 @@
 void init_tray_bg(Ghandles *g) {
     /* prepare graphic context for tray background */
     XGCValues values;
-    values.foreground = WhitePixel(g->display, g->screen);
+    values.foreground = g->trayicon_background_pixel;
     g->tray_gc =
         XCreateGC(g->display, g->root_win, GCForeground, &values);
 }
@@ -256,15 +256,23 @@ void tint_tray_and_update(Ghandles *g, struct windowdata *vm_window,
         0, 0);
     XImage *image = XGetImage(g->display, pixmap, x, y, w, h,
             0xFFFFFFFF, ZPixmap);
+
+    /* Use the top-left pixel for transparency, as with fill_tray_bg_and_update */
+    unsigned long back = XGetPixel(image, 0, 0);
+
     /* tint image */
     for (yp = 0; yp < h; yp++) {
         for (xp = 0; xp < w; xp++) {
             pixel = XGetPixel(image, xp, yp);
-            if (g->trayicon_tint_whitehack && pixel == 0xffffff)
-                pixel = 0xfefefe;
-            else {
-                rgb_to_hls(pixel, &h_ignore, &l, &s_ignore);
-                pixel = hls_to_rgb(g->tint_h, l, g->tint_s);
+            if (pixel == back) {
+                pixel = g->trayicon_background_pixel;
+            } else {
+                if (g->trayicon_tint_whitehack && pixel == 0xffffff)
+                    pixel = 0xfefefe;
+                else {
+                    rgb_to_hls(pixel, &h_ignore, &l, &s_ignore);
+                    pixel = hls_to_rgb(g->tint_h, l, g->tint_s);
+                }
             }
             if (!XPutPixel(image, xp, yp, pixel)) {
                 fprintf(stderr, "Failed to update pixel %d,%d of tray window 0x%lx(remote 0x%lx)\n",

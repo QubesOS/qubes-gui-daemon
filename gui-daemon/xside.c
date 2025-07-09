@@ -717,6 +717,9 @@ static void mkghandles(Ghandles * g)
     else if (g->trayicon_mode == TRAY_TINT)
         init_tray_tint(g);
     /* nothing extra needed for TRAY_BORDER */
+    /* parse trayicon background color */
+    g->trayicon_background_pixel = parse_color(g->trayicon_background_color_pre_parse,
+                                             g->display, g->screen).pixel;
     /* parse window background color */
     g->window_background_pixel = parse_color(g->window_background_color_pre_parse,
                                              g->display, g->screen).pixel;
@@ -4538,6 +4541,7 @@ static void load_default_config_values(Ghandles * g)
     g->trayicon_border = 0;
     g->trayicon_tint_reduce_saturation = 0;
     g->trayicon_tint_whitehack = 0;
+    g->trayicon_background_color_pre_parse = "white";
     g->window_background_color_pre_parse = "white";
 }
 
@@ -4648,6 +4652,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
     if ((setting =
          config_setting_get_member(group, "trayicon_mode"))) {
         parse_trayicon_mode(g, config_setting_get_string(setting));
+    }
+
+    if ((setting =
+         config_setting_get_member(group, "trayicon_background_color"))) {
+        g->trayicon_background_color_pre_parse = config_setting_get_string(setting);
     }
 
     if ((setting =

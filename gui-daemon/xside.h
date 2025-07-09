@@ -247,7 +247,9 @@ struct _global_handles {
     int trayicon_border; /* position of trayicon border - 0 - no border, 1 - at the edges, 2 - 1px from the edges */
     bool trayicon_tint_reduce_saturation; /* reduce trayicon saturation by 50% (available only for "tint" mode) */
     bool trayicon_tint_whitehack; /* replace white pixels with almost-white 0xfefefe (available only for "tint" mode) */
+    const char *trayicon_background_color_pre_parse; /* user-provided description of trayicon background pixel */
     const char *window_background_color_pre_parse; /* user-provided description of window background pixel */
+    unsigned long trayicon_background_pixel;         /* parsed version of the above */
     unsigned long window_background_pixel;         /* parsed version of the above */
     bool disable_override_redirect; /* Disable “override redirect” windows */
     char *screensaver_names[MAX_SCREENSAVER_NAMES]; /* WM_CLASS names for windows detected as screensavers */
