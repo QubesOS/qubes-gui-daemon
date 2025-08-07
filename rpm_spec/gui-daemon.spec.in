@@ -42,6 +42,7 @@ Requires:	python%{python3_pkgversion}-qubesimgconverter >= 4.1.4
 Requires:	socat
 Requires:	group(qubes)
 Requires:   (%{name}-selinux if selinux-policy)
+Requires:   qubes-notification-daemon
 
 BuildRequires:	python%{python3_pkgversion}-devel
 BuildRequires:	python%{python3_pkgversion}-setuptools

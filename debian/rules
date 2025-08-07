@@ -16,6 +16,9 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export DESTDIR=$(shell pwd)/debian/tmp
 export LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)
 
+DIST := $(shell grep ^VERSION_CODENAME= /etc/os-release | cut -d = -f 2)
+
+
 %:
 	dh $@ --with config-package
 
@@ -28,6 +31,12 @@ override_dh_auto_install:
 
 override_dh_install:
 	dh_install --fail-missing
+
+override_db_gencontrol:
+	if [ "$(DIST)" != "bookworm" ] && [ "$(DIST)" != "jammy" ] && [ "$(DIST)" != "noble" ]; then \
+		echo "daemon:Depends=qubes-notification-daemon" >> debian/qubes-gui-daemon.substvars; \
+	fi
+	dh_gencontrol
 
 
 # dh_make generated override targets

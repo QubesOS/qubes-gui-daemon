@@ -35,6 +35,7 @@ Depends:
  qubes-core-qrexec (>= 4.1.5),
  python3-qubesimgconverter (>= 4.1.4),
  socat,
+ ${daemon:Depends},
  ${shlibs:Depends},
  ${misc:Depends}
 Recommends:
