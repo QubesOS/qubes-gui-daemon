@@ -1,3 +1,16 @@
+qubes-gui-daemon (4.3.11-1) unstable; urgency=medium
+
+  [ Ali Mirjamali ]
+  * Notify users on clipboard paste denied by policies
+
+  [ 3np ]
+  * debian: Support pipewire-pulseaudio as well as pulseaudio
+
+  [ Marek Marczykowski-Górecki ]
+  * debian: fix installing qubes-guid as suid
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Thu, 07 Aug 2025 02:15:05 +0200
+
 qubes-gui-daemon (4.3.10-1) unstable; urgency=medium
 
   * pulse: connect recording stream only when recording is allowed
