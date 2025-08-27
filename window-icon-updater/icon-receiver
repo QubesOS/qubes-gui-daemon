@@ -408,7 +408,8 @@ def main():
             logging.error("Connection error: %s", e)
             sys.exit(1)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     tasks = [
         rcvd.handle_events(),
         rcvd.handle_clients(),
