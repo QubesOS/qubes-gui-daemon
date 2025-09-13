@@ -1003,7 +1003,7 @@ static Time get_clipboard_xevent_timestamp(bool logging) {
 
 /* fetch clippboard content from file */
 /* lock already taken in is_special_keypress() */
-static void get_qubes_clipboard(Ghandles *g, char **data, int *len)
+static void get_qubes_clipboard(Ghandles *g, char **data, int *len, bool multipaste)
 {
     FILE *file;
     *len = 0;
@@ -1068,7 +1068,16 @@ static void get_qubes_clipboard(Ghandles *g, char **data, int *len)
     fclose(file);
     metadata.sent_size = *len;
     metadata.successful = true;
-    clear_clipboard(&metadata);
+    if (multipaste) {
+        // triggering notification by updating file modification time
+        if (utimensat(0, QUBES_CLIPBOARD_FILENAME, NULL, 0) == -1) {
+            show_error_message(g, "secure multi-paste: failed to update modification time of file " QUBES_CLIPBOARD_FILENAME);
+        } else {
+            metadata.cleared = false;
+            save_clipboard_metadata(&metadata);
+        }
+    } else
+        clear_clipboard(&metadata);
 }
 
 /* This is specific to Microsoft Windows and non-X11 compliant OS */
@@ -1562,8 +1571,13 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
     }
 
     /* paste */
-    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->paste_seq_mask
-        && ev->keycode == XKeysymToKeycode(g->display, g->paste_seq_key)) {
+    bool multipaste = false;
+    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->multipaste_seq_mask
+        && ev->keycode == XKeysymToKeycode(g->display, g->multipaste_seq_key)) {
+            multipaste = true;
+    }
+    if (multipaste || (((int)ev->state & SPECIAL_KEYS_MASK) == g->paste_seq_mask
+        && ev->keycode == XKeysymToKeycode(g->display, g->paste_seq_key))) {
         if (ev->type != KeyPress)
             return 1;
         inter_appviewer_lock(g, 1);
@@ -1590,7 +1604,7 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
             hdr.type = MSG_CLIPBOARD_DATA;
             if (g->log_level > 0)
                 fprintf(stderr, "secure paste\n");
-            get_qubes_clipboard(g, &data, &len);
+            get_qubes_clipboard(g, &data, &len, multipaste);
             if (len > 0) {
                 /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
                    of the blob, be aware when working with old implementations. */
@@ -4530,6 +4544,8 @@ static void load_default_config_values(Ghandles * g)
     g->copy_seq_key = XK_c;
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
+    g->multipaste_seq_mask = 0;
+    g->multipaste_seq_key = NoSymbol;
     g->clipboard_buffer_size = DEFAULT_CLIPBOARD_BUFFER_SIZE;
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
@@ -4610,6 +4626,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
          config_setting_get_member(group, "secure_paste_sequence"))) {
         parse_key_sequence(config_setting_get_string(setting),
                    &g->paste_seq_mask, &g->paste_seq_key, (char *)&g->vmname);
+    }
+    if ((setting =
+         config_setting_get_member(group, "secure_multipaste_sequence"))) {
+        parse_key_sequence(config_setting_get_string(setting),
+                   &g->multipaste_seq_mask, &g->multipaste_seq_key);
     }
 
     if ((setting =
