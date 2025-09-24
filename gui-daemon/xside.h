@@ -241,6 +241,8 @@ struct _global_handles {
     KeySym paste_seq_key;    /* key for secure-paste key sequence */
     unsigned int clipboard_buffer_size;    /* maximum clipboard size limit */
     int qrexec_clipboard;    /* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
+    unsigned int clipboard_timeout;    /* x: clear global clipboard after x seconds, 0: do not clear */
+    pid_t clipboard_timeout_pid;    /* pid of the existing clipboard timeout child (if any) */
     int use_kdialog;    /* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
     int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
     enum trayicon_mode trayicon_mode; /* trayicon coloring mode */
@@ -348,6 +350,7 @@ struct clipboard_metadata {
     unsigned int buffer_size;   /* maximum allowed clipboard size for this vm */
     uint32_t protocol_version_vmside;    /* inter-vm clipboard GUI protocol version - vmside */
     uint32_t protocol_version_xside;     /* inter-vm clipboard GUI protocol version - xside */
+    unsigned int timeout;       /* 0: Clipboard is/will be NOT automatically cleared. x: is/will be cleared after x seconds */
 };
 
 #define QUBES_NO_SHM_SEGMENT ((xcb_shm_seg_t)-1)
