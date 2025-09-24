@@ -20,3 +20,10 @@ it uses cmd_pages to determine which frames or grant pages should be mapped and
 from which domain.  The munmap() implementation checks if the address is one
 that shmoverride.so had previously mapped, and if so, calls the appropriate Xen
 API functions to release the memory.
+
+
+The LD_PRELOAD can be used in two ways:
+1. Set directly for the Xorg/Xwayland process. For this, the package provides convenient wrappers:
+  - /usr/bin/X for Xorg
+  - /usr/libexec/qubes/wrappers/Xwayland for Xwayland (can be used by prepending /usr/libexec/qubes/wrappers to PATH for the wayland compositor process)
+2. Set for some parent process and use SHMOVERRIDE_PROGLIST="Xorg Xwayland" (space separated list of program basenames) to select which process should be affected.
