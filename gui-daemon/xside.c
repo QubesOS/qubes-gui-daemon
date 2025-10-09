@@ -696,6 +696,7 @@ static void mkghandles(Ghandles * g)
     }
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
+    g->keyboard_grabbed = 0;
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
     g->clipboard_requested = 0;
     g->clipboard_xevent_time = 0;
@@ -1539,75 +1540,98 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
     int len;
     Time clipboard_file_xevent_time;
 
-    /* copy */
-    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->copy_seq_mask
-        && ev->keycode == XKeysymToKeycode(g->display, g->copy_seq_key)) {
-        if (ev->type != KeyPress)
-            return 1;
-        g->clipboard_xevent_time = ev->time;
-        if (g->qrexec_clipboard) {
-            int ret = fetch_qubes_clipboard_using_qrexec(g);
-            if (g->log_level > 0)
-                fprintf(stderr, "secure copy: %s\n", ret?"success":"failed");
-        } else {
-            g->clipboard_requested = 1;
-            hdr.type = MSG_CLIPBOARD_REQ;
-            hdr.window = remote_winid;
-            hdr.untrusted_len = 0;
-            if (g->log_level > 0)
-                fprintf(stderr, "secure copy succeeded\n");
-            write_struct(g->vchan, hdr);
-        }
-        return 1;
-    }
-
-    /* paste */
-    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->paste_seq_mask
-        && ev->keycode == XKeysymToKeycode(g->display, g->paste_seq_key)) {
-        if (ev->type != KeyPress)
-            return 1;
-        inter_appviewer_lock(g, 1);
-        clipboard_file_xevent_time = get_clipboard_xevent_timestamp(g->log_level > 0);
-        /* X11 time is just 32-bit miliseconds counter, which make it wrap every
-         * ~50 days - something that is realistic. Handle that wrapping too. */
-        if (clipboard_file_xevent_time - ev->time < (1UL<<31)) {
-            /* some other clipboard operation happened in the meantime, discard
-             * request */
-            inter_appviewer_lock(g, 0);
-            fprintf(stderr,
-                    "received clipboard xevent after some other clipboard op, discarding\n");
-            return 1;
-        }
-        if (!evaluate_clipboard_policy(g)) {
-            inter_appviewer_lock(g, 0);
-            return 1;
-        }
-        if (g->qrexec_clipboard) {
-            int ret = paste_qubes_clipboard_using_qrexec(g);
-            if (g->log_level > 0)
-                fprintf(stderr, "secure paste: %s\n", ret?"success":"failed");
-        } else {
-            hdr.type = MSG_CLIPBOARD_DATA;
-            if (g->log_level > 0)
-                fprintf(stderr, "secure paste\n");
-            get_qubes_clipboard(g, &data, &len);
-            if (len > 0) {
-                /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
-                   of the blob, be aware when working with old implementations. */
-                if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_DATA_LEN_IN_LEN)
-                    hdr.window = len;
-                else
-                    hdr.window = remote_winid;
-                hdr.untrusted_len = len;
-                real_write_message(g->vchan, (char *) &hdr, sizeof(hdr),
-                        data, len);
-                free(data);
+    if (!g->keyboard_grabbed)
+    {
+        /* copy */
+        if (((int)ev->state & SPECIAL_KEYS_MASK) == g->copy_seq_mask
+            && ev->keycode == XKeysymToKeycode(g->display, g->copy_seq_key)) {
+            if (ev->type != KeyPress)
+                return 1;
+            g->clipboard_xevent_time = ev->time;
+            if (g->qrexec_clipboard) {
+                int ret = fetch_qubes_clipboard_using_qrexec(g);
+                if (g->log_level > 0)
+                    fprintf(stderr, "secure copy: %s\n", ret?"success":"failed");
+            } else {
+                g->clipboard_requested = 1;
+                hdr.type = MSG_CLIPBOARD_REQ;
+                hdr.window = remote_winid;
+                hdr.untrusted_len = 0;
+                if (g->log_level > 0)
+                    fprintf(stderr, "secure copy succeeded\n");
+                write_struct(g->vchan, hdr);
             }
+            return 1;
         }
-        inter_appviewer_lock(g, 0);
 
+        /* paste */
+        if (((int)ev->state & SPECIAL_KEYS_MASK) == g->paste_seq_mask
+            && ev->keycode == XKeysymToKeycode(g->display, g->paste_seq_key)) {
+            if (ev->type != KeyPress)
+                return 1;
+            inter_appviewer_lock(g, 1);
+            clipboard_file_xevent_time = get_clipboard_xevent_timestamp(g->log_level > 0);
+            /* X11 time is just 32-bit miliseconds counter, which make it wrap every
+             * ~50 days - something that is realistic. Handle that wrapping too. */
+            if (clipboard_file_xevent_time - ev->time < (1UL<<31)) {
+                /* some other clipboard operation happened in the meantime, discard
+                 * request */
+                inter_appviewer_lock(g, 0);
+                fprintf(stderr,
+                        "received clipboard xevent after some other clipboard op, discarding\n");
+                return 1;
+            }
+            if (!evaluate_clipboard_policy(g)) {
+                inter_appviewer_lock(g, 0);
+                return 1;
+            }
+            if (g->qrexec_clipboard) {
+                int ret = paste_qubes_clipboard_using_qrexec(g);
+                if (g->log_level > 0)
+                    fprintf(stderr, "secure paste: %s\n", ret?"success":"failed");
+            } else {
+                hdr.type = MSG_CLIPBOARD_DATA;
+                if (g->log_level > 0)
+                    fprintf(stderr, "secure paste\n");
+                get_qubes_clipboard(g, &data, &len);
+                if (len > 0) {
+                    /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
+                       of the blob, be aware when working with old implementations. */
+                    if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_DATA_LEN_IN_LEN)
+                        hdr.window = len;
+                    else
+                        hdr.window = remote_winid;
+                    hdr.untrusted_len = len;
+                    real_write_message(g->vchan, (char *) &hdr, sizeof(hdr),
+                            data, len);
+                    free(data);
+                }
+            }
+            inter_appviewer_lock(g, 0);
+
+            return 1;
+        }
+    }
+
+    /* grab keyboard */
+	if (((int)ev->state & SPECIAL_KEYS_MASK) == g->keyboard_grab_seq_mask
+		&& ev->keycode == XKeysymToKeycode(g->display, g->keyboard_grab_seq_key)) {
+        if (ev->type != KeyPress)
+            return 1;
+        if (g->keyboard_grabbed)
+        {
+            XUngrabKeyboard(g->display, CurrentTime);
+            g->keyboard_grabbed = 0;
+        }
+        else
+        {
+            int status = XGrabKeyboard(g->display, DefaultRootWindow(g->display), True, GrabModeAsync, GrabModeAsync, CurrentTime);
+            if (status == GrabSuccess)
+                g->keyboard_grabbed = 1;
+        }
         return 1;
     }
+
     return 0;
 }
 
@@ -2225,6 +2249,10 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
         hdr.type = MSG_KEYMAP_NOTIFY;
         hdr.window = 0;
         write_message(g->vchan, hdr, keys);
+    } else if (g->keyboard_grabbed)
+    {
+        XUngrabKeyboard(g->display, CurrentTime);
+        g->keyboard_grabbed = 0;
     }
     hdr.type = MSG_FOCUS;
     hdr.window = vm_window->remote_winid;
@@ -4530,6 +4558,8 @@ static void load_default_config_values(Ghandles * g)
     g->copy_seq_key = XK_c;
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
+    g->keyboard_grab_seq_mask = ControlMask;
+    g->keyboard_grab_seq_key = XK_Control_R;
     g->clipboard_buffer_size = DEFAULT_CLIPBOARD_BUFFER_SIZE;
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
@@ -4570,7 +4600,7 @@ static void parse_key_sequence(const char *seq, int *mask, KeySym * key, char *v
     if ((strcasecmp(seq, "disable") == 0) || (strcasecmp(seq, "none") == 0)) {
         *key = NoSymbol;
         fprintf(stderr,
-            "Warning: Disabling copy or paste hotkeys for %s\n",
+            "Warning: Disabling copy or paste or keyboard grab hotkeys for %s\n",
             vmname);
         return;
     }
@@ -4610,6 +4640,11 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
          config_setting_get_member(group, "secure_paste_sequence"))) {
         parse_key_sequence(config_setting_get_string(setting),
                    &g->paste_seq_mask, &g->paste_seq_key, (char *)&g->vmname);
+    }
+    if ((setting =
+         config_setting_get_member(group, "keyboard_grab_sequence"))) {
+        parse_key_sequence(config_setting_get_string(setting),
+                   &g->keyboard_grab_seq_mask, &g->keyboard_grab_seq_key, (char *)&g->vmname);
     }
 
     if ((setting =

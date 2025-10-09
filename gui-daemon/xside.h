@@ -170,6 +170,7 @@ struct _global_handles {
     GC tray_gc;        /* graphic context to paint tray background - only in TRAY_BACKGROUND mode */
     double tint_h;  /* precomputed H and S for tray coloring - only in TRAY_TINT mode */
     double tint_s;
+    bool keyboard_grabbed; /* Keyboard grab state */
     /* atoms for comunitating with xserver */
     Atom wmDeleteMessage;    /* Atom: WM_DELETE_WINDOW */
     Atom tray_selection;    /* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
@@ -239,6 +240,8 @@ struct _global_handles {
     KeySym copy_seq_key;    /* key for secure-copy key sequence */
     int paste_seq_mask;    /* modifiers mask for secure-paste key sequence */
     KeySym paste_seq_key;    /* key for secure-paste key sequence */
+    int keyboard_grab_seq_mask;    /* modifiers mask for keyboard grab key sequence */
+    KeySym keyboard_grab_seq_key;    /* key for keyboard grab key sequence */
     unsigned int clipboard_buffer_size;    /* maximum clipboard size limit */
     int qrexec_clipboard;    /* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
     int use_kdialog;    /* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
