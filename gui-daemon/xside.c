@@ -2815,7 +2815,16 @@ static void process_xevent(Ghandles * g)
     XEvent event_buffer;
     XNextEvent(g->display, &event_buffer);
     if (g->ebuf_max_delay > 0) {
-        ebuf_queue_xevent(g, event_buffer);
+        switch (event_buffer.type) {
+        case ConfigureNotify:
+        case ReparentNotify:
+        case MapNotify:
+            process_xevent_core(g, event_buffer);
+            break;
+        default:
+            ebuf_queue_xevent(g, event_buffer);
+            break;
+        }
     } else {
         process_xevent_core(g, event_buffer);
     }
