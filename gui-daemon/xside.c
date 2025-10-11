@@ -4592,8 +4592,8 @@ static void load_default_config_values(Ghandles * g)
     g->copy_seq_key = XK_c;
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
-    g->keyboard_grab_seq_mask = ControlMask;
-    g->keyboard_grab_seq_key = XK_Control_R;
+    g->keyboard_grab_seq_mask = 0;
+    g->keyboard_grab_seq_key = NoSymbol;
     g->clipboard_buffer_size = DEFAULT_CLIPBOARD_BUFFER_SIZE;
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
