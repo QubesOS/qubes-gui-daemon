@@ -171,6 +171,7 @@ struct _global_handles {
     double tint_h;  /* precomputed H and S for tray coloring - only in TRAY_TINT mode */
     double tint_s;
     bool keyboard_grabbed; /* Keyboard grab state */
+    bool keyboard_ungrab_evt; /* Keyboard ungrab event */
     /* atoms for comunitating with xserver */
     Atom wmDeleteMessage;    /* Atom: WM_DELETE_WINDOW */
     Atom tray_selection;    /* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */

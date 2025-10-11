@@ -697,6 +697,7 @@ static void mkghandles(Ghandles * g)
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
     g->keyboard_grabbed = 0;
+    g->keyboard_ungrab_evt = 0;
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
     g->clipboard_requested = 0;
     g->clipboard_xevent_time = 0;
@@ -1533,7 +1534,7 @@ static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
 /* check and handle guid-special keys
  * currently only for inter-vm clipboard copy/paste
  */
-static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
+static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID local_winid, XID remote_winid)
 {
     struct msg_hdr hdr;
     char *data;
@@ -1614,20 +1615,26 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
     }
 
     /* grab keyboard */
-	if (((int)ev->state & SPECIAL_KEYS_MASK) == g->keyboard_grab_seq_mask
-		&& ev->keycode == XKeysymToKeycode(g->display, g->keyboard_grab_seq_key)) {
+    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->keyboard_grab_seq_mask
+        && ev->keycode == XKeysymToKeycode(g->display, g->keyboard_grab_seq_key)) {
         if (ev->type != KeyPress)
             return 1;
         if (g->keyboard_grabbed)
         {
             XUngrabKeyboard(g->display, CurrentTime);
             g->keyboard_grabbed = 0;
+            if (g->log_level > 0)
+                fprintf(stderr, "keyboard ungrabbed\n");
         }
         else
         {
-            int status = XGrabKeyboard(g->display, DefaultRootWindow(g->display), True, GrabModeAsync, GrabModeAsync, CurrentTime);
+            int status = XGrabKeyboard(g->display, local_winid, True, GrabModeAsync, GrabModeAsync, CurrentTime);
             if (status == GrabSuccess)
+            {
                 g->keyboard_grabbed = 1;
+                if (g->log_level > 0)
+                    fprintf(stderr, "keyboard grabbed\n");
+            }
         }
         return 1;
     }
@@ -1654,7 +1661,7 @@ static void process_xevent_keypress(Ghandles * g, const XKeyEvent * ev)
     struct msg_keypress k;
     CHECK_NONMANAGED_WINDOW(g, ev->window);
     update_wm_user_time(g, ev->window, ev->time);
-    if (is_special_keypress(g, ev, vm_window->remote_winid))
+    if (is_special_keypress(g, ev, vm_window->local_winid, vm_window->remote_winid))
         return;
     k.type = ev->type;
     k.x = ev->x;
@@ -2234,6 +2241,37 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
     struct msg_focus k;
     CHECK_NONMANAGED_WINDOW(g, ev->window);
 
+    if (ev->mode == NotifyWhileGrabbed && ev->type == FocusOut)
+    {
+        if (g->keyboard_ungrab_evt)
+        {
+            XSetInputFocus(g->display, vm_window->local_winid, RevertToParent, CurrentTime);
+            g->keyboard_ungrab_evt = 0;
+            return;
+        }
+        if (g->keyboard_grabbed)
+        {
+            Window focus_return;
+            int revert_to_return;
+            XGetInputFocus(g->display, &focus_return, &revert_to_return);
+            XUngrabKeyboard(g->display, CurrentTime);
+            g->keyboard_grabbed = 0;
+            if (g->log_level > 0)
+                fprintf(stderr, "keyboard ungrabbed\n");
+            /* A hack to focus back on the previously grabbed window after the screen locker exit.
+             * When the sceeen locker is triggered while a window is grabbed, then the grabbed
+             * window is losing the focus and the focus is set to return to None after the screen
+             * locker exit.
+             */
+            if (focus_return == None && revert_to_return == RevertToNone)
+            {
+                XSetInputFocus(g->display, vm_window->local_winid, RevertToParent, CurrentTime);
+                g->keyboard_ungrab_evt = 1;
+                return;
+            }
+        }
+    }
+
     /* Ignore everything other than normal, non-temporary focus change. In
      * practice it ignores NotifyGrab and NotifyUngrab. VM does not have any
      * way to grab focus in dom0, so it shouldn't care about those events. Grab
@@ -2249,10 +2287,6 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
         hdr.type = MSG_KEYMAP_NOTIFY;
         hdr.window = 0;
         write_message(g->vchan, hdr, keys);
-    } else if (g->keyboard_grabbed)
-    {
-        XUngrabKeyboard(g->display, CurrentTime);
-        g->keyboard_grabbed = 0;
     }
     hdr.type = MSG_FOCUS;
     hdr.window = vm_window->remote_winid;
