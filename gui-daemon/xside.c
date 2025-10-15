@@ -594,11 +594,27 @@ static void update_keyboard_grab_indication(Ghandles * g, struct windowdata *vm_
             0, sizeof(buf), False, g->utf8_string, &act_type, &act_fmt, &nitems, &bytesleft,
             (unsigned char**)&data);
         if (ret == Success) {
-            if (g->keyboard_grabbed)
-                snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
-                         g->keyboard_grab_seq_str, g->vmname, data);
-            else
-                snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, data);
+            char vnmane_string[sizeof(g->vmname) + 3];
+            int vnmane_string_len;
+            char *data_vnmane_end_p;
+
+            snprintf(vnmane_string, sizeof(vnmane_string), "[%s] ", g->vmname);
+            data_vnmane_end_p = strstr((const char *)data, vnmane_string);
+            vnmane_string_len = strlen(vnmane_string);
+            if (g->keyboard_grabbed) {
+                if (data_vnmane_end_p)
+                    snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
+                             g->keyboard_grab_seq_str, g->vmname, data_vnmane_end_p + vnmane_string_len);
+                else
+                    snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
+                             g->keyboard_grab_seq_str, g->vmname, data);
+            }
+            else {
+                if (data_vnmane_end_p)
+                    snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, data_vnmane_end_p + vnmane_string_len);
+                else
+                    snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, data);
+            }
             XFree(data);
             /* sanitize end */
             if (g->log_level > 1)
@@ -3208,11 +3224,27 @@ static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 
     if (g->prefix_titles)
     {
-        if (g->keyboard_grabbed)
-            snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
-                     g->keyboard_grab_seq_str, g->vmname, untrusted_msg.data);
-        else
-            snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, untrusted_msg.data);
+        char vnmane_string[sizeof(g->vmname) + 3];
+        int vnmane_string_len;
+        char *data_vnmane_end_p;
+
+        snprintf(vnmane_string, sizeof(vnmane_string), "[%s] ", g->vmname);
+        data_vnmane_end_p = strstr(untrusted_msg.data, vnmane_string);
+        vnmane_string_len = strlen(vnmane_string);
+        if (g->keyboard_grabbed) {
+            if (data_vnmane_end_p)
+                snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
+                         g->keyboard_grab_seq_str, g->vmname, data_vnmane_end_p + vnmane_string_len);
+            else
+                snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
+                         g->keyboard_grab_seq_str, g->vmname, untrusted_msg.data);
+        }
+        else {
+            if (data_vnmane_end_p)
+                snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, data_vnmane_end_p + vnmane_string_len);
+            else
+                snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, untrusted_msg.data);
+        }
     }
     else
         snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
