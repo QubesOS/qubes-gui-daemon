@@ -51,6 +51,10 @@
 #define QUBES_SERVICE_EVAL_SIMPLE "policy.EvalSimple"
 #define QUBES_SERVICE_EVAL_GUI "policy.EvalGUI"
 
+/* Keyboard grab indication WM name prefix string */
+#define KEYBOARD_GRAB_WMNAME_PREFIX  "Keyboard grabbed %s"
+#define KEYBOARD_GRAB_WMNAME_PREFIX_CONST_LEN (sizeof (KEYBOARD_GRAB_WMNAME_PREFIX) - 2)
+
 /* default width of forced colorful border */
 #define BORDER_WIDTH 2
 
@@ -170,6 +174,8 @@ struct _global_handles {
     GC tray_gc;        /* graphic context to paint tray background - only in TRAY_BACKGROUND mode */
     double tint_h;  /* precomputed H and S for tray coloring - only in TRAY_TINT mode */
     double tint_s;
+    bool keyboard_grabbed; /* Keyboard grab state */
+    bool keyboard_ungrab_evt; /* Keyboard ungrab event */
     /* atoms for comunitating with xserver */
     Atom wmDeleteMessage;    /* Atom: WM_DELETE_WINDOW */
     Atom tray_selection;    /* Atom: _NET_SYSTEM_TRAY_SELECTION_S<creen number> */
@@ -239,10 +245,14 @@ struct _global_handles {
     KeySym copy_seq_key;    /* key for secure-copy key sequence */
     int paste_seq_mask;    /* modifiers mask for secure-paste key sequence */
     KeySym paste_seq_key;    /* key for secure-paste key sequence */
+    int keyboard_grab_seq_mask;    /* modifiers mask for keyboard grab key sequence */
+    KeySym keyboard_grab_seq_key;    /* key for keyboard grab key sequence */
+    char keyboard_grab_seq_str[64]; /* keyboard grab key sequence string */
     unsigned int clipboard_buffer_size;    /* maximum clipboard size limit */
     int qrexec_clipboard;    /* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
     int use_kdialog;    /* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
-    int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
+    int prefix_titles;     /* prefix windows titles with VM name and keyboard grab indication (for WM without support
+							  for _QUBES_VMNAME and _QUBES_KEYBOARD_GRAB_INDICATION properties) */
     enum trayicon_mode trayicon_mode; /* trayicon coloring mode */
     int trayicon_border; /* position of trayicon border - 0 - no border, 1 - at the edges, 2 - 1px from the edges */
     bool trayicon_tint_reduce_saturation; /* reduce trayicon saturation by 50% (available only for "tint" mode) */
@@ -255,7 +265,7 @@ struct _global_handles {
     xcb_connection_t *cb_connection; /**< XCB connection */
     xcb_gcontext_t gc; /**< XCB graphics context */
     int work_x, work_y, work_width, work_height;  /* do not allow a window to go beyond these bounds */
-    Atom qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
+    Atom qubes_keyboard_grab_indication, qubes_label, qubes_label_color, qubes_vmname, qubes_vmwindowid, net_wm_icon;
     bool in_dom0; /* true if we are in dom0, otherwise false */
     Atom net_supported;
     int xen_fd; /* O_PATH file descriptor to /dev/xen/gntdev */

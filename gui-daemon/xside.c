@@ -578,6 +578,72 @@ check_width_height:
     }
 }
 
+static void update_keyboard_grab_indication(Ghandles * g, struct windowdata *vm_window)
+{
+    if (g->prefix_titles) {
+        unsigned char *data = NULL;
+        unsigned long nitems, bytesleft;
+        Atom act_type;
+        int ret, act_fmt;
+        XTextProperty text_prop;
+        char buf[KEYBOARD_GRAB_WMNAME_PREFIX_CONST_LEN + sizeof(g->keyboard_grab_seq_str) + 1 +
+                 sizeof(((struct msg_wmname*)0)->data) + sizeof(g->vmname) + 3];
+        char *list[1] = { buf };
+
+        ret = XGetWindowProperty(g->display, vm_window->local_winid, g->net_wm_name,
+            0, sizeof(buf), False, g->utf8_string, &act_type, &act_fmt, &nitems, &bytesleft,
+            (unsigned char**)&data);
+        if (ret == Success) {
+            char vnmane_string[sizeof(g->vmname) + 3];
+            int vnmane_string_len;
+            char *data_vnmane_start_p;
+
+            snprintf(vnmane_string, sizeof(vnmane_string), "[%s] ", g->vmname);
+            data_vnmane_start_p = strstr((const char *)data, vnmane_string);
+            vnmane_string_len = strlen(vnmane_string);
+            if (g->keyboard_grabbed) {
+                if (data_vnmane_start_p)
+                    snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
+                             g->keyboard_grab_seq_str, g->vmname, data_vnmane_start_p + vnmane_string_len);
+                else
+                    snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
+                             g->keyboard_grab_seq_str, g->vmname, data);
+            }
+            else {
+                if (data_vnmane_start_p)
+                    snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, data_vnmane_start_p + vnmane_string_len);
+                else
+                    snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, data);
+            }
+            XFree(data);
+            /* sanitize end */
+            if (g->log_level > 1)
+                fprintf(stderr, "set title for window 0x%x\n",
+                    (int) vm_window->local_winid);
+            Xutf8TextListToTextProperty(g->display, list, 1, XUTF8StringStyle,
+                            &text_prop);
+            XSetWMName(g->display, vm_window->local_winid, &text_prop);
+            XChangeProperty(g->display, vm_window->local_winid, g->net_wm_name,
+                g->utf8_string, 8, PropModeReplace, (unsigned char *) buf, strlen(buf));
+            XSetWMIconName(g->display, vm_window->local_winid, &text_prop);
+            XChangeProperty(g->display, vm_window->local_winid, g->net_wm_icon_name,
+                g->utf8_string, 8, PropModeReplace, (unsigned char *) buf, strlen(buf));
+            XFree(text_prop.value);
+        }
+    } else {
+        if (g->keyboard_grabbed) {
+            char buf[KEYBOARD_GRAB_WMNAME_PREFIX_CONST_LEN + sizeof(g->keyboard_grab_seq_str)];
+            snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX, g->keyboard_grab_seq_str);
+            // Set '_QUBES_KEYBOARD_GRAB_INDICATION' property so that Window Manager can read it and nicely display it
+            XChangeProperty(g->display, vm_window->local_winid, g->qubes_keyboard_grab_indication, XA_STRING,
+                    8 /* 8 bit is enough */ , PropModeReplace, (const unsigned char *) buf, strlen(buf));
+        }
+        else {
+            XDeleteProperty(g->display, vm_window->local_winid, g->qubes_keyboard_grab_indication);
+        }
+    }
+}
+
 /*
  * Internal all of the atoms we will use.  For performance reasons, we perform
  * all atom interning at startup, and do so using a single XInternAtoms() call.
@@ -604,6 +670,7 @@ static void intern_global_atoms(Ghandles *const g) {
         { &g->frame_extents, "_NET_FRAME_EXTENTS" },
         { &g->wm_state_maximized_vert, "_NET_WM_STATE_MAXIMIZED_VERT" },
         { &g->wm_state_maximized_horz, "_NET_WM_STATE_MAXIMIZED_HORZ" },
+        { &g->qubes_keyboard_grab_indication, "_QUBES_KEYBOARD_GRAB_INDICATION" },
         { &g->qubes_label, "_QUBES_LABEL" },
         { &g->qubes_label_color, "_QUBES_LABEL_COLOR" },
         { &g->qubes_vmname, "_QUBES_VMNAME" },
@@ -696,6 +763,8 @@ static void mkghandles(Ghandles * g)
     }
     g->root_width = _VIRTUALX(attr.width);
     g->root_height = attr.height;
+    g->keyboard_grabbed = 0;
+    g->keyboard_ungrab_evt = 0;
     g->context = XCreateGC(g->display, g->root_win, 0, NULL);
     g->clipboard_requested = 0;
     g->clipboard_xevent_time = 0;
@@ -1532,82 +1601,113 @@ static void handle_cursor(Ghandles *g, struct windowdata *vm_window)
 /* check and handle guid-special keys
  * currently only for inter-vm clipboard copy/paste
  */
-static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_winid)
+static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, struct windowdata *vm_window)
 {
     struct msg_hdr hdr;
     char *data;
     int len;
     Time clipboard_file_xevent_time;
 
-    /* copy */
-    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->copy_seq_mask
-        && ev->keycode == XKeysymToKeycode(g->display, g->copy_seq_key)) {
-        if (ev->type != KeyPress)
+    if (!g->keyboard_grabbed)
+    {
+        /* copy */
+        if (((int)ev->state & SPECIAL_KEYS_MASK) == g->copy_seq_mask
+            && ev->keycode == XKeysymToKeycode(g->display, g->copy_seq_key)) {
+            if (ev->type != KeyPress)
+                return 1;
+            g->clipboard_xevent_time = ev->time;
+            if (g->qrexec_clipboard) {
+                int ret = fetch_qubes_clipboard_using_qrexec(g);
+                if (g->log_level > 0)
+                    fprintf(stderr, "secure copy: %s\n", ret?"success":"failed");
+            } else {
+                g->clipboard_requested = 1;
+                hdr.type = MSG_CLIPBOARD_REQ;
+                hdr.window = vm_window->remote_winid;
+                hdr.untrusted_len = 0;
+                if (g->log_level > 0)
+                    fprintf(stderr, "secure copy succeeded\n");
+                write_struct(g->vchan, hdr);
+            }
             return 1;
-        g->clipboard_xevent_time = ev->time;
-        if (g->qrexec_clipboard) {
-            int ret = fetch_qubes_clipboard_using_qrexec(g);
-            if (g->log_level > 0)
-                fprintf(stderr, "secure copy: %s\n", ret?"success":"failed");
-        } else {
-            g->clipboard_requested = 1;
-            hdr.type = MSG_CLIPBOARD_REQ;
-            hdr.window = remote_winid;
-            hdr.untrusted_len = 0;
-            if (g->log_level > 0)
-                fprintf(stderr, "secure copy succeeded\n");
-            write_struct(g->vchan, hdr);
         }
-        return 1;
+
+        /* paste */
+        if (((int)ev->state & SPECIAL_KEYS_MASK) == g->paste_seq_mask
+            && ev->keycode == XKeysymToKeycode(g->display, g->paste_seq_key)) {
+            if (ev->type != KeyPress)
+                return 1;
+            inter_appviewer_lock(g, 1);
+            clipboard_file_xevent_time = get_clipboard_xevent_timestamp(g->log_level > 0);
+            /* X11 time is just 32-bit miliseconds counter, which make it wrap every
+             * ~50 days - something that is realistic. Handle that wrapping too. */
+            if (clipboard_file_xevent_time - ev->time < (1UL<<31)) {
+                /* some other clipboard operation happened in the meantime, discard
+                 * request */
+                inter_appviewer_lock(g, 0);
+                fprintf(stderr,
+                        "received clipboard xevent after some other clipboard op, discarding\n");
+                return 1;
+            }
+            if (!evaluate_clipboard_policy(g)) {
+                inter_appviewer_lock(g, 0);
+                return 1;
+            }
+            if (g->qrexec_clipboard) {
+                int ret = paste_qubes_clipboard_using_qrexec(g);
+                if (g->log_level > 0)
+                    fprintf(stderr, "secure paste: %s\n", ret?"success":"failed");
+            } else {
+                hdr.type = MSG_CLIPBOARD_DATA;
+                if (g->log_level > 0)
+                    fprintf(stderr, "secure paste\n");
+                get_qubes_clipboard(g, &data, &len);
+                if (len > 0) {
+                    /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
+                       of the blob, be aware when working with old implementations. */
+                    if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_DATA_LEN_IN_LEN)
+                        hdr.window = len;
+                    else
+                        hdr.window = vm_window->remote_winid;
+                    hdr.untrusted_len = len;
+                    real_write_message(g->vchan, (char *) &hdr, sizeof(hdr),
+                            data, len);
+                    free(data);
+                }
+            }
+            inter_appviewer_lock(g, 0);
+
+            return 1;
+        }
     }
 
-    /* paste */
-    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->paste_seq_mask
-        && ev->keycode == XKeysymToKeycode(g->display, g->paste_seq_key)) {
+    /* grab keyboard */
+    if (((int)ev->state & SPECIAL_KEYS_MASK) == g->keyboard_grab_seq_mask
+        && ev->keycode == XKeysymToKeycode(g->display, g->keyboard_grab_seq_key)) {
         if (ev->type != KeyPress)
             return 1;
-        inter_appviewer_lock(g, 1);
-        clipboard_file_xevent_time = get_clipboard_xevent_timestamp(g->log_level > 0);
-        /* X11 time is just 32-bit miliseconds counter, which make it wrap every
-         * ~50 days - something that is realistic. Handle that wrapping too. */
-        if (clipboard_file_xevent_time - ev->time < (1UL<<31)) {
-            /* some other clipboard operation happened in the meantime, discard
-             * request */
-            inter_appviewer_lock(g, 0);
-            fprintf(stderr,
-                    "received clipboard xevent after some other clipboard op, discarding\n");
-            return 1;
-        }
-        if (!evaluate_clipboard_policy(g)) {
-            inter_appviewer_lock(g, 0);
-            return 1;
-        }
-        if (g->qrexec_clipboard) {
-            int ret = paste_qubes_clipboard_using_qrexec(g);
+        if (g->keyboard_grabbed)
+        {
+            XUngrabKeyboard(g->display, CurrentTime);
+            g->keyboard_grabbed = 0;
+            update_keyboard_grab_indication(g, vm_window);
             if (g->log_level > 0)
-                fprintf(stderr, "secure paste: %s\n", ret?"success":"failed");
-        } else {
-            hdr.type = MSG_CLIPBOARD_DATA;
-            if (g->log_level > 0)
-                fprintf(stderr, "secure paste\n");
-            get_qubes_clipboard(g, &data, &len);
-            if (len > 0) {
-                /* MSG_CLIPBOARD_DATA used to use the window field to pass the length
-                   of the blob, be aware when working with old implementations. */
-                if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_DATA_LEN_IN_LEN)
-                    hdr.window = len;
-                else
-                    hdr.window = remote_winid;
-                hdr.untrusted_len = len;
-                real_write_message(g->vchan, (char *) &hdr, sizeof(hdr),
-                        data, len);
-                free(data);
+                fprintf(stderr, "keyboard ungrabbed\n");
+        }
+        else
+        {
+            int status = XGrabKeyboard(g->display, vm_window->local_winid, True, GrabModeAsync, GrabModeAsync, CurrentTime);
+            if (status == GrabSuccess)
+            {
+                g->keyboard_grabbed = 1;
+                update_keyboard_grab_indication(g, vm_window);
+                if (g->log_level > 0)
+                    fprintf(stderr, "keyboard grabbed\n");
             }
         }
-        inter_appviewer_lock(g, 0);
-
         return 1;
     }
+
     return 0;
 }
 
@@ -1630,7 +1730,7 @@ static void process_xevent_keypress(Ghandles * g, const XKeyEvent * ev)
     struct msg_keypress k;
     CHECK_NONMANAGED_WINDOW(g, ev->window);
     update_wm_user_time(g, ev->window, ev->time);
-    if (is_special_keypress(g, ev, vm_window->remote_winid))
+    if (is_special_keypress(g, ev, vm_window))
         return;
     k.type = ev->type;
     k.x = ev->x;
@@ -2209,6 +2309,38 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
     struct msg_hdr hdr;
     struct msg_focus k;
     CHECK_NONMANAGED_WINDOW(g, ev->window);
+
+    if (ev->mode == NotifyWhileGrabbed && ev->type == FocusOut)
+    {
+        if (g->keyboard_ungrab_evt)
+        {
+            XSetInputFocus(g->display, vm_window->local_winid, RevertToParent, CurrentTime);
+            g->keyboard_ungrab_evt = 0;
+            return;
+        }
+        if (g->keyboard_grabbed)
+        {
+            Window focus_return;
+            int revert_to_return;
+            XGetInputFocus(g->display, &focus_return, &revert_to_return);
+            XUngrabKeyboard(g->display, CurrentTime);
+            g->keyboard_grabbed = 0;
+            update_keyboard_grab_indication(g, vm_window);
+            if (g->log_level > 0)
+                fprintf(stderr, "keyboard ungrabbed\n");
+            /* A hack to focus back on the previously grabbed window after the screen locker exit.
+             * When the sceeen locker is triggered while a window is grabbed, then the grabbed
+             * window is losing the focus and the focus is set to return to None after the screen
+             * locker exit.
+             */
+            if (focus_return == None && revert_to_return == RevertToNone)
+            {
+                XSetInputFocus(g->display, vm_window->local_winid, RevertToParent, CurrentTime);
+                g->keyboard_ungrab_evt = 1;
+                return;
+            }
+        }
+    }
 
     /* Ignore everything other than normal, non-temporary focus change. In
      * practice it ignores NotifyGrab and NotifyUngrab. VM does not have any
@@ -3072,7 +3204,8 @@ static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
 {
     XTextProperty text_prop;
     struct msg_wmname untrusted_msg;
-    char buf[sizeof(untrusted_msg.data) + sizeof(g->vmname) + 3];
+    char buf[KEYBOARD_GRAB_WMNAME_PREFIX_CONST_LEN + sizeof(g->keyboard_grab_seq_str) + 1 +
+             sizeof(untrusted_msg.data) + sizeof(g->vmname) + 3];
     size_t name_len;
     char *list[1] = { buf };
 
@@ -3090,7 +3223,29 @@ static void handle_wmname(Ghandles * g, struct windowdata *vm_window)
                 g->allow_utf8_titles);
 
     if (g->prefix_titles)
-        snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, untrusted_msg.data);
+    {
+        char vnmane_string[sizeof(g->vmname) + 3];
+        int vnmane_string_len;
+        char *data_vnmane_start_p;
+
+        snprintf(vnmane_string, sizeof(vnmane_string), "[%s] ", g->vmname);
+        data_vnmane_start_p = strstr(untrusted_msg.data, vnmane_string);
+        vnmane_string_len = strlen(vnmane_string);
+        if (g->keyboard_grabbed) {
+            if (data_vnmane_start_p)
+                snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
+                         g->keyboard_grab_seq_str, g->vmname, data_vnmane_start_p + vnmane_string_len);
+            else
+                snprintf(buf, sizeof(buf), KEYBOARD_GRAB_WMNAME_PREFIX " [%s] %s",
+                         g->keyboard_grab_seq_str, g->vmname, untrusted_msg.data);
+        }
+        else {
+            if (data_vnmane_start_p)
+                snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, data_vnmane_start_p + vnmane_string_len);
+            else
+                snprintf(buf, sizeof(buf), "[%s] %s", g->vmname, untrusted_msg.data);
+        }
+    }
     else
         snprintf(buf, sizeof(buf), "%s", untrusted_msg.data);
     /* sanitize end */
@@ -4530,6 +4685,8 @@ static void load_default_config_values(Ghandles * g)
     g->copy_seq_key = XK_c;
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
+    g->keyboard_grab_seq_mask = 0;
+    g->keyboard_grab_seq_key = NoSymbol;
     g->clipboard_buffer_size = DEFAULT_CLIPBOARD_BUFFER_SIZE;
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
@@ -4570,7 +4727,7 @@ static void parse_key_sequence(const char *seq, int *mask, KeySym * key, char *v
     if ((strcasecmp(seq, "disable") == 0) || (strcasecmp(seq, "none") == 0)) {
         *key = NoSymbol;
         fprintf(stderr,
-            "Warning: Disabling copy or paste hotkeys for %s\n",
+            "Warning: Disabling copy or paste or keyboard grab hotkeys for %s\n",
             vmname);
         return;
     }
@@ -4610,6 +4767,14 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
          config_setting_get_member(group, "secure_paste_sequence"))) {
         parse_key_sequence(config_setting_get_string(setting),
                    &g->paste_seq_mask, &g->paste_seq_key, (char *)&g->vmname);
+    }
+    if ((setting =
+         config_setting_get_member(group, "keyboard_grab_sequence"))) {
+        const char *seqp = config_setting_get_string(setting);
+        strncpy(g->keyboard_grab_seq_str, seqp, sizeof(g->keyboard_grab_seq_str));
+        g->keyboard_grab_seq_str[sizeof(g->keyboard_grab_seq_str) - 1] = '\0';
+        parse_key_sequence(seqp, &g->keyboard_grab_seq_mask,
+                   &g->keyboard_grab_seq_key, (char *)&g->vmname);
     }
 
     if ((setting =
