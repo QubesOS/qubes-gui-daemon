@@ -1,3 +1,11 @@
+qubes-gui-daemon (4.3.14-1) unstable; urgency=medium
+
+  [ Aaron Rainbolt ]
+  * Don't event-buffer ConfigureNotify, MapNotify, and ReparentNotify
+    events
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 20 Oct 2025 22:40:45 +0200
+
 qubes-gui-daemon (4.3.13-1) unstable; urgency=medium
 
   [ Ali Mirjamali ]
