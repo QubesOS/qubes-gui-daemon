@@ -2210,15 +2210,25 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
     struct msg_focus k;
     CHECK_NONMANAGED_WINDOW(g, ev->window);
 
-    /* Ignore everything other than normal, non-temporary focus change. In
-     * practice it ignores NotifyGrab and NotifyUngrab. VM does not have any
-     * way to grab focus in dom0, so it shouldn't care about those events. Grab
-     * is used by window managers during task switching (either classic task
-     * switcher, or KDE "present windows" feature).
+    /* In the past, the GUI daemon ignored several such events.  The
+     * comment used to say:
+     *
+     * > Ignore everything other than normal, non-temporary focus change. In
+     * > practice it ignores NotifyGrab and NotifyUngrab. VM does not have any
+     * > way to grab focus in dom0, so it shouldn't care about those events. Grab
+     * > is used by window managers during task switching (either classic task
+     * > switcher, or KDE "present windows" feature).
+     *
+     * In particular, events with modes other than NotifyNormal and
+     * NotifyWhileGrabbed were ignored.
+     *
+     * This caused problems, though.  It turns out that some
+     * applications actually do care about these events, and ignoring
+     * them causes things to break.  In particular, this resulted in
+     * lost keymap updates and the agent and daemon no longer agreeing
+     * on which keys are pressed.  Therefore, the GUI daemon now sends
+     * such events to clients, and does not clobber the mode value.
      */
-    if (ev->mode != NotifyNormal && ev->mode != NotifyWhileGrabbed)
-        return;
-
     if (ev->type == FocusIn) {
         char keys[32];
         XQueryKeymap(g->display, keys);
@@ -2229,10 +2239,7 @@ static void process_xevent_focus(Ghandles * g, const XFocusChangeEvent * ev)
     hdr.type = MSG_FOCUS;
     hdr.window = vm_window->remote_winid;
     k.type = ev->type;
-    /* override NotifyWhileGrabbed with NotifyNormal b/c VM shouldn't care
-     * about window manager details during focus switching
-     */
-    k.mode = NotifyNormal;
+    k.mode = ev->mode;
     k.detail = ev->detail;
     write_message(g->vchan, hdr, k);
 }
