@@ -8,6 +8,7 @@
 #include <qubesdb-client.h>
 
 #define PACAT_PIDFILE_PATH_TPL "/var/run/qubes/pacat.%d"
+#define PA_VOLUME_UNTOUCHED -1
 
 struct userdata {
     pa_mainloop_api *mainloop_api;
@@ -24,6 +25,8 @@ struct userdata {
     pa_stream *rec_stream;
     char *play_device;
     char *rec_device;
+
+    long volume;
 
     pa_io_event* play_stdio_event;
     pa_io_event* rec_stdio_event;
