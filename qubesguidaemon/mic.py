@@ -60,7 +60,7 @@ class MicDeviceExtension(qubes.ext.Extension):
     @staticmethod
     def get_device(app):
         return MicDevice(
-            app.domains[0], product="microphone", manufacturer="build-in"
+            app.domains[0], product="microphone", manufacturer="default"
         )
 
     @qubes.ext.handler("device-list:mic")
