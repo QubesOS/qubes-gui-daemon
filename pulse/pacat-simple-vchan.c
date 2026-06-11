@@ -730,7 +730,7 @@ static bool connect_disconnect_rec_stream(
 static void context_state_callback(pa_context *c, void *userdata) {
     struct userdata *u = userdata;
     pa_stream_flags_t flags = 0;
-    pa_cvolume cvolume = {1, {u->volume}};
+    pa_cvolume cvolume = {2, {u->volume, u->volume}};
     pa_cvolume *vol = NULL;
 
     assert(c);
