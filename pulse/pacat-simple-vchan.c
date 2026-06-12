@@ -406,7 +406,7 @@ static void send_rec_data(pa_stream *s, struct userdata *u, bool discard_overrun
     pa_stream_drop(s);
 }
 
-/* This is called whenever new data may is available */
+/* This is called whenever new data may be available */
 static void stream_read_callback(pa_stream *s, size_t length, void *userdata) {
     struct userdata *u = userdata;
 
@@ -730,6 +730,8 @@ static bool connect_disconnect_rec_stream(
 static void context_state_callback(pa_context *c, void *userdata) {
     struct userdata *u = userdata;
     pa_stream_flags_t flags = 0;
+    pa_cvolume cvolume = {2, {u->volume, u->volume}};
+    pa_cvolume *vol = NULL;
 
     assert(c);
 
@@ -769,11 +771,24 @@ static void context_state_callback(pa_context *c, void *userdata) {
             pa_stream_set_started_callback(u->play_stream, stream_started_callback, u);
             pa_stream_set_event_callback(u->play_stream, stream_event_callback, u);
             pa_stream_set_buffer_attr_callback(u->play_stream, stream_buffer_attr_callback, u);
-            flags = PA_STREAM_ADJUST_LATENCY;
+            flags |= PA_STREAM_ADJUST_LATENCY;
+
+            if (u->volume == PA_VOLUME_MUTED) {
+                flags |= PA_STREAM_START_MUTED;
+                // It is strongly advised to not only mute, but set volume to zero as well
+                // vol = &cvolume;
+                // pa_cvolume_mute(vol, 1);
+                u->volume = PA_VOLUME_UNTOUCHED;
+            } else if (u->volume != PA_VOLUME_UNTOUCHED) {
+                flags |= PA_STREAM_START_UNMUTED;
+                vol = &cvolume;
+                u->volume = PA_VOLUME_UNTOUCHED;
+            }
+
             if (verbose > 1)
                 flags |= PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_INTERPOLATE_TIMING;
 
-            if (pa_stream_connect_playback(u->play_stream, u->play_device, bufattr, flags, NULL /* volume */, NULL) < 0) {
+            if (pa_stream_connect_playback(u->play_stream, u->play_device, bufattr, flags, vol /* volume */, NULL) < 0) {
                 pacat_log("pa_stream_connect_playback() failed: %s", pa_strerror(pa_context_errno(c)));
                 goto fail;
             }
@@ -1132,6 +1147,7 @@ static _Noreturn void usage(char *arg0, int arg) {
     fprintf(stream, "  -v - verbose logging (a lot of output, may affect performance)\n");
     fprintf(stream, "  -t size - target playback buffer fill, implies -l, default %d\n",
             custom_bufattr.tlength);
+    fprintf(stream, "  -V volume - set the target playback volume. Or `mute` to just mute\n");
     fprintf(stream, "  -h - print this message\n");
     if (fflush(NULL) || ferror(stdout) || ferror(stderr))
         exit(1);
@@ -1151,9 +1167,10 @@ int main(int argc, char *argv[])
     char *endptr;
 
     memset(&u, 0, sizeof(u));
+    u.volume = PA_VOLUME_UNTOUCHED;
     if (argc <= 2)
         usage(argv[0], 1);
-    while ((i = getopt(argc, argv, "+lnbvt:h")) != -1) {
+    while ((i = getopt(argc, argv, "+lnbvt:V:h")) != -1) {
         switch (i) {
             case 'l':
                 bufattr = &custom_bufattr;
@@ -1178,6 +1195,21 @@ int main(int argc, char *argv[])
                     err(1, "Invalid -t argument: %s", optarg);
                 bufattr = &custom_bufattr;
                 custom_bufattr.tlength = tlength;
+                break;
+            case 'V':
+                errno = 0;
+                if (strcmp(optarg, "mute") == 0) {
+                    u.volume = PA_VOLUME_MUTED;
+                    break;
+                }
+                u.volume = strtoul(optarg, &endptr, 0);
+                if (*endptr)
+                    errx(1, "Invalid -V argument: %s", optarg);
+                if (u.volume > 150)   // pluse accepts volume greater than 100%
+                    errno = ERANGE;
+                if (errno)
+                    err(1, "Invalid -V argument: %s", optarg);
+                u.volume = PA_VOLUME_NORM * u.volume / 100;
                 break;
             case 'h':
                 usage(argv[0], 0);
@@ -1205,7 +1237,6 @@ int main(int argc, char *argv[])
     if (create_pidfile(u.domid, &pidfile_path, &pidfile_fd) < 0)
         /* error already printed by create_pidfile() */
         exit(1);
-    goto main;
 
 main:
     u.ret = 1;
