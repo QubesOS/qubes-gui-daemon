@@ -357,7 +357,7 @@ static bool parse_display_name(const char *const ptr, int *display_num)
     return true;
 }
 
-static int get_display(void)
+static int get_display(const char *progname_allowlist)
 {
     ssize_t res;
     int fd, rc = -1, display = 0;
@@ -376,6 +376,7 @@ static int get_display(void)
         return rc;
     }
 
+    bool argv0 = progname_allowlist != NULL;
     bool skip = true; /* Skip argv[0] (the program name) */
     while(true) {
         errno = 0;
@@ -388,6 +389,35 @@ static int get_display(void)
         }
         size_t length = (size_t)res;
         assert(ptr && ptr[length] == '\0');
+
+        if (argv0) {
+            char *current_item, *next_item;
+            char *allowlist_copy = strdup(progname_allowlist);
+            char *progname = strrchr(ptr, '/');
+
+            if (!allowlist_copy) {
+                perror("allowlist copy");
+                goto cleanup;
+            }
+
+            if (progname)
+                /* skip '/' */
+                progname++;
+            else
+                progname = ptr;
+
+            next_item = allowlist_copy;
+            while ((current_item = strsep(&next_item, " ")) != NULL) {
+                if (strcmp(current_item, progname) == 0)
+                    break;
+            }
+            free(allowlist_copy);
+            /* abort if not found */
+            if (!current_item) {
+                fprintf(stderr, "skipping shmoverride in %s\n", progname);
+                goto cleanup;
+            }
+        }
 
         /*
          * Skip option arguments.  Some options take more than one argument,
@@ -483,7 +513,6 @@ static int try_init(void)
     if (__builtin_expect(init_called, 1)) return 0;
     init_called = 1;
 
-    unsetenv("LD_PRELOAD");
     fprintf(stderr, "shmoverride constructor running\n");
     dlerror();
     if (!(real_mmap = dlsym(RTLD_NEXT, "mmap64"))) {
@@ -498,7 +527,14 @@ static int try_init(void)
     } else if (!(real_munmap = dlsym(RTLD_NEXT, "munmap"))) {
         fprintf(stderr, "shmoverride: no munmap?: %s\n", dlerror());
         abort();
-    } else if ((gntdev_fd = open("/dev/xen/gntdev", O_PATH | O_CLOEXEC | O_NOCTTY)) == -1) {
+    }
+
+    if ((display = get_display(getenv("SHMOVERRIDE_PROGLIST"))) < 0)
+        goto cleanup;
+
+    unsetenv("LD_PRELOAD");
+
+    if ((gntdev_fd = open("/dev/xen/gntdev", O_PATH | O_CLOEXEC | O_NOCTTY)) == -1) {
         perror("open /dev/xen/gntdev");
         goto cleanup;
     } else if (real_fstat(VER gntdev_fd, &global_buf)) {
@@ -508,6 +544,7 @@ static int try_init(void)
         fprintf(stderr, "/dev/xen/gntdev is not a character special file");
         goto cleanup;
     }
+
 #ifdef XENCTRL_HAS_XC_INTERFACE
     xc_hnd = xc_interface_open(NULL, NULL, 0);
     if (!xc_hnd) {
@@ -524,9 +561,6 @@ static int try_init(void)
         perror("shmoverride: xengnttab_open failed");
         goto cleanup; // Allow it to run when not under Xen.
     }
-
-    if ((display = get_display()) < 0)
-        goto cleanup;
 
     if ((unsigned int)snprintf(__shmid_filename, sizeof __shmid_filename,
         SHMID_FILENAME_PREFIX "%d", display) >= sizeof __shmid_filename) {
