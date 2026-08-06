@@ -19,6 +19,7 @@
 # with this program; if not, see <http://www.gnu.org/licenses/>.
 
 """Microphone control extension"""
+
 import asyncio
 import subprocess
 import sys
