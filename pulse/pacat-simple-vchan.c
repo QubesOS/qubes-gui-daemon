@@ -680,7 +680,7 @@ static bool connect_disconnect_rec_stream_locked(
 
         if (!(u->rec_stream = pa_stream_new_with_proplist(u->context, "record", &sample_spec, &u->channel_map, u->proplist))) {
             pacat_log("rec pa_stream_new() failed: %s", pa_strerror(pa_context_errno(u->context)));
-            quit(u, 1);
+            goto fail;
         }
 
         pa_stream_set_state_callback(u->rec_stream, stream_state_callback, u);
@@ -710,6 +710,9 @@ static bool connect_disconnect_rec_stream_locked(
             u->rec_stream_connect_in_progress = false;
         }
     }
+    return false;
+fail:
+    quit(u, 1);
     return false;
 }
 
@@ -811,6 +814,7 @@ static void context_state_callback(pa_context *c, void *userdata) {
             if (u->rec_stdio_event) {
                 assert(u->mainloop_api);
                 u->mainloop_api->io_free(u->rec_stdio_event);
+                u->rec_stdio_event = NULL;
             }
             quit(u, 0);
             break;
@@ -953,7 +957,12 @@ static void control_socket_callback(pa_mainloop_api *UNUSED(a),
         g_mutex_lock(&u->prop_mutex);
         if (new_rec_allowed != u->rec_allowed) {
             u->rec_allowed = new_rec_allowed;
-            if (!u->rec_stream_connect_in_progress)
+            /* Actually connect/disconnect the stream only if pulseaudio
+             * context is fully set up, up to the point of reading recording
+             * requests. If not yet, context_state_callback() will take care of
+             * it, once it's fully connected.
+             */
+            if (u->rec_stdio_event && !u->rec_stream_connect_in_progress)
                 connect_disconnect_rec_stream_locked(u, false, new_rec_allowed);
             pacat_log("Setting audio-input to %s", u->rec_allowed ? "enabled" : "disabled");
         }
