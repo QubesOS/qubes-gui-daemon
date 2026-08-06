@@ -1,0 +1,99 @@
+# The Qubes OS Project, https://www.qubes-os.org
+
+pkgbase=qubes-gui-daemon
+pkgname=(qubes-gui-daemon qubes-audio-daemon)
+pkgver=@VERSION@
+pkgrel=@REL@
+pkgdesc="Qubes GUI and audio virtualization daemons"
+arch=(x86_64)
+url="https://www.qubes-os.org/"
+license=(GPL-2.0-or-later)
+makedepends=(
+    gcc
+    gdk-pixbuf2
+    glib2
+    help2man
+    libconfig
+    libnotify
+    libpng
+    libpulse
+    libx11
+    libxcb
+    libxrandr
+    make
+    pkgconf
+    qubes-db-vm
+    qubes-libvchan
+    'qubes-vm-gui-common>=4.3.0'
+    'qubes-vm-utils>=4.2.10'
+    qubes-vm-xen
+    xcb-util
+)
+_pkgnvr="${pkgbase}-${pkgver}-${pkgrel}"
+source=("${_pkgnvr}.tar.gz")
+sha256sums=(SKIP)
+
+build() {
+    cd "${_pkgnvr}"
+    make all BACKEND_VMM=xen LIBDIR=/usr/lib
+}
+
+package_qubes-gui-daemon() {
+    pkgdesc="Qubes GUI virtualization daemon for GUI domains"
+    depends=(
+        gdk-pixbuf2
+        glib2
+        libconfig
+        libnotify
+        libpng
+        libx11
+        libxcb
+        libxrandr
+        notification-daemon
+        python
+        python-xcffib
+        qubes-core-admin-client
+        'qubes-img-converter>=4.1.4'
+        qubes-libvchan
+        qubes-vm-core
+        'qubes-vm-qrexec>=4.1.5'
+        'qubes-vm-utils>=4.2.10'
+        qubes-vm-xen
+        socat
+        xcb-util
+        xorg-server
+    )
+    optdepends=('qubes-audio-daemon: audio virtualization support')
+    backup=(
+        etc/qubes/guid.conf
+        etc/qubes/rpc-config/qubes.WindowIconUpdater
+    )
+    install=archlinux/qubes-gui-daemon.install
+
+    cd "${_pkgnvr}"
+    make install DESTDIR="${pkgdir}" LIBDIR=/usr/lib
+
+    rm "${pkgdir}/usr/bin/pacat-simple-vchan"
+    rm "${pkgdir}/etc/qubes/policy.d/90-default-gui-daemon.policy"
+    rmdir "${pkgdir}/etc/qubes/policy.d"
+
+    install -Dm644 archlinux/95-qubes-gui-daemon.hook \
+        "${pkgdir}/usr/share/libalpm/hooks/95-qubes-gui-daemon.hook"
+}
+
+package_qubes-audio-daemon() {
+    pkgdesc="Qubes audio virtualization daemon for GUI and audio domains"
+    depends=(
+        glib2
+        libpulse
+        pulse-native-provider
+        qubes-db-vm
+        qubes-libvchan
+    )
+
+    cd "${_pkgnvr}"
+    install -Dm755 pulse/pacat-simple-vchan \
+        "${pkgdir}/usr/bin/pacat-simple-vchan"
+}
+
+# vim:set ts=4 sw=4 et:
