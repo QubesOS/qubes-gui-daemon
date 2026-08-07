@@ -35,9 +35,7 @@ class MicDevice(DeviceInfo):
     # pylint: disable=too-few-public-methods)
 
     def __init__(self, backend_domain, product, manufacturer):
-        port = Port(
-            backend_domain=backend_domain, port_id="mic", devclass="mic"
-        )
+        port = Port(backend_domain=backend_domain, port_id="mic", devclass="mic")
         super().__init__(
             port,
             product=product,
@@ -60,9 +58,7 @@ class MicDeviceExtension(qubes.ext.Extension):
 
     @staticmethod
     def get_device(app):
-        return MicDevice(
-            app.domains[0], product="microphone", manufacturer="default"
-        )
+        return MicDevice(app.domains[0], product="microphone", manufacturer="default")
 
     @qubes.ext.handler("device-list:mic")
     def on_device_list_mic(self, vm, event):
@@ -136,9 +132,7 @@ class MicDeviceExtension(qubes.ext.Extension):
             "supported-rpc.qubes.AudioInputEnable", False
         ):
             try:
-                await audiovm.run_service_for_stdio(
-                    f"qubes.AudioInputEnable+{vm.name}"
-                )
+                await audiovm.run_service_for_stdio(f"qubes.AudioInputEnable+{vm.name}")
             except subprocess.CalledProcessError:
                 # pylint: disable=raise-missing-from
                 raise qubes.exc.QubesVMError(
