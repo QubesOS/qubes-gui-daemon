@@ -52,8 +52,6 @@ package_qubes-gui-daemon() {
         notification-daemon
         python
         python-xcffib
-        qubes-core-admin-client
-        'qubes-img-converter>=4.1.4'
         qubes-libvchan
         qubes-vm-core
         'qubes-vm-qrexec>=4.1.5'
@@ -63,7 +61,10 @@ package_qubes-gui-daemon() {
         xcb-util
         xorg-server
     )
-    optdepends=('qubes-audio-daemon: audio virtualization support')
+    optdepends=(
+        'qubes-audio-daemon: audio virtualization support'
+        'qubes-core-admin-client: window icon updates'
+    )
     backup=(
         etc/qubes/guid.conf
         etc/qubes/rpc-config/qubes.WindowIconUpdater
