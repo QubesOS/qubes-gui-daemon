@@ -1,3 +1,18 @@
+qubes-gui-daemon (4.3.16-1) unstable; urgency=medium
+
+  [ Corey Ford ]
+  * Change manufacturer label for dom0:mic
+
+  [ Ali Mirjamali ]
+  * Allow user to set qube audio volume
+
+  [ Marek Marczykowski-Górecki ]
+  * pulse: set volume on both channels
+  * pulse: fix race condition with allowing recording early
+  * Adjust for updated black
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Thu, 20 Aug 2026 13:45:54 +0200
+
 qubes-gui-daemon (4.3.15-1) unstable; urgency=medium
 
   * Re-dock tray icons when tray manager is restarted
