@@ -1944,16 +1944,19 @@ static int validate_override_redirect(Ghandles * g, struct windowdata *vm_window
 {
     static int warning_shown;
     uint64_t avail, desired;
-    const char * warning_msg = "This VM has attempted to create a very large window "
+    char warning_msg[1024];
+
+    snprintf(warning_msg, sizeof warning_msg,
+        "This VM has attempted to create a very large window "
         "in a manner that would have prevented you from closing it and regaining "
         "the control of Qubes OS\'s graphical user interface.\n\n"
         "As a protection measure, the \"override_redirect\" flag of the window "
         "in question has been unset. If this creates unexpected issues in the "
-        "handling of this VM\'s windows, please set \"override_redirect_protection\" "
-        "to \"false\" for this VM in /etc/qubes/guid.conf to disable this protection "
-        "measure and restart the VM.\n\n"
+        "handling of this VM\'s windows, please run the following command in dom0:\n\n"
+        "qvm-features %s gui-override-redirect-protection \"\"\n\n"
+        "to disable this protection measure and restart the VM.\n\n"
         "This message will only appear once per VM per session. Please click on this "
-        "notification to close it.";
+        "notification to close it.", g->vmname);
 
     req_override_redirect = !!req_override_redirect;
 
