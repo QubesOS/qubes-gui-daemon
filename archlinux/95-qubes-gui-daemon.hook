@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = xorg-server
+
+[Action]
+Description = Configuring the Qubes X server wrapper...
+When = PostTransaction
+Exec = /usr/bin/ln -sfn X-wrapper-qubes /usr/bin/X
