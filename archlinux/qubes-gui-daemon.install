@@ -1,0 +1,22 @@
+configure_qubes_gui_daemon() {
+    if getent group qubes >/dev/null; then
+        chgrp qubes /usr/bin/qubes-guid
+        chmod 4750 /usr/bin/qubes-guid
+    fi
+
+    ln -sfn X-wrapper-qubes /usr/bin/X
+}
+
+post_install() {
+    configure_qubes_gui_daemon
+}
+
+post_upgrade() {
+    configure_qubes_gui_daemon
+}
+
+pre_remove() {
+    if [ "$(readlink /usr/bin/X)" = "X-wrapper-qubes" ]; then
+        ln -sfn Xorg /usr/bin/X
+    fi
+}
