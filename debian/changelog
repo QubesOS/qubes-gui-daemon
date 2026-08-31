@@ -1,3 +1,10 @@
+qubes-gui-daemon (4.3.18-1) unstable; urgency=medium
+
+  [ Janik Besendorf ]
+  * fix: update override-redirect warning instructions
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 31 Aug 2026 03:52:04 +0200
+
 qubes-gui-daemon (4.3.17-1) unstable; urgency=medium
 
   [ besendorf ]
