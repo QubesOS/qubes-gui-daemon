@@ -1,3 +1,9 @@
+qubes-gui-daemon (4.3.19-1) unstable; urgency=medium
+
+  * version 4.3.19
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Fri, 16 Oct 2026 22:05:09 +0200
+
 qubes-gui-daemon (4.3.18-1) unstable; urgency=medium
 
   [ Janik Besendorf ]
