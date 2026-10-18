@@ -4787,12 +4787,12 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
             unsigned int img_value;
             if (sscanf(optarg, "%u", &img_value) != 1)
                 errx(1, "maximum clipboard image size '%s' is not an integer", optarg);
-            if (img_value > MAX_CLIPBOARD_IMAGE_BUFFER_SIZE ||
-                    img_value < MIN_CLIPBOARD_IMAGE_BUFFER_SIZE)
+            /* unsigned, and the minimum is 0 */
+            if (img_value > MAX_CLIPBOARD_IMAGE_BUFFER_SIZE)
                 errx(1, "unsupported value ‘%d’ for --max-clipboard-image-size "
                         "(must be between %d to %d bytes)",
-                        img_value, MAX_CLIPBOARD_IMAGE_BUFFER_SIZE,
-                        MIN_CLIPBOARD_IMAGE_BUFFER_SIZE);
+                        img_value, MIN_CLIPBOARD_IMAGE_BUFFER_SIZE,
+                        MAX_CLIPBOARD_IMAGE_BUFFER_SIZE);
             g->clipboard_image_buffer_size = img_value;
             break;
         default:
@@ -4941,8 +4941,8 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
             fprintf(stderr,
                     "unsupported value ‘%d’ for max_clipboard_image_size "
                     "(must be between %d to %d bytes).\n",
-                    value, MAX_CLIPBOARD_IMAGE_BUFFER_SIZE,
-                    MIN_CLIPBOARD_IMAGE_BUFFER_SIZE);
+                    value, MIN_CLIPBOARD_IMAGE_BUFFER_SIZE,
+                    MAX_CLIPBOARD_IMAGE_BUFFER_SIZE);
         } else {
             g->clipboard_image_buffer_size = value;
         }
