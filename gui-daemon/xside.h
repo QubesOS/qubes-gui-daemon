@@ -27,6 +27,7 @@
 #define GUID_CONFIG_FILE "/etc/qubes/guid.conf"
 #define GUID_CONFIG_DIR "/etc/qubes"
 #define QUBES_CLIPBOARD_FILENAME "/var/run/qubes/qubes-clipboard.bin"
+#define QUBES_CLIPBOARD_IMAGE_FILENAME QUBES_CLIPBOARD_FILENAME ".image"
 #define QREXEC_CLIENT "qrexec-client"
 #define QREXEC_CLIENT_VM QREXEC_CLIENT "-vm"
 #define QREXEC_CLIENT_PATH "/usr/lib/qubes/" QREXEC_CLIENT
@@ -94,11 +95,19 @@
 #include "util.h"
 
 #define QUBES_POLICY_EVAL_SIMPLE_SOCKET ("/etc/qubes-rpc/" QUBES_SERVICE_EVAL_SIMPLE)
-#define QREXEC_PRELUDE_CLIPBOARD_PASTE (QUBES_SERVICE_EVAL_SIMPLE "+" QUBES_SERVICE_CLIPBOARD_PASTE " dom0 keyword adminvm")
+#define QREXEC_PRELUDE_CLIPBOARD_PASTE_TEXT (QUBES_SERVICE_EVAL_SIMPLE "+" QUBES_SERVICE_CLIPBOARD_PASTE "+text dom0 keyword adminvm")
+#define QREXEC_PRELUDE_CLIPBOARD_PASTE_IMAGE (QUBES_SERVICE_EVAL_SIMPLE "+" QUBES_SERVICE_CLIPBOARD_PASTE "+image dom0 keyword adminvm")
+#define QREXEC_EVAL_GUI_CLIPBOARD_PASTE_TEXT (QUBES_SERVICE_EVAL_GUI "+" QUBES_SERVICE_CLIPBOARD_PASTE "+text")
+#define QREXEC_EVAL_GUI_CLIPBOARD_PASTE_IMAGE (QUBES_SERVICE_EVAL_GUI "+" QUBES_SERVICE_CLIPBOARD_PASTE "+image")
 
 enum clipboard_op {
     CLIPBOARD_COPY,
     CLIPBOARD_PASTE
+};
+
+enum clipboard_data_type {
+    CLIPBOARD_DATA_TEXT = 0,
+    CLIPBOARD_DATA_IMAGE = 1
 };
 
 enum trayicon_mode {
@@ -241,6 +250,7 @@ struct _global_handles {
     int paste_seq_mask;    /* modifiers mask for secure-paste key sequence */
     KeySym paste_seq_key;    /* key for secure-paste key sequence */
     unsigned int clipboard_buffer_size;    /* maximum clipboard size limit */
+    unsigned int clipboard_image_buffer_size;    /* maximum clipboard image size limit */
     int qrexec_clipboard;    /* 0: use GUI protocol to fetch/put clipboard, 1: use qrexec */
     int use_kdialog;    /* use kdialog for prompts (default on KDE) or zenity (default on non-KDE) */
     int prefix_titles;     /* prefix windows titles with VM name (for WM without support for _QUBES_VMNAME property) */
@@ -346,7 +356,10 @@ struct clipboard_metadata {
     bool cleared;               /* if clipboard data is cleared (e.g after paste or empty source clipboard for copy action */
     bool qrexec_clipboard;      /* if clipboard data is from MS-Windows or non-X11 aware OS */
     unsigned int sent_size;     /* number of bytes sent by vm during copy action or pasted to destination */
-    unsigned int buffer_size;   /* maximum allowed clipboard size for this vm */
+    unsigned int buffer_size;   /* maximum allowed clipboard size for this vm, for the type at hand */
+    unsigned int data_type;     /* enum clipboard_data_type */
+    unsigned int image_width;   /* image width in pixels, 0 for text */
+    unsigned int image_height;  /* image height in pixels, 0 for text */
     uint32_t protocol_version_vmside;    /* inter-vm clipboard GUI protocol version - vmside */
     uint32_t protocol_version_xside;     /* inter-vm clipboard GUI protocol version - xside */
 };
