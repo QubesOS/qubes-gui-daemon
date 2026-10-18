@@ -290,6 +290,14 @@ static int x11_io_error_handler(Display * dpy)
     exit(1);
 }
 
+static void x11_connection_lost(void)
+{
+    fprintf(stderr, "Connection to local X server lost, terminating\n");
+    errno = EPIPE;
+    x11_io_error_handler(ghandles.display);
+    exit(1);
+}
+
 /*
  * Infer a color value from the provided string using strtoul for
  * hex-like input or for a name Xlib by way of /etc/X11/rgb.txt.
@@ -5040,6 +5048,7 @@ int main(int argc, char **argv)
         ghandles.in_dom0 = false;
     }
     vchan_register_at_eof(restart_guid);
+    vchan_register_argfd(xfd, x11_connection_lost);
 
     get_protocol_version(&ghandles);
     send_xconf(&ghandles);

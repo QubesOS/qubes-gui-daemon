@@ -19,6 +19,9 @@
  *
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,12 +29,15 @@
 #include <errno.h>
 #include <poll.h>
 #include <assert.h>
+#include <sys/socket.h>
 
 #include <double-buffer.h>
 #include "../include/txrx.h"
 
 void (*vchan_at_eof)(void) = NULL;
 int vchan_is_closed = 0;
+static int monitored_fd = -1;
+static void (*argfd_at_eof)(void) = NULL;
 
 /* double buffered in gui-daemon to deal with deadlock
  * during send large clipboard content
@@ -40,6 +46,11 @@ int double_buffered = 1;
 
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void)) {
     vchan_at_eof = new_vchan_at_eof;
+}
+
+void vchan_register_argfd(int fd, void (*new_argfd_at_eof)(void)) {
+    monitored_fd = fd;
+    argfd_at_eof = new_argfd_at_eof;
 }
 
 static void handle_vchan_error(libvchan_t *vchan, const char *op)
@@ -91,13 +102,16 @@ int real_write_message(libvchan_t *vchan, char *hdr, int size, char *data, int d
     return 0;
 }
 
+static int wait_for_vchan_or_argfd_events(libvchan_t *vchan, int fd,
+        short events, int timeout);
+
 int read_data(libvchan_t *vchan, char *buf, int size)
 {
     int written = 0;
     int ret;
     while (written < size) {
         while (!libvchan_data_ready(vchan))
-            wait_for_vchan_or_argfd_once(vchan, -1, 1000);
+            wait_for_vchan_or_argfd_events(vchan, monitored_fd, POLLRDHUP, 1000);
         ret = libvchan_read(vchan, buf + written, size - written);
         if (ret <= 0)
             handle_vchan_error(vchan, "read data");
@@ -107,13 +121,20 @@ int read_data(libvchan_t *vchan, char *buf, int size)
     return size;
 }
 
-int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd, int timeout)
+/*
+ * Wait for vchan activity and for the events requested on fd. Hangup of fd is
+ * always detected, even with events == 0 or POLLRDHUP only. Callers that do not
+ * consume data from fd must not ask for POLLIN, or poll() would return
+ * immediately for as long as there is unread data on fd.
+ */
+static int wait_for_vchan_or_argfd_events(libvchan_t *vchan, int fd,
+        short events, int timeout)
 {
     int ret;
     write_data(vchan, NULL, 0);    // trigger write of queued data, if any present
     struct pollfd fds[] = {
         { .fd = libvchan_fd_for_select(vchan), .events = POLLIN, .revents = 0 },
-        { .fd = fd, .events = POLLIN, .revents = 0 },
+        { .fd = fd, .events = events, .revents = 0 },
     };
     ret = poll(fds, fd == -1 ? 1 : 2, timeout);
     if (ret < 0) {
@@ -131,10 +152,36 @@ int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd, int timeout)
         } else
             exit(0);
     }
+    if (fd != -1 && fds[1].revents) {
+        int eof = 0;
+        if (fds[1].revents & (POLLHUP | POLLERR | POLLNVAL | POLLRDHUP)) {
+            eof = 1;
+        } else if (fds[1].revents & POLLIN) {
+            char peek_buf;
+            ssize_t peek_ret = recv(fd, &peek_buf, 1, MSG_PEEK | MSG_DONTWAIT);
+            if (peek_ret == 0 || (peek_ret < 0 && (errno == ECONNRESET || errno == EPIPE))) {
+                eof = 1;
+            }
+        }
+        if (eof) {
+            fprintf(stderr, "Connection on monitored fd %d closed or hung up\n", fd);
+            if (argfd_at_eof != NULL) {
+                argfd_at_eof();
+                return -1;
+            } else {
+                exit(1);
+            }
+        }
+    }
     if (fds[0].revents) {
         // the following will never block; we need to do this to
         // clear libvchan_fd pending state 
         libvchan_wait(vchan);
     }
     return ret;
+}
+
+int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd, int timeout)
+{
+    return wait_for_vchan_or_argfd_events(vchan, fd, POLLIN, timeout);
 }
