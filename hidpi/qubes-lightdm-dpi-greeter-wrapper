@@ -1,0 +1,7 @@
+#!/bin/sh
+
+if [ -f /var/run/qubes_dpi_scale ]; then
+    export GDK_SCALE="$(cat /var/run/qubes_dpi_scale)"
+fi
+
+exec "$@"
