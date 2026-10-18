@@ -1435,9 +1435,13 @@ static void handle_clipboard_data_image(Ghandles * g, unsigned int untrusted_len
     if (g->log_level > 0)
         fprintf(stderr, "handle_clipboard_data_image, len=0x%x\n", untrusted_len);
 
+    if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_IMAGE) {
+        fprintf(stderr, "clipboard image not allowed with protocol %u.%u!\n",
+            g->protocol_version >> 16, g->protocol_version & 0xFFFF);
+        exit(1);
+    }
     /* a malformed length desynchronizes the vchan, there is no way to recover */
-    if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_IMAGE ||
-            untrusted_len < sizeof(untrusted_img) ||
+    if (untrusted_len < sizeof(untrusted_img) ||
             untrusted_len - sizeof(untrusted_img) > MAX_CLIPBOARD_IMAGE_BUFFER_SIZE) {
         fprintf(stderr, "clipboard image data len 0x%x not allowed!\n",
             untrusted_len);
