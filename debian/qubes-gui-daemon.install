@@ -1,10 +1,12 @@
 usr/bin/X.qubes
 usr/bin/qubes-guid
 usr/libexec/qubes/watch-screen-layout-changes
+usr/libexec/qubes/wrappers/qubes-lightdm-dpi-greeter-wrapper
 usr/libexec/qubes/wrappers/Xwayland
 usr/share/man/man1/qubes-guid.1
 usr/lib/*/qubes-gui-daemon/shmoverride.so
 usr/lib/qubes/icon-receiver
+etc/lightdm/lightdm.conf.d/30-qubesos-dpi-scale.conf
 etc/qubes/guid.conf
 etc/xdg/autostart/qubes-screen-layout-watches.desktop
 etc/xdg/autostart/qubes-icon-receiver.desktop
