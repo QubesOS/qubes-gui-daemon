@@ -47,6 +47,12 @@ MAX_HEADER_LENGTH = 2 * len(str(2 << 32)) + 1 + 1
 #: max size expected in _QUBES_VMNAME property
 MAX_VMNAME_LENGTH = 32
 
+#: anti-DoS protection: how many connections a single qube may have open at
+#: once. Its icon-sender holds one; the second covers a reconnect racing the
+#: teardown of the old one. Every connection can buffer a whole icon (up to
+#: ICON_MAXSIZE^2 * 4 bytes), so without a limit one qube can exhaust memory.
+MAX_CONNECTIONS_PER_DOMAIN = 2
+
 #: how many windows try to retrieve from _NET_CLIENT_LIST property in first try
 #: this is just arbitrary number, trying to estimate maximum windows count;
 #: if there are more windows, will be retrieved in a second call
@@ -112,6 +118,12 @@ class IconReceiver(object):
         #: already tinted and serialized for window property.
         #: at most 5 elements are stored
         self.icon_cache = []
+
+        #: Number of open connections per source domain
+        self.connections = {}
+        #: Domains refused since they last had a free connection slot, so
+        #: that a qube retrying in a loop does not flood the log
+        self.refused = set()
 
         self.app = Qubes()
 
@@ -339,6 +351,7 @@ class IconReceiver(object):
         await server.serve_forever()
 
     async def handle_client(self, reader, writer):
+        domain = None
         try:
             # Parse header from qrexec
             header = await reader.readuntil(b'\0')
@@ -351,7 +364,16 @@ class IconReceiver(object):
                 assert arg == '', arg
             assert service_name == 'qubes.WindowIconUpdater', service_name
 
+            if self.connections.get(header_parts[1], 0) >= \
+                    MAX_CONNECTIONS_PER_DOMAIN:
+                if header_parts[1] not in self.refused:
+                    log.warning('refusing connections from %s: it already '
+                                'has %d', header_parts[1],
+                                MAX_CONNECTIONS_PER_DOMAIN)
+                    self.refused.add(header_parts[1])
+                return
             domain = header_parts[1]
+            self.connections[domain] = self.connections.get(domain, 0) + 1
             color = self.get_color(domain)
 
             log.info('connected: %s', domain)
@@ -373,6 +395,11 @@ class IconReceiver(object):
 
             log.info('disconnected: %s', domain)
         finally:
+            if domain is not None:
+                self.connections[domain] -= 1
+                if not self.connections[domain]:
+                    del self.connections[domain]
+                self.refused.discard(domain)
             writer.close()
             await writer.wait_closed()
 
