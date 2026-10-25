@@ -29,6 +29,8 @@ import argparse
 from qubesimgconverter import ICON_MAXSIZE, Image
 import logging
 
+import numpy
+
 import xcffib as xcb
 import xcffib.xproto as xproto
 from qubesadmin import Qubes
@@ -293,12 +295,10 @@ class IconReceiver(object):
         :param rgba_image: pixel array coded as 32bit RGBA number
         :return: pixel array coded as 32bit ARGB number
         """
-        pixel_count = len(rgba_image) // BYTES_PER_PIXEL
-        return struct.pack(
-            "%dI" % pixel_count,
-            # move the lowest byte to be the highest
-            *[(p >> 8) | ((p & 0xff) << 24) for p in
-              struct.unpack(">%dI" % pixel_count, rgba_image)])
+        pixels = numpy.frombuffer(rgba_image, dtype='>u4')
+        # move the lowest byte to be the highest
+        argb = (pixels >> 8) | ((pixels & 0xff) << 24)
+        return argb.astype('=u4').tobytes()
 
     async def retrieve_icon_for_window(self, reader, color):
         # intentionally don't catch exceptions here
