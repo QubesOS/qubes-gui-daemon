@@ -1,3 +1,17 @@
+qubes-gui-daemon (4.4.0-1) unstable; urgency=medium
+
+  [ Frédéric Pierret (fepitre) ]
+  * clipboard: receive, store and paste images
+  * xside: check clipboard image protocol separately
+  * xside: allow zero clipboard image limit
+  * guid.conf: update image size limits
+
+  [ Marek Marczykowski-Górecki ]
+  * ci: switch to devel
+  * Bump required gui-common version
+
+ -- Marek Marczykowski-Górecki <marmarek@invisiblethingslab.com>  Mon, 26 Oct 2026 15:16:04 +0100
+
 qubes-gui-daemon (4.3.19-1) unstable; urgency=medium
 
   * version 4.3.19
