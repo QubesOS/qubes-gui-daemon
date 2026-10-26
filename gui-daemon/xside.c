@@ -72,7 +72,7 @@
 /* Supported protocol version */
 
 #define PROTOCOL_VERSION_MAJOR UINT32_C(1)
-#define PROTOCOL_VERSION_MINOR UINT32_C(8)
+#define PROTOCOL_VERSION_MINOR UINT32_C(9)
 #define PROTOCOL_VERSION(x, y) ((x) << 16 | (y))
 
 #if !(PROTOCOL_VERSION_MAJOR == QUBES_GUID_PROTOCOL_VERSION_MAJOR && \
@@ -883,6 +883,9 @@ static void save_clipboard_metadata(struct clipboard_metadata *metadata) {
     fprintf(file, "\"qrexec_clipboard\":%d,\n", metadata->qrexec_clipboard);
     fprintf(file, "\"sent_size\":%d,\n", metadata->sent_size);
     fprintf(file, "\"buffer_size\":%d,\n", metadata->buffer_size);
+    fprintf(file, "\"data_type\":%d,\n", metadata->data_type);
+    fprintf(file, "\"image_width\":%d,\n", metadata->image_width);
+    fprintf(file, "\"image_height\":%d,\n", metadata->image_height);
     fprintf(file, "\"protocol_version_xside\":%d,\n", metadata->protocol_version_xside);
     fprintf(file, "\"protocol_version_vmside\":%d\n", metadata->protocol_version_vmside);
     // other key,value pairs could be added if needed in future
@@ -960,6 +963,12 @@ static bool load_clipboard_metadata(struct clipboard_metadata *metadata, bool lo
             metadata->sent_size = dummy;
         } else if (strcmp(key, "buffer_size") == 0) {
             metadata->buffer_size = dummy;
+        } else if (strcmp(key, "data_type") == 0) {
+            metadata->data_type = dummy;
+        } else if (strcmp(key, "image_width") == 0) {
+            metadata->image_width = dummy;
+        } else if (strcmp(key, "image_height") == 0) {
+            metadata->image_height = dummy;
         } else if (strcmp(key, "protocol_version_vmside") == 0) {
             metadata->protocol_version_vmside = dummy;
         } else if (strcmp(key, "protocol_version_xside") == 0) {
@@ -972,9 +981,14 @@ static bool load_clipboard_metadata(struct clipboard_metadata *metadata, bool lo
 
 /* caller must take inter_appviewer_lock first */
 static void clear_clipboard(struct clipboard_metadata *metadata) {
-    if (truncate(QUBES_CLIPBOARD_FILENAME, 0)) {
+    /* an image only clipboard never creates the text file, so ENOENT is fine */
+    if (truncate(QUBES_CLIPBOARD_FILENAME, 0) && errno != ENOENT) {
         perror("failed to truncate " QUBES_CLIPBOARD_FILENAME ", trying unlink instead\n");
         unlink(QUBES_CLIPBOARD_FILENAME);
+    }
+    if (truncate(QUBES_CLIPBOARD_IMAGE_FILENAME, 0) && errno != ENOENT) {
+        perror("failed to truncate " QUBES_CLIPBOARD_IMAGE_FILENAME ", trying unlink instead\n");
+        unlink(QUBES_CLIPBOARD_IMAGE_FILENAME);
     }
     metadata->cleared = true;
     save_clipboard_metadata(metadata);
@@ -1072,6 +1086,73 @@ static void get_qubes_clipboard(Ghandles *g, char **data, int *len)
     }
     fclose(file);
     metadata.sent_size = *len;
+    metadata.successful = true;
+    clear_clipboard(&metadata);
+}
+
+/* caller must take inter_appviewer_lock first */
+static bool clipboard_holds_image(bool logging, unsigned int *width, unsigned int *height)
+{
+    struct clipboard_metadata metadata = {0};
+
+    if (!load_clipboard_metadata(&metadata, logging))
+        return false;
+    if (metadata.data_type != CLIPBOARD_DATA_IMAGE || metadata.cleared)
+        return false;
+    *width = metadata.image_width;
+    *height = metadata.image_height;
+    return true;
+}
+
+/* caller must take inter_appviewer_lock first */
+static void get_qubes_clipboard_image(Ghandles *g, char **data, int *len,
+        unsigned int width, unsigned int height)
+{
+    FILE *file;
+    size_t expected = (size_t)width * height * 4;
+    struct clipboard_metadata metadata = {0};
+
+    *data = NULL;
+    *len = 0;
+    strcpy(metadata.vmname, g->vmname);
+    metadata.paste_action = true;
+    metadata.data_type = CLIPBOARD_DATA_IMAGE;
+    metadata.image_width = width;
+    metadata.image_height = height;
+    metadata.xevent_timestamp = g->clipboard_xevent_time;
+    metadata.buffer_size = g->clipboard_image_buffer_size;
+    metadata.protocol_version_vmside = g->protocol_version;
+    metadata.protocol_version_xside = PROTOCOL_VERSION(
+        PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
+    metadata.successful = false;
+
+    if (expected == 0 || expected > MAX_CLIPBOARD_IMAGE_BUFFER_SIZE) {
+        clear_clipboard(&metadata);
+        return;
+    }
+    file = fopen(QUBES_CLIPBOARD_IMAGE_FILENAME, "r");
+    if (!file) {
+        clear_clipboard(&metadata);
+        return;
+    }
+    *data = malloc(expected);
+    if (!*data) {
+        perror("malloc");
+        exit(1);
+    }
+    /* the file must hold exactly what the metadata announced */
+    if (fread(*data, 1, expected, file) != expected || fgetc(file) != EOF) {
+        show_error_message(g, "secure paste: failed to read "
+            QUBES_CLIPBOARD_IMAGE_FILENAME);
+        free(*data);
+        *data = NULL;
+        fclose(file);
+        clear_clipboard(&metadata);
+        return;
+    }
+    fclose(file);
+    *len = expected;
+    metadata.sent_size = expected;
     metadata.successful = true;
     clear_clipboard(&metadata);
 }
@@ -1300,6 +1381,10 @@ static void handle_clipboard_data(Ghandles * g, unsigned int untrusted_len)
     }
     /* grant group write */
     old_umask = umask(0007);
+    if (truncate(QUBES_CLIPBOARD_IMAGE_FILENAME, 0) && errno != ENOENT) {
+        show_error_message(g, "secure copy: failed to truncate file " QUBES_CLIPBOARD_IMAGE_FILENAME);
+        goto error;
+    }
     file = fopen(QUBES_CLIPBOARD_FILENAME, "w");
     if (!file) {
         show_error_message(g, "secure copy: failed to open file " QUBES_CLIPBOARD_FILENAME);
@@ -1325,9 +1410,126 @@ error:
     free(untrusted_data);
 }
 
+/* handle VM message: MSG_CLIPBOARD_DATA_IMAGE
+ *  - raw RGBA bitmap, stored next to (not inside) the text clipboard file
+ */
+static void handle_clipboard_data_image(Ghandles * g, unsigned int untrusted_len)
+{
+    FILE *file;
+    char *untrusted_data;
+    size_t untrusted_data_sz;
+    struct msg_clipboard_image untrusted_img;
+    Time clipboard_file_xevent_time;
+    mode_t old_umask;
+
+    struct clipboard_metadata metadata = {0};
+    strcpy(metadata.vmname, g->vmname);
+    metadata.copy_action = true;
+    metadata.data_type = CLIPBOARD_DATA_IMAGE;
+    metadata.xevent_timestamp = g->clipboard_xevent_time;
+    metadata.buffer_size = g->clipboard_image_buffer_size;
+    metadata.protocol_version_vmside = g->protocol_version;
+    metadata.protocol_version_xside = PROTOCOL_VERSION(
+                    PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
+
+    if (g->log_level > 0)
+        fprintf(stderr, "handle_clipboard_data_image, len=0x%x\n", untrusted_len);
+
+    if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_IMAGE) {
+        fprintf(stderr, "clipboard image not allowed with protocol %u.%u!\n",
+            g->protocol_version >> 16, g->protocol_version & 0xFFFF);
+        exit(1);
+    }
+    /* a malformed length desynchronizes the vchan, there is no way to recover */
+    if (untrusted_len < sizeof(untrusted_img) ||
+            untrusted_len - sizeof(untrusted_img) > MAX_CLIPBOARD_IMAGE_BUFFER_SIZE) {
+        fprintf(stderr, "clipboard image data len 0x%x not allowed!\n",
+            untrusted_len);
+        exit(1);
+    }
+    read_struct(g->vchan, untrusted_img);
+    untrusted_data_sz = untrusted_len - sizeof(untrusted_img);
+    if (untrusted_img.width == 0 || untrusted_img.height == 0 ||
+            untrusted_img.width > MAX_CLIPBOARD_IMAGE_WIDTH ||
+            untrusted_img.height > MAX_CLIPBOARD_IMAGE_HEIGHT ||
+            (uint64_t)untrusted_img.width * untrusted_img.height * 4 !=
+                (uint64_t)untrusted_data_sz) {
+        fprintf(stderr, "clipboard image %ux%u does not match len 0x%x\n",
+            untrusted_img.width, untrusted_img.height, untrusted_len);
+        exit(1);
+    }
+    /* now sanitized */
+    metadata.image_width = untrusted_img.width;
+    metadata.image_height = untrusted_img.height;
+    metadata.sent_size = untrusted_data_sz;
+    if (untrusted_data_sz > g->clipboard_image_buffer_size) {
+        metadata.oversized_request = true;
+        if (g->log_level > 0)
+            fprintf(stderr, "clipboard image len %zu exceeds VM's allowed!\n",
+                untrusted_data_sz);
+    }
+
+    untrusted_data = malloc(untrusted_data_sz);
+    if (!untrusted_data) {
+        perror("malloc");
+        exit(1);
+    }
+    read_data(g->vchan, untrusted_data, untrusted_data_sz);
+    if (!g->clipboard_requested) {
+        free(untrusted_data);
+        fprintf(stderr, "received clipboard image data when not requested\n");
+        return;
+    }
+    if (metadata.oversized_request) {
+        free(untrusted_data);
+        metadata.successful = false;
+        clear_clipboard(&metadata);
+        return;
+    }
+    inter_appviewer_lock(g, 1);
+    clipboard_file_xevent_time = get_clipboard_xevent_timestamp(g->log_level > 0);
+    if (clipboard_file_xevent_time - g->clipboard_xevent_time < (1UL<<31)) {
+        inter_appviewer_lock(g, 0);
+        free(untrusted_data);
+        fprintf(stderr,
+            "received clipboard image after some other clipboard op, discarding\n");
+        return;
+    }
+    /* grant group write */
+    old_umask = umask(0007);
+    if (truncate(QUBES_CLIPBOARD_FILENAME, 0) && errno != ENOENT) {
+        show_error_message(g, "secure copy: failed to truncate file " QUBES_CLIPBOARD_FILENAME);
+        goto error;
+    }
+    file = fopen(QUBES_CLIPBOARD_IMAGE_FILENAME, "w");
+    if (!file) {
+        show_error_message(g, "secure copy: failed to open file " QUBES_CLIPBOARD_IMAGE_FILENAME);
+        goto error;
+    }
+    if (fwrite(untrusted_data, 1, untrusted_data_sz, file) != untrusted_data_sz) {
+        fclose(file);
+        show_error_message(g, "secure copy: failed to write to file " QUBES_CLIPBOARD_IMAGE_FILENAME);
+        goto error;
+    }
+    if (fclose(file) < 0) {
+        show_error_message(g, "secure copy: failed to close file " QUBES_CLIPBOARD_IMAGE_FILENAME);
+        goto error;
+    }
+    save_clipboard_source_vmname(g->vmname);
+    save_clipboard_file_xevent_timestamp(g->clipboard_xevent_time);
+    metadata.successful = true;
+    save_clipboard_metadata(&metadata);
+error:
+    umask(old_umask);
+    inter_appviewer_lock(g, 0);
+    g->clipboard_requested = 0;
+    free(untrusted_data);
+}
+
 static bool evaluate_clipboard_policy_socket(Ghandles *g, int socket, const char *const source_vm);
 
-static bool evaluate_clipboard_policy_domU(Ghandles *g, const char *const source_vm) {
+static bool evaluate_clipboard_policy_domU(Ghandles *g, const char *const source_vm,
+        bool is_image) {
     int sockets[2]; /* 1 is for writing to dom0, 0 is for reading the result */
     pid_t pid;
     if (socketpair(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0, sockets)) {
@@ -1344,8 +1546,9 @@ static bool evaluate_clipboard_policy_domU(Ghandles *g, const char *const source
                 _exit(1);
             }
             execl(QREXEC_CLIENT_VM_PATH, QREXEC_CLIENT_VM, "--",
-                  "@adminvm", QUBES_SERVICE_EVAL_GUI "+"
-                  QUBES_SERVICE_CLIPBOARD_PASTE, NULL);
+                  "@adminvm", is_image ?
+                  QREXEC_EVAL_GUI_CLIPBOARD_PASTE_IMAGE :
+                  QREXEC_EVAL_GUI_CLIPBOARD_PASTE_TEXT, NULL);
             perror("execl");
             _exit(1);
         default:
@@ -1383,8 +1586,13 @@ static bool write_all(int socket, void *buf, size_t len) {
 }
 
 static bool evaluate_clipboard_policy_dom0(Ghandles *g,
-        const char *const source_vm) {
+        const char *const source_vm, bool is_image) {
     const int sockfd = socket(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0);
+    char *const prelude = is_image ?
+        QREXEC_PRELUDE_CLIPBOARD_PASTE_IMAGE : QREXEC_PRELUDE_CLIPBOARD_PASTE_TEXT;
+    const size_t prelude_len = is_image ?
+        sizeof(QREXEC_PRELUDE_CLIPBOARD_PASTE_IMAGE) :
+        sizeof(QREXEC_PRELUDE_CLIPBOARD_PASTE_TEXT);
     bool status = false;
     if (sockfd < 0) {
         perror("socket");
@@ -1403,7 +1611,7 @@ static bool evaluate_clipboard_policy_dom0(Ghandles *g,
         perror("connect");
         goto fail;
     }
-    if (!write_all(sockfd, QREXEC_PRELUDE_CLIPBOARD_PASTE, sizeof(QREXEC_PRELUDE_CLIPBOARD_PASTE)))
+    if (!write_all(sockfd, prelude, prelude_len))
         goto fail;
     status = evaluate_clipboard_policy_socket(g, sockfd, source_vm);
 fail:
@@ -1459,7 +1667,7 @@ static bool evaluate_clipboard_policy_socket(
     }
 }
 
-static int evaluate_clipboard_policy(Ghandles * g) {
+static int evaluate_clipboard_policy(Ghandles * g, bool is_image) {
     int fd;
     ssize_t len;
     char source_vm[255];
@@ -1482,13 +1690,14 @@ static int evaluate_clipboard_policy(Ghandles * g) {
     }
     source_vm[len] = 0;
     if (g->in_dom0)
-        result = evaluate_clipboard_policy_dom0(g, source_vm);
+        result = evaluate_clipboard_policy_dom0(g, source_vm, is_image);
     else
-        result = evaluate_clipboard_policy_domU(g, source_vm);
+        result = evaluate_clipboard_policy_domU(g, source_vm, is_image);
     if (!result) {
         char error_msg[1024];
         snprintf(error_msg, sizeof(error_msg),
-            "Pasting from %s to %s is denied by policies",
+            "Pasting %s from %s to %s is denied by policies",
+            is_image ? "an image" : "text",
             source_vm,
             g->vmname);
         show_message(g, "ERROR", error_msg, NOTIFY_EXPIRES_DEFAULT);
@@ -1583,11 +1792,38 @@ static int is_special_keypress(Ghandles * g, const XKeyEvent * ev, XID remote_wi
                     "received clipboard xevent after some other clipboard op, discarding\n");
             return 1;
         }
-        if (!evaluate_clipboard_policy(g)) {
+        unsigned int image_width = 0, image_height = 0;
+        bool is_image = clipboard_holds_image(g->log_level > 0,
+                &image_width, &image_height);
+        if (!evaluate_clipboard_policy(g, is_image)) {
             inter_appviewer_lock(g, 0);
             return 1;
         }
-        if (g->qrexec_clipboard) {
+        if (is_image && g->qrexec_clipboard) {
+            show_error_message(g, "secure paste: this qube cannot receive images");
+        } else if (is_image) {
+            if (g->protocol_version < QUBES_GUID_MIN_CLIPBOARD_IMAGE) {
+                show_error_message(g, "secure paste: GUI agent in this qube is too old for images");
+            } else {
+                struct msg_clipboard_image img = {
+                    .width = image_width,
+                    .height = image_height,
+                };
+                get_qubes_clipboard_image(g, &data, &len, image_width, image_height);
+                if (len > 0) {
+                    hdr.type = MSG_CLIPBOARD_DATA_IMAGE;
+                    hdr.window = remote_winid;
+                    hdr.untrusted_len = len + sizeof(img);
+                    if (g->log_level > 0)
+                        fprintf(stderr, "secure paste: image %ux%u\n",
+                            image_width, image_height);
+                    real_write_message(g->vchan, (char *) &hdr, sizeof(hdr),
+                            (char *) &img, sizeof(img));
+                    write_data(g->vchan, data, len);
+                    free(data);
+                }
+            }
+        } else if (g->qrexec_clipboard) {
             int ret = paste_qubes_clipboard_using_qrexec(g);
             if (g->log_level > 0)
                 fprintf(stderr, "secure paste: %s\n", ret?"success":"failed");
@@ -3942,6 +4178,10 @@ static void handle_message(Ghandles * g)
         handle_clipboard_data(g, untrusted_len);
         return;
     }
+    if (untrusted_type == MSG_CLIPBOARD_DATA_IMAGE) {
+        handle_clipboard_data_image(g, untrusted_len);
+        return;
+    }
     l = list_lookup(g->remote2local, untrusted_hdr.window);
     if (untrusted_type == MSG_CREATE) {
         if (l) {
@@ -4198,6 +4438,7 @@ static void wait_for_connection_in_parent(int *pipe_notify)
 enum {
     opt_trayicon_mode = 257,
     opt_screensaver_name = 258,
+    opt_max_clipboard_image_size = 259,
 };
 
 struct option longopts[] = {
@@ -4221,6 +4462,7 @@ struct option longopts[] = {
     { "trayicon-mode", required_argument, NULL, opt_trayicon_mode },
     { "screensaver-name", required_argument, NULL, opt_screensaver_name },
     { "max-clipboard-size", required_argument, NULL, 'X' },
+    { "max-clipboard-image-size", required_argument, NULL, opt_max_clipboard_image_size },
     { "help", no_argument, NULL, 'h' },
     { "version", no_argument, NULL, 'V' },   // V is virtual and not a short option
     { 0, 0, 0, 0 },
@@ -4253,6 +4495,7 @@ static void usage(FILE *stream)
     fprintf(stream, " --trayicon-mode\ttrayicon coloring mode (see below); default: tint\n");
     fprintf(stream, " --screensaver-name\tscreensaver window name, can be repeated, default: xscreensaver\n");
     fprintf(stream, " --max-clipboard-size=SIZE\tmaximum clipboard size VM is allowed to send to global clipboard\n");
+    fprintf(stream, " --max-clipboard-image-size=SIZE\tmaximum clipboard image size (bytes of RGBA) VM is allowed to send to global clipboard\n");
     fprintf(stream, " --help, -h\tshow command help\n");
     fprintf(stream, " --version\tshow protocol version\n");
     fprintf(stream, " --override-redirect=disabled\tdisable the “override redirect” flag (will likely break applications)\n");
@@ -4540,6 +4783,18 @@ static void parse_cmdline(Ghandles * g, int argc, char **argv)
                         value, MAX_CLIPBOARD_BUFFER_SIZE, MIN_CLIPBOARD_BUFFER_SIZE);
             g->clipboard_buffer_size = value;
             break;
+        case opt_max_clipboard_image_size:
+            unsigned int img_value;
+            if (sscanf(optarg, "%u", &img_value) != 1)
+                errx(1, "maximum clipboard image size '%s' is not an integer", optarg);
+            /* unsigned, and the minimum is 0 */
+            if (img_value > MAX_CLIPBOARD_IMAGE_BUFFER_SIZE)
+                errx(1, "unsupported value ‘%d’ for --max-clipboard-image-size "
+                        "(must be between %d to %d bytes)",
+                        img_value, MIN_CLIPBOARD_IMAGE_BUFFER_SIZE,
+                        MAX_CLIPBOARD_IMAGE_BUFFER_SIZE);
+            g->clipboard_image_buffer_size = img_value;
+            break;
         default:
             usage(stderr);
             exit(1);
@@ -4583,6 +4838,7 @@ static void load_default_config_values(Ghandles * g)
     g->paste_seq_mask = ControlMask | ShiftMask;
     g->paste_seq_key = XK_v;
     g->clipboard_buffer_size = DEFAULT_CLIPBOARD_BUFFER_SIZE;
+    g->clipboard_image_buffer_size = DEFAULT_CLIPBOARD_IMAGE_BUFFER_SIZE;
     g->allow_fullscreen = 0;
     g->override_redirect_protection = 1;
     g->startup_timeout = 45;
@@ -4674,6 +4930,21 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
                     value, MAX_CLIPBOARD_BUFFER_SIZE, MIN_CLIPBOARD_BUFFER_SIZE);
         } else {
             g->clipboard_buffer_size = value;
+        }
+    }
+
+    if ((setting =
+         config_setting_get_member(group, "max_clipboard_image_size"))) {
+        int value = config_setting_get_int(setting);
+        if (value > MAX_CLIPBOARD_IMAGE_BUFFER_SIZE ||
+                value < MIN_CLIPBOARD_IMAGE_BUFFER_SIZE) {
+            fprintf(stderr,
+                    "unsupported value ‘%d’ for max_clipboard_image_size "
+                    "(must be between %d to %d bytes).\n",
+                    value, MIN_CLIPBOARD_IMAGE_BUFFER_SIZE,
+                    MAX_CLIPBOARD_IMAGE_BUFFER_SIZE);
+        } else {
+            g->clipboard_image_buffer_size = value;
         }
     }
 
