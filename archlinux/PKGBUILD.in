@@ -24,7 +24,7 @@ makedepends=(
     pkgconf
     qubes-db-vm
     qubes-libvchan
-    'qubes-vm-gui-common>=4.3.0'
+    'qubes-vm-gui-common>=4.4.0'
     'qubes-vm-utils>=4.2.10'
     qubes-vm-xen
     xcb-util
