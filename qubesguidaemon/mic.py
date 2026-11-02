@@ -23,6 +23,7 @@
 import asyncio
 import subprocess
 import sys
+import time
 
 import qubes.ext
 import qubes.vm.adminvm
@@ -57,6 +58,14 @@ class MicDeviceExtension(qubes.ext.Extension):
     """
     Extension to control microphone access
     """
+
+    #: minimum time (in seconds) between two audio-input-blocked events for
+    #: the same qube
+    blocked_event_interval = 10
+
+    def __init__(self):
+        super().__init__()
+        self.last_blocked_event = {}
 
     @staticmethod
     def get_device(app):
@@ -231,6 +240,47 @@ class MicDeviceExtension(qubes.ext.Extension):
                     f"Invalid value '{mic_allowed_value}' for "
                     f"'/audio-input-config/{subject.name}' from {oldvalue}",
                 )
+
+    @qubes.ext.handler("domain-init", "domain-load")
+    def on_domain_init_load(self, vm, event):
+        """Watch recording requests, in case this qube is an AudioVM"""
+        # pylint: disable=unused-argument
+        vm.watch_qdb_path("/audio-input-request/")
+
+    @qubes.ext.handler("domain-qdb-change:/audio-input-request/")
+    def on_audio_input_request(self, vm, event, path):
+        """A qube asked its AudioVM (*vm*) to start recording.
+
+        If the microphone is not attached to that qube, fire
+        ``audio-input-blocked`` event on it, so the GUI can tell the user.
+
+        .. event:: audio-input-blocked (subject, event)
+
+            A qube tried to record audio, but the microphone is not attached
+            to it. Fired at most once every
+            :py:attr:`blocked_event_interval` seconds for the same qube.
+        """
+        # pylint: disable=unused-argument
+        untrusted_name = path[len("/audio-input-request/") :]
+        try:
+            target = vm.app.domains[untrusted_name]
+        except KeyError:
+            return
+        # the AudioVM can only report about qubes it serves
+        if getattr(target, "audiovm", None) != vm:
+            return
+        qdb = vm.untrusted_qdb
+        if qdb is None or qdb.read(path) != b"1":
+            return
+        if qdb.read(f"/audio-input-config/{target.name}") == b"1":
+            # microphone is attached
+            return
+        now = time.monotonic()
+        last = self.last_blocked_event.get(target.name)
+        if last is not None and now - last < self.blocked_event_interval:
+            return
+        self.last_blocked_event[target.name] = now
+        target.fire_event("audio-input-blocked")
 
     @qubes.ext.handler("domain-qdb-create")
     def on_domain_qdb_create(self, vm, event):
