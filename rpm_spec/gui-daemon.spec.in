@@ -175,10 +175,12 @@ rm -f %{name}-%{version}
 /usr/bin/X-wrapper-qubes
 %{_libdir}/qubes-gui-daemon/shmoverride.so
 %config(noreplace) %{_sysconfdir}/qubes/guid.conf
+/etc/lightdm/lightdm.conf.d/30-qubesos-dpi-scale.conf
 /etc/xdg/autostart/qubes-screen-layout-watches.desktop
 /etc/xdg/autostart/qubes-icon-receiver.desktop
 /etc/X11/xinit/xinitrc.d/qubes-localgroup.sh
 /usr/libexec/qubes/watch-screen-layout-changes
+/usr/libexec/qubes/wrappers/qubes-lightdm-dpi-greeter-wrapper
 /usr/libexec/qubes/wrappers/Xwayland
 /usr/lib/qubes/icon-receiver
 %config %{_sysconfdir}/qubes-rpc/qubes.WindowIconUpdater
