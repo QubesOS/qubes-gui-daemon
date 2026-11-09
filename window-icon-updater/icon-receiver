@@ -121,9 +121,9 @@ class IconReceiver(object):
         #: at most 5 elements are stored
         self.icon_cache = []
 
-        #: Number of open connections per source domain
+        #: Number of open connections per source qube
         self.connections = {}
-        #: Domains refused since they last had a free connection slot, so
+        #: Qubes refused since they last had a free connection slot, so
         #: that a qube retrying in a loop does not flood the log
         self.refused = set()
 

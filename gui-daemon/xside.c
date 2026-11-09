@@ -162,24 +162,24 @@ static int ask_whether_verify_failed(Ghandles * g, const char *cond)
     //#define NEW_KDIALOG
 #ifdef NEW_KDIALOG
     snprintf(text, sizeof(text),
-            "The domain %s attempted to perform an invalid or suspicious GUI "
-            "request. This might be a sign that the domain has been compromised "
+            "The qube %s attempted to perform an invalid or suspicious GUI "
+            "request. This might be a sign that the qube has been compromised "
             "and is attempting to compromise the GUI daemon (Dom0 domain). In "
             "rare cases, however, it might be possible that a legitimate "
             "application trigger such condition (check the guid logs for more "
             "information). \n\n"
-            "Click “Terminate” to terminate this domain immediately, or "
+            "Click “Terminate” to terminate this qube immediately, or "
             "“Ignore” to ignore this GUI request.",
          g->vmname);
 #else
     snprintf(text, sizeof(text),
-            "The domain %s attempted to perform an invalid or suspicious GUI "
-            "request. This might be a sign that the domain has been compromised "
+            "The qube %s attempted to perform an invalid or suspicious GUI "
+            "request. This might be a sign that the qube has been compromised "
             "and is attempting to compromise the GUI daemon (Dom0 domain). In "
             "rare cases, however, it might be possible that a legitimate "
             "application trigger such condition (check the guid logs for more "
             "information). \n\n"
-            "Do you allow this VM to continue running?",
+            "Do you allow this qube to continue running?",
          g->vmname);
 #endif
     snprintf(dontagain_param, sizeof(dontagain_param), "qubes-quid-%s:%s", g->vmname, cond);
