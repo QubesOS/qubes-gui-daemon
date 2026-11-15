@@ -78,6 +78,8 @@ install:
 	install -D -m 0644 common/90-default-gui-daemon.policy $(DESTDIR)/etc/qubes/policy.d/90-default-gui-daemon.policy
 	install -D screen-layout-handler/watch-screen-layout-changes $(DESTDIR)/usr/libexec/qubes/watch-screen-layout-changes
 	install -D -m 0644 screen-layout-handler/qubes-screen-layout-watches.desktop $(DESTDIR)/etc/xdg/autostart/qubes-screen-layout-watches.desktop
+	install -D -m 0755 hidpi/qubes-lightdm-dpi-greeter-wrapper $(DESTDIR)/usr/libexec/qubes/wrappers/qubes-lightdm-dpi-greeter-wrapper
+	install -D -m 0644 hidpi/lightdm/30-qubesos-dpi-scale.conf $(DESTDIR)/etc/lightdm/lightdm.conf.d/30-qubesos-dpi-scale.conf
 	$(MAKE) -C window-icon-updater install
 
 install-selinux:
