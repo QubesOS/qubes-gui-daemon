@@ -716,7 +716,8 @@ static void mkghandles(Ghandles * g)
     XSelectInput(g->display, g->root_win, PropertyChangeMask | StructureNotifyMask);
     update_work_area(g);
     /* create graphical contexts */
-    get_frame_gc(g, g->cmdline_color ? g->cmdline_color : "red");
+    get_frame_gc(g, g->cmdline_color ? g->cmdline_color :
+                 (g->copy_color_frame ? g->copy_color_frame : "red"));
     if (g->trayicon_mode == TRAY_BACKGROUND)
         init_tray_bg(g);
     else if (g->trayicon_mode == TRAY_TINT)
@@ -4847,6 +4848,7 @@ static void load_default_config_values(Ghandles * g)
     g->trayicon_tint_reduce_saturation = 0;
     g->trayicon_tint_whitehack = 0;
     g->window_background_color_pre_parse = "white";
+    g->copy_color_frame = NULL;
 }
 
 // parse string describing key sequence like Ctrl-Alt-c
@@ -5011,6 +5013,18 @@ static void parse_vm_config(Ghandles * g, config_setting_t * group)
             exit(1);
         }
         g->ebuf_max_delay = delay_val;
+    }
+
+    if ((setting = config_setting_get_member(group, "color"))) {
+        const char *color_str = config_setting_get_string(setting);
+        if (color_str) {
+            free(g->copy_color_frame);
+            g->copy_color_frame = strdup(color_str);
+            if (!g->copy_color_frame) {
+                perror("strdup");
+                exit(1);
+            }
+        }
     }
 }
 
