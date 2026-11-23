@@ -215,6 +215,7 @@ struct _global_handles {
     uint32_t protocol_version;  /* Negotiated protocol version.  Must be uint32_t
                                    as it is used as a protocol message. */
     char *cmdline_color;    /* color of frame */
+    char *copy_color_frame; /* frame color from config file */
     uint32_t label_color_rgb; /* color of the frame in RGB */
     char *cmdline_icon;    /* icon hint for WM */
     unsigned long *icon_data; /* loaded icon image, ready for _NEW_WM_ICON property */
