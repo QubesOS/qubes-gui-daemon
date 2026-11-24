@@ -35,5 +35,6 @@ int read_data(libvchan_t *vchan, char *buf, int size);
     } while(0)
 int wait_for_vchan_or_argfd_once(libvchan_t *vchan, int fd, int timeout);
 void vchan_register_at_eof(void (*new_vchan_at_eof)(void));
+void vchan_register_argfd(int fd, void (*new_argfd_at_eof)(void));
 
 #endif /* _QUBES_TXRX_H */
